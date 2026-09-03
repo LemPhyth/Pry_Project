@@ -26,6 +26,22 @@ public sealed class ChatController(ConversationSessionService sessions, BackendR
         await sessions.CancelAsync(id, token); return Accepted();
     }
 
+    [HttpDelete("conversations/{id}/messages/{messageId:long}")]
+    public Task<ConversationMutationResponse> DeleteMessage(string id, long messageId, CancellationToken token) =>
+        sessions.DeleteMessageAsync(id, messageId, token);
+
+    [HttpPost("conversations/{id}/messages/{messageId:long}/regenerate")]
+    public async Task<IActionResult> Regenerate(string id, long messageId, CancellationToken token)
+    {
+        await sessions.RegenerateAsync(id, messageId, token); return Accepted();
+    }
+
+    [HttpPost("conversations/{id}/mutations/undo")]
+    public async Task<IActionResult> Undo(string id, CancellationToken token)
+    {
+        await sessions.UndoAsync(id, token); return NoContent();
+    }
+
     [HttpGet("conversations/{id}/events")]
     public async Task Events(string id, [FromQuery] long after = 0, CancellationToken token = default)
     {

@@ -112,12 +112,52 @@
 提交回合：`POST /api/v1/conversations/{id}/turns`
 
 ```json
-{ "content": "你好", "stickerId": null, "immediate": false }
+{ "content": "你好", "stickerId": null, "immediate": false, "attachmentIds": [] }
 ```
 
 返回 `202` 和 `{"messageId":123}`。该消息已经持久化；模型回复异步通过 SSE 到达。普通输入使用 `immediate:false` 以保留合并短输入的节奏，显式立即发送使用 `true`。同一会话的并发输入由后端现有回合状态机合并或打断。
 
 取消当前回复：`POST /api/v1/conversations/{id}/turns/cancel` → `202`。取消是幂等操作；如果没有活动回复也不会创建数据。
+
+## 托管媒体与附件
+
+客户端不得提交磁盘路径。先用 `multipart/form-data` 上传，再把服务端返回的资源 ID 放入聊天回合的 `attachmentIds`。
+
+`POST /api/v1/media`，表单字段名为 `file`。成功返回 `201`：
+
+```json
+{
+  "id": "83ec...",
+  "name": "说明.txt",
+  "contentType": "text/plain",
+  "size": 128,
+  "kind": "Text",
+  "createdAt": "2026-09-03T11:00:00Z",
+  "downloadUrl": "/api/v1/media/83ec.../content"
+}
+```
+
+约束：
+
+- 不设置单文件硬上限；超过 10 MiB 时 JSON `warnings` 返回中文提示，响应头 `X-Pry-Upload-Warning` 返回稳定 ASCII 码 `large-file`。客户端应先读取 `GET /api/v1/media/policy`，在开始传输前根据 `warningThresholdBytes` 提醒用户。
+- 每个聊天回合最多引用 6 个附件。
+- 支持 PNG、JPEG、GIF、WebP、UTF-8 TXT/MD/CSV 和有效 DOCX。
+- 后端同时检查扩展名和文件签名；不信任客户端声明的 Content-Type。
+- 原始名称只用于显示与下载，磁盘文件名由服务端随机生成。
+- 响应和聊天事件都不会包含服务端磁盘路径。
+- 文件始终以流式方式落盘；UTF-8 校验同样分块执行，不会把大文本整体载入内存。用户仍需自行保证本机剩余磁盘空间。
+
+下载：`GET /api/v1/media/{id}/content`，支持 Range 请求。不存在的资源返回 404。
+
+上传策略：`GET /api/v1/media/policy`，当前 `maximumBytes` 为 `null`，表示没有应用层硬限制。
+
+## 消息分支变更
+
+- `DELETE /api/v1/conversations/{conversationId}/messages/{messageId}`：用户消息会删除该消息及之后的分支；助手消息只删除自身。返回删除范围及数量。
+- `POST /api/v1/conversations/{conversationId}/messages/{messageId}/regenerate`：只接受助手消息，先等待当前回合完全取消，再从对应用户消息重新生成，返回 `202`。
+- `POST /api/v1/conversations/{conversationId}/mutations/undo`：撤销最近一次删除或重新生成分支，返回 `204`。
+
+后端会在变更前等待正在运行的回复真正退出，防止删除完成后迟到的助手消息重新写入数据库。每个活跃会话最多保留最近 20 个内存撤销快照；服务重启后撤销栈不保留。
 
 ## 会话文件夹
 
@@ -160,6 +200,56 @@
 
 `characterId` 同时作为资源归属约束，不能用一个角色 ID 修改另一个角色的记忆。
 
+## 角色卡
+
+- `GET /api/v1/characters`：角色摘要、当前选中状态和可选头像 URL。
+- `GET /api/v1/characters/{id}`：完整角色设定；不包含磁盘路径。
+- `POST /api/v1/characters`：由服务端生成角色 ID并保存角色卡。
+- `PUT /api/v1/characters/{id}`：全量更新角色卡。
+- `GET /api/v1/characters/{id}/avatar`：获取角色头像，支持 Range。
+
+角色头像先通过媒体 API 上传，再在角色请求中传 `avatarMediaId`；传 `clearAvatar:true` 恢复默认头像。结构化角色必须提供 `identity`，Legacy 角色必须提供 `legacySystemPrompt`。配置写入使用临时文件替换；写入前会取消并排空活跃回合。
+
+## 客户端偏好与外观
+
+- `GET /api/v1/preferences`：返回用户资料、快捷键、回合节奏、桌宠偏好和不含路径的主题设置。
+- `PATCH /api/v1/preferences`：局部更新上述偏好。
+- `PUT /api/v1/appearance/media`：用托管媒体 ID 设置或清除背景及用户头像。
+- `GET /api/v1/appearance/background`
+- `GET /api/v1/appearance/user-avatar`
+
+背景和头像 URL 仅在资源存在时返回。客户端不能通过这些接口设置任意磁盘路径。
+
+## 模型配置
+
+- `GET /api/v1/models`：返回可选模型、能力、有效调参值和文字/视觉选中状态；不返回模型路径或密钥。
+- `PUT /api/v1/models/selection`：全量设置文字、视觉、语音模型选择以及逐模型 `modelTunings`。
+- `POST /api/v1/models/custom`：新增自定义本地或 OpenAI-compatible 模型。
+- `PUT /api/v1/models/custom/{id}`：更新自定义模型。
+- `DELETE /api/v1/models/custom/{id}`：删除未被选中的自定义模型；不会删除模型文件。
+- `GET /api/v1/runtime`：读取当前运行状态。
+
+模型选择或运行参数改变时，后端先排空会话、原子保存偏好，再释放旧模型进程。在线 API Key 始终来自环境变量，不进入请求或响应。
+
+远程 OpenAI-compatible 地址必须使用 HTTPS，回环地址允许 HTTP，URL 不得包含用户名或密码。本地模型路径必须由用户通过系统文件选择器明确选择；后端要求绝对 `.gguf` 路径、文件存在且文件头为 `GGUF`。模型路径仅保存在本机偏好文件，不会通过 API 返回。
+
+## 贴纸
+
+- `GET /api/v1/stickers`
+- `POST /api/v1/stickers`：正文包含已上传图片的 `mediaId`、名称和情绪标签。
+- `PUT /api/v1/stickers/{id}`：更新用户贴纸名称、情绪标签和互动作用。
+- `DELETE /api/v1/stickers/{id}`：删除用户贴纸；内置贴纸不可修改或删除。
+- `GET /api/v1/stickers/{id}/content`
+
+贴纸响应只包含内容 URL，不包含磁盘路径。互动作用只接受 `reaction`、`backchannel` 或 `topic`。
+
+## 语音识别
+
+- `GET /api/v1/speech/models`：语音模型列表、选中和可用状态。
+- `POST /api/v1/speech/transcriptions`：正文 `{"mediaId":"...","modelId":null}`。
+
+录音由客户端完成，然后以 WAV 上传到媒体 API。识别由后端串行执行，返回 `text` 和实际 `modelId`；音频资源不能作为聊天附件。首版保持现有能力，只支持 16-bit PCM WAV，不引入隐式转码。
+
 ## 尚未冻结的接口
 
-以下能力仍在原桌面进程，暂不应由前端依赖虚构协议：附件上传与下载、角色卡管理、模型配置写入、语音识别、贴纸管理、用户偏好。其建议形态记录在 `backend-architecture.md`，实现并经过并发与失败测试后再纳入 v1。
+后端 v1 所需能力已经冻结。桌面客户端切换完成前，仍不得与 API 同时修改同一数据目录。

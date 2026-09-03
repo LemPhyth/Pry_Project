@@ -21,6 +21,12 @@ public sealed class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExce
         {
             logger.LogInformation("Request {TraceId} was cancelled by the client", context.TraceIdentifier);
         }
+        catch (BadHttpRequestException ex)
+        {
+            var status = ex.StatusCode is >= 400 and < 500 ? ex.StatusCode : 400;
+            await WriteAsync(context, status, status == 413 ? "payload_too_large" : "invalid_request",
+                "请求无法处理", status == 413 ? "请求体超过允许大小" : "请求格式不正确");
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Unhandled API error for {Method} {Path}; trace {TraceId}", context.Request.Method, context.Request.Path, context.TraceIdentifier);

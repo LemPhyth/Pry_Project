@@ -15,6 +15,7 @@ public sealed class ConversationTurnManager : IAsyncDisposable
     private readonly List<UserInputPart> _pendingUserInputs = [];
     private readonly List<long?> _pendingSourceMessageIds = [];
     private readonly List<bool> _pendingMemoryExtraction = [];
+    private readonly HashSet<Task> _operations = [];
     private CancellationTokenSource? _debounceCancellation;
     private CancellationTokenSource? _turnCancellation;
     private DateTimeOffset? _pendingStartedAt;
@@ -86,6 +87,19 @@ public sealed class ConversationTurnManager : IAsyncDisposable
         }
     }
 
+    public async Task CancelAndDrainAsync(CancellationToken cancellationToken = default)
+    {
+        Task[] operations;
+        lock (_gate)
+        {
+            _debounceCancellation?.Cancel(); _turnCancellation?.Cancel();
+            operations = [.. _operations];
+            if (_state is not TurnState.Idle) SetStateLocked(TurnState.Idle);
+        }
+        if (operations.Length == 0) return;
+        await Task.WhenAll(operations).WaitAsync(cancellationToken);
+    }
+
     private void ScheduleDebounce(bool immediate)
     {
         lock (_gate) ScheduleDebounceLocked(immediate);
@@ -97,7 +111,12 @@ public sealed class ConversationTurnManager : IAsyncDisposable
         _debounceCancellation = new CancellationTokenSource();
         var elapsed = _pendingStartedAt is null ? 0 : (DateTimeOffset.UtcNow - _pendingStartedAt.Value).TotalMilliseconds;
         var delay = immediate ? 0 : Math.Min(_settings.DebounceMs, Math.Max(0, _settings.MaxPendingMs - elapsed));
-        _ = DebounceThenRespondAsync(TimeSpan.FromMilliseconds(delay), _debounceCancellation.Token);
+        var operation = DebounceThenRespondAsync(TimeSpan.FromMilliseconds(delay), _debounceCancellation.Token);
+        _operations.Add(operation);
+        _ = operation.ContinueWith(completed =>
+        {
+            lock (_gate) _operations.Remove(completed);
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
     private async Task DebounceThenRespondAsync(TimeSpan delay, CancellationToken debounceToken)
@@ -170,9 +189,9 @@ public sealed class ConversationTurnManager : IAsyncDisposable
 
     private void SetStateLocked(TurnState state) { _state = state; StateChanged?.Invoke(state); }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        lock (_gate) { _debounceCancellation?.Cancel(); _turnCancellation?.Cancel(); _debounceCancellation?.Dispose(); _turnCancellation?.Dispose(); }
-        return ValueTask.CompletedTask;
+        await CancelAndDrainAsync();
+        lock (_gate) { _debounceCancellation?.Dispose(); _turnCancellation?.Dispose(); }
     }
 }

@@ -204,6 +204,35 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task Turn_cancellation_drains_generation_before_returning()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"pry-cancel-{Guid.NewGuid():N}"); Directory.CreateDirectory(root);
+        try
+        {
+            var database = new MemoryDatabase(Path.Combine(root, "memory.db")); await database.InitializeAsync(TestContext.Current.CancellationToken);
+            await database.EnsureConversationAsync("chat", "c", TestContext.Current.CancellationToken);
+            var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var model = new FakeChatModel(new ModelProfile { Id = "text", DisplayName = "Text" }, "unused", started, true);
+            var catalog = new StickerCatalog(Path.Combine(root, "missing.json"), Path.Combine(root, "stickers")); await catalog.LoadAsync(TestContext.Current.CancellationToken);
+            var character = new CharacterDefinition { Id = "c", Name = "星", Identity = "陪伴者", Personality = "温柔", SpeechStyle = "简洁" };
+            var planner = new ReplyPlanner(database, new PromptBuilder(), new ModelRouter([model], "text"), character, new RuntimeState(), catalog);
+            await using var manager = new ConversationTurnManager(database, planner, new InterruptClassifier(catalog),
+                new TurnTakingSettings(), "chat", "c");
+            await manager.SubmitUserInputAsync(new UserInputPart("请回答这个问题"), true, TestContext.Current.CancellationToken);
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+
+            await manager.CancelAndDrainAsync(TestContext.Current.CancellationToken);
+
+            Assert.Equal(TurnState.Idle, manager.State);
+            Assert.Single(await database.GetRecentMessagesAsync("chat", 10, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools(); if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task Bundled_sense_voice_model_can_run_offline()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
@@ -238,7 +267,8 @@ public sealed class CoreTests
         Assert.Null(invalid?.StickerId);
     }
 
-    private sealed class FakeChatModel(ModelProfile profile, string response) : IChatModel
+    private sealed class FakeChatModel(ModelProfile profile, string response, TaskCompletionSource? started = null,
+        bool blockUntilCancelled = false) : IChatModel
     {
         public ModelProfile Profile { get; } = profile;
         public string? LastImagePath { get; private set; }
@@ -252,6 +282,8 @@ public sealed class CoreTests
             LastSystemPrompt = systemPrompt;
             LastMessages = messages;
             LastImagePath = imagePaths?.FirstOrDefault();
+            started?.TrySetResult();
+            if (blockUntilCancelled) await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             await Task.Yield();
             cancellationToken.ThrowIfCancellationRequested();
             yield return response;

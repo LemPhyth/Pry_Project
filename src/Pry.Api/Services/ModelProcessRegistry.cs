@@ -55,6 +55,11 @@ public sealed class ModelProcessRegistry(ILogger<ModelProcessRegistry> logger) :
 
     public async ValueTask DisposeAsync()
     {
+        await ResetAsync();
+    }
+
+    public async Task ResetAsync()
+    {
         foreach (var lazy in _models.Values)
         {
             if (!lazy.IsValueCreated) continue;

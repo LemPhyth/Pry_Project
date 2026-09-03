@@ -14,6 +14,7 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
     private UserPreferences _preferences = new();
     private IReadOnlyList<CharacterDefinition> _characters = [];
     private RuntimeComponents? _components;
+    private StickerCatalog? _stickers;
     private Exception? _error;
     private string _state = "starting";
 
@@ -21,13 +22,7 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
     {
         try
         {
-            var resourceDirectory = ResolveResourceDirectory();
-            _settings = await JsonConfiguration.LoadAsync<AppSettings>(Path.Combine(resourceDirectory, "appsettings.json"), cancellationToken);
-            var dataDirectory = ResolveDataDirectory();
-            var preferencesPath = Path.Combine(dataDirectory, "preferences.json");
-            if (File.Exists(preferencesPath)) _preferences = await JsonConfiguration.LoadAsync<UserPreferences>(preferencesPath, cancellationToken);
-            _characters = await LoadCharactersAsync(resourceDirectory, dataDirectory, cancellationToken);
-            _state = "ready";
+            await LoadConfigurationAsync(cancellationToken);
         }
         catch (Exception ex)
         {
@@ -43,6 +38,36 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
     public string? ActiveTextModelId => _preferences.ActiveModelId ?? _preferences.ModelTuning.ActiveModelId ?? _settings?.ActiveModelId;
     public string? ActiveVisionModelId => _preferences.ActiveVisionModelId ?? _settings?.VisionModelId;
     public TurnTakingSettings TurnSettings => _preferences.TurnTakingOverride ?? _settings?.TurnTaking ?? new TurnTakingSettings();
+    public UserPreferences Preferences => _preferences;
+    public IReadOnlyList<CharacterDefinition> Characters => _characters;
+    public IReadOnlyList<SpeechModelProfile> SpeechProfiles => (_settings?.SpeechModels ?? [])
+        .Concat(_preferences.CustomSpeechModels).ToArray();
+    public IReadOnlyList<ModelProfile> ModelProfiles => (_settings?.Models ?? []).Concat(_preferences.CustomModels).ToArray();
+    public string? ActiveSpeechModelId => _preferences.ActiveSpeechModelId ?? _settings?.ActiveSpeechModelId;
+    public StickerCatalog Stickers => _stickers ?? throw new InvalidOperationException("贴纸目录尚未就绪。");
+
+    public async Task ReloadAsync(CancellationToken token)
+    {
+        await _gate.WaitAsync(token);
+        try
+        {
+            _components = null; _settings = null; _characters = []; _preferences = new(); _error = null; _state = "starting";
+            await registry.ResetAsync();
+            await LoadConfigurationAsync(token);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task RefreshContentAsync(CancellationToken token)
+    {
+        await _gate.WaitAsync(token);
+        try
+        {
+            _components = null; _settings = null; _characters = []; _preferences = new(); _stickers = null; _error = null; _state = "starting";
+            await LoadConfigurationAsync(token);
+        }
+        finally { _gate.Release(); }
+    }
 
     public async Task<RuntimeComponents> GetComponentsAsync(CancellationToken token)
     {
@@ -69,10 +94,7 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
                 ? new[] { textHandle.Model }
                 : new[] { textHandle.Model, visionHandle.Model };
             var router = new ModelRouter(models, textId, visionHandle?.Model.Profile.Id);
-            var resourceDirectory = ResolveResourceDirectory();
-            var stickers = new StickerCatalog(Path.Combine(resourceDirectory, "Stickers", "manifest.json"), Path.Combine(ResolveDataDirectory(), "stickers"));
-            await stickers.LoadAsync(token);
-            _components = new RuntimeComponents(router, stickers, _characters);
+            _components = new RuntimeComponents(router, Stickers, _characters);
             _state = "ready"; return _components;
         }
         catch (Exception ex) { _error = ex; _state = "failed"; throw; }
@@ -96,6 +118,17 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
         };
     }
 
+    public SpeechModelProfile ResolveSpeechProfile(string? requestedId = null)
+    {
+        var id = requestedId ?? ActiveSpeechModelId ?? throw new InvalidOperationException("未选择语音识别模型。");
+        var profile = SpeechProfiles.FirstOrDefault(x => x.Id == id) ?? throw new ResourceNotFoundException("speech_model", id);
+        return profile with
+        {
+            ModelPath = string.IsNullOrWhiteSpace(profile.ModelPath) ? profile.ModelPath : ResolveAssetPath(profile.ModelPath),
+            ApiKey = Environment.GetEnvironmentVariable($"PRY_SPEECH_API_KEY_{profile.Id.Replace('-', '_').ToUpperInvariant()}")
+        };
+    }
+
     private async Task<IReadOnlyList<CharacterDefinition>> LoadCharactersAsync(string resources, string data, CancellationToken token)
     {
         var paths = new List<string> { Path.Combine(resources, "character.json") };
@@ -108,6 +141,19 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
             var character = await JsonConfiguration.LoadAsync<CharacterDefinition>(path, token); JsonConfiguration.Validate(character); result[character.Id] = character;
         }
         return result.Values.ToArray();
+    }
+
+    private async Task LoadConfigurationAsync(CancellationToken token)
+    {
+        var resourceDirectory = ResolveResourceDirectory();
+        _settings = await JsonConfiguration.LoadAsync<AppSettings>(Path.Combine(resourceDirectory, "appsettings.json"), token);
+        var dataDirectory = ResolveDataDirectory();
+        var preferencesPath = Path.Combine(dataDirectory, "preferences.json");
+        if (File.Exists(preferencesPath)) _preferences = await JsonConfiguration.LoadAsync<UserPreferences>(preferencesPath, token);
+        _characters = await LoadCharactersAsync(resourceDirectory, dataDirectory, token);
+        _stickers = new StickerCatalog(Path.Combine(resourceDirectory, "Stickers", "manifest.json"), Path.Combine(dataDirectory, "stickers"));
+        await _stickers.LoadAsync(token);
+        _state = "ready";
     }
 
     private string ResolveDataDirectory() => Path.GetFullPath(configuration["Pry:DataDirectory"] ??
