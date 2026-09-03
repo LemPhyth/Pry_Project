@@ -8,8 +8,8 @@ obj/
 artifacts/
 TestResults/
 data/
-models/
-runtime/
+/models/
+/runtime/
 *.user
 *.db
 *.db-shm

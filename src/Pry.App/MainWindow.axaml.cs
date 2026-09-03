@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
 {
     private readonly PryBackendClient _api;
     private readonly BackendProjectionService _projectionService;
+    private readonly DialogService _dialogs;
     private readonly string _appDirectory = AppContext.BaseDirectory;
     private readonly string _dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion");
     private string _conversationId = Guid.NewGuid().ToString("N");
@@ -75,6 +76,7 @@ public sealed partial class MainWindow : Window
     private TaskCompletionSource? _recordingStopped;
     private string? _recordingPath;
     private bool _speechBusy;
+    private bool _sendBusy;
     private bool _allowClose;
 
     public MainWindow() : this(new PryBackendClient(new HttpClient { BaseAddress = new Uri("http://127.0.0.1:5078/"), Timeout = Timeout.InfiniteTimeSpan })) { }
@@ -84,6 +86,7 @@ public sealed partial class MainWindow : Window
         _api = api;
         _projectionService = new BackendProjectionService(api);
         InitializeComponent();
+        _dialogs = new DialogService(content => CreateThemedDialogSurface(content), CreateCompactDialogTextCard);
         MessagesPanel.Children.Add(_chatBottomAnchor);
         MessagesPanel.LayoutUpdated += (_, _) =>
         {
@@ -425,18 +428,8 @@ public sealed partial class MainWindow : Window
         else await RefreshConversationRoomsAsync();
     }
 
-    private async Task<string?> PromptTextAsync(string title, string label, string initialValue)
-    {
-        var input = new TextBox { Text = initialValue }; var cancel = new Button { Content = "取消" }; var ok = new Button { Content = "确定", Classes = { "primary" } };
-        var window = new Window { Title = title, Width = 460, Height = 270, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        string? result = null; cancel.Click += (_, _) => window.Close(); ok.Click += (_, _) => { result = input.Text?.Trim(); window.Close(); };
-        window.KeyDown += (_, args) => { if (args.Key == Key.Escape) { args.Handled = true; window.Close(); } else if (args.Key == Key.Enter) { args.Handled = true; result = input.Text?.Trim(); window.Close(); } };
-        window.Opened += (_, _) => input.Focus();
-        var content = CreateCompactDialogTextCard(new StackPanel { Spacing = 10, Children = { new TextBlock { Text = label, FontWeight = FontWeight.SemiBold }, input } });
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Children = { cancel, ok } };
-        window.Content = CreateThemedDialogSurface(CreateCompactDialogLayout(content, actions));
-        await window.ShowDialog(this); return result;
-    }
+    private Task<string?> PromptTextAsync(string title, string label, string initialValue) =>
+        _dialogs.PromptTextAsync(this, title, label, initialValue);
 
     internal Border CreateCompactDialogTextCard(Control content)
     {
@@ -871,15 +864,40 @@ public sealed partial class MainWindow : Window
 
     private async Task SendAsync(bool immediate, string? stickerId = null)
     {
-        var text = InputBox.Text?.Trim() ?? ""; if (_turnManager is null || (text.Length == 0 && stickerId is null && _attachments.Count == 0)) return;
+        var text = InputBox.Text?.Trim() ?? "";
+        if (_sendBusy || _turnManager is null || (text.Length == 0 && stickerId is null && _attachments.Count == 0)) return;
+        _sendBusy = true;
+        SendButton.IsEnabled = false;
         EndUserComposition();
         var sentAttachments = _attachments.ToArray();
-        var input = new UserInputPart(text, stickerId, sentAttachments); _suppressInputActivity = true; InputBox.Text = ""; _suppressInputActivity = false; ClearAttachments();
-        _conversationDrafts.Remove(_conversationId);
-        var messageId = await _turnManager.SubmitUserInputAsync(input, immediate);
-        if (text.Length > 0) AddTextBubble("你", text, true, messageId: messageId); if (stickerId is not null) AddStickerBubble("你", stickerId, true, messageId: messageId);
-        foreach (var attachment in sentAttachments) AddAttachmentBubble("你", attachment, true, messageId);
-        await RefreshConversationRoomsAsync();
+        try
+        {
+            var messageId = await _turnManager.SubmitUserInputAsync(new UserInputPart(text, stickerId, sentAttachments), immediate);
+            if (string.Equals(InputBox.Text?.Trim(), text, StringComparison.Ordinal))
+            {
+                _suppressInputActivity = true;
+                InputBox.Text = "";
+                _suppressInputActivity = false;
+            }
+            foreach (var attachment in sentAttachments) _attachments.Remove(attachment);
+            RefreshAttachmentTray();
+            _conversationDrafts.Remove(_conversationId);
+            if (text.Length > 0) AddTextBubble("你", text, true, messageId: messageId);
+            if (stickerId is not null) AddStickerBubble("你", stickerId, true, messageId: messageId);
+            foreach (var attachment in sentAttachments) AddAttachmentBubble("你", attachment, true, messageId);
+            await RefreshConversationRoomsAsync();
+        }
+        catch (Exception ex)
+        {
+            TurnStatus.Text = "发送失败 · 输入内容已保留";
+            if (!string.IsNullOrWhiteSpace(InputBox.Text) || _attachments.Count > 0) BeginUserComposition(false);
+            await ShowNoticeAsync("消息发送失败", $"没有发送成功，你的文字和附件仍保留在输入区。\n\n{ex.Message}");
+        }
+        finally
+        {
+            _sendBusy = false;
+            SendButton.IsEnabled = true;
+        }
     }
 
     private void AddAgentMessage(PlannedReplyMessage message)
@@ -1240,12 +1258,6 @@ public sealed partial class MainWindow : Window
         }
         AttachmentTray.IsVisible = _attachments.Count > 0;
         ScrollChatToEnd();
-    }
-
-    private void ClearAttachments()
-    {
-        _attachments.Clear();
-        RefreshAttachmentTray();
     }
 
     private void Window_DragOver(object? sender, DragEventArgs e)
@@ -2158,22 +2170,8 @@ public sealed partial class MainWindow : Window
         editor.Content = CreateThemedDialogSurface(CreateCompactDialogLayout(CreateCompactDialogTextCard(form), save)); await editor.ShowDialog(owner);
     }
 
-    private async Task ShowNoticeAsync(string title, string message)
-    {
-        var window = new Window { Title = title, Width = 440, Height = 240, WindowStartupLocation = WindowStartupLocation.CenterOwner }; var close = new Button { Content = "知道了", HorizontalAlignment = HorizontalAlignment.Right }; close.Click += (_, _) => window.Close();
-        var textCard = CreateCompactDialogTextCard(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
-        window.Content = CreateThemedDialogSurface(CreateCompactDialogLayout(textCard, close)); await window.ShowDialog(this);
-    }
-    private async Task<bool> ConfirmAsync(Window owner, string title, string message)
-    {
-        var window = new Window { Title = title, Width = 460, Height = 250, WindowStartupLocation = WindowStartupLocation.CenterOwner }; var result = false;
-        var cancel = new Button { Content = "取消（Esc）" }; var confirm = new Button { Content = "确定（Enter）", Classes = { "primary" } }; cancel.Click += (_, _) => window.Close(); confirm.Click += (_, _) => { result = true; window.Close(); };
-        window.KeyDown += (_, args) => { if (args.Key == Key.Escape) { args.Handled = true; window.Close(); } else if (args.Key == Key.Enter) { args.Handled = true; result = true; window.Close(); } };
-        window.Opened += (_, _) => confirm.Focus();
-        var textCard = CreateCompactDialogTextCard(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Children = { cancel, confirm } };
-        window.Content = CreateThemedDialogSurface(CreateCompactDialogLayout(textCard, actions)); await window.ShowDialog(owner); return result;
-    }
+    private Task ShowNoticeAsync(string title, string message) => _dialogs.ShowNoticeAsync(this, title, message);
+    private Task<bool> ConfirmAsync(Window owner, string title, string message) => _dialogs.ConfirmAsync(owner, title, message);
     private sealed record StickerListItem(StickerDefinition Sticker) { public override string ToString() => $"{Sticker.Name} · {(Sticker.Source == StickerSource.BuiltIn ? "内置" : "用户")} · {Sticker.InteractionRole} · {string.Join(" / ", Sticker.Emotions)}"; }
     private sealed record MemoryListItem(MemoryRecord Memory)
     {
