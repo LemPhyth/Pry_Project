@@ -167,6 +167,32 @@ public sealed class MemoryDatabase(string databasePath)
         return result;
     }
 
+    public async Task<ConversationRoom?> GetConversationAsync(string conversationId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT c.id,c.title,c.character_id,c.created_at,c.updated_at,COUNT(m.id),c.folder_id,c.is_pinned
+            FROM conversations c LEFT JOIN messages m ON m.conversation_id=c.id
+            WHERE c.id=$id GROUP BY c.id
+            """;
+        command.Parameters.AddWithValue("$id", conversationId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new ConversationRoom(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2),
+                DateTimeOffset.Parse(reader.GetString(3)), DateTimeOffset.Parse(reader.GetString(4)), Convert.ToInt32(reader.GetInt64(5)),
+                reader.IsDBNull(6) ? null : reader.GetString(6), reader.GetInt64(7) != 0)
+            : null;
+    }
+
+    public async Task<bool> ConversationFolderExistsAsync(string folderId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken); await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT EXISTS(SELECT 1 FROM conversation_folders WHERE id=$id)";
+        command.Parameters.AddWithValue("$id", folderId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken)) == 1;
+    }
+
     public async Task<IReadOnlyList<ConversationFolder>> ListConversationFoldersAsync(CancellationToken cancellationToken = default)
     {
         var result = new List<ConversationFolder>();
@@ -315,6 +341,24 @@ public sealed class MemoryDatabase(string databasePath)
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) result.Add(ReadMemory(reader));
         return result;
+    }
+
+    public async Task<MemoryRecord?> GetMemoryAsync(long id, string characterId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken); await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id,character_id,kind,summary,tags,importance,source_message_id,created_at,updated_at,last_used_at FROM memories WHERE id=$id AND character_id=$c";
+        command.Parameters.AddWithValue("$id", id); command.Parameters.AddWithValue("$c", characterId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadMemory(reader) : null;
+    }
+
+    public async Task<ChatMessage?> GetMessageAsync(string conversationId, long id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken); await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT id,role,content,created_at,image_path,sticker_id FROM messages WHERE conversation_id=$c AND id=$id";
+        command.Parameters.AddWithValue("$c", conversationId); command.Parameters.AddWithValue("$id", id);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadChatMessage(reader, conversationId) : null;
     }
 
     public async Task UpdateMemoryAsync(long id, string characterId, string kind, string summary, string tags,

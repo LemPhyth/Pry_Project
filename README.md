@@ -9,6 +9,14 @@ dotnet restore Pry.slnx
 dotnet run --project src/Pry.App/Pry.App.csproj
 ```
 
+独立后端（当前提供会话、消息、文件夹和记忆 API）：
+
+```powershell
+dotnet run --project src/Pry.Api/Pry.Api.csproj
+```
+
+默认仅监听 `http://127.0.0.1:5078`，复用原有 `%LOCALAPPDATA%/PryCompanion/memory.db`。接口约定见 [API v1](docs/api-v1.md)，拆分边界与迁移顺序见 [后端架构](docs/backend-architecture.md)。
+
 应用数据保存在 `%LOCALAPPDATA%/PryCompanion/memory.db`。角色定义和模型配置位于输出目录的 `Resources` 中；正式角色内容尚需作者填写。
 
 ## 接入本地模型
