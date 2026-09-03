@@ -22,3 +22,7 @@ runtime/
 .env.*
 !.env.example
 appsettings.local.json
+
+# Local AI collaboration notes
+/AGENTS.md
+/PROJECT_PLAN.md
