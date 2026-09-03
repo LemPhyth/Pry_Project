@@ -2,7 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Pry.Api.Contracts;
+using Pry.Contracts;
 using Pry.Core.Models;
 
 namespace Pry.Api.Services;

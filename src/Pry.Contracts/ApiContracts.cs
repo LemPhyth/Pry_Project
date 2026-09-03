@@ -1,6 +1,9 @@
 using Pry.Core.Models;
 
-namespace Pry.Api.Contracts;
+namespace Pry.Contracts;
+
+public sealed record ApiProblemResponse(string? Type, string? Title, int? Status, string? Detail, string? Code,
+    string? TraceId);
 
 public sealed record CreateConversationRequest(string? CharacterId);
 public sealed record UpdateConversationRequest(string? Title, bool? IsPinned, string? FolderId, bool ClearFolder = false);

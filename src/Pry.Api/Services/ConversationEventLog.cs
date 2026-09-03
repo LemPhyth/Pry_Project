@@ -1,5 +1,5 @@
 using System.Runtime.CompilerServices;
-using Pry.Api.Contracts;
+using Pry.Contracts;
 
 namespace Pry.Api.Services;
 
@@ -9,6 +9,11 @@ public sealed class ConversationEventLog
     private readonly List<ConversationEvent> _events = [];
     private TaskCompletionSource _changed = NewSignal();
     private long _sequence;
+
+    public long CurrentSequence
+    {
+        get { lock (_gate) return _sequence; }
+    }
 
     public ConversationEvent Publish(string type, object data)
     {

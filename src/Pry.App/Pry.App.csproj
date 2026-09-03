@@ -13,6 +13,9 @@
     <PackageReference Include="SkiaSharp" Version="2.88.9" />
     <PackageReference Include="Tmds.DBus.Protocol" Version="0.94.2" />
     <ProjectReference Include="../Pry.Core/Pry.Core.csproj" />
+    <ProjectReference Include="../Pry.Contracts/Pry.Contracts.csproj" />
+    <ProjectReference Include="../Pry.Client/Pry.Client.csproj" />
+    <ProjectReference Include="../Pry.Api/Pry.Api.csproj" />
     <AvaloniaResource Include="Assets/**" />
     <Content Include="Resources/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

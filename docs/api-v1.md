@@ -101,6 +101,8 @@
 
 `GET /api/v1/conversations/{id}/events?after=123`
 
+`after=-1` 表示从订阅建立时的最新序号开始，只接收随后产生的新事件；桌面客户端切换会话时使用该模式，避免重放已渲染的气泡。
+
 响应为 `text/event-stream`。服务端保留每个活跃会话最近 200 个事件；`id` 是单调递增序号，`event` 可能为：
 
 - `session.ready`：后端会话与角色已就绪。
@@ -156,6 +158,7 @@
 - `DELETE /api/v1/conversations/{conversationId}/messages/{messageId}`：用户消息会删除该消息及之后的分支；助手消息只删除自身。返回删除范围及数量。
 - `POST /api/v1/conversations/{conversationId}/messages/{messageId}/regenerate`：只接受助手消息，先等待当前回合完全取消，再从对应用户消息重新生成，返回 `202`。
 - `POST /api/v1/conversations/{conversationId}/mutations/undo`：撤销最近一次删除或重新生成分支，返回 `204`。
+- `POST /api/v1/conversations/{conversationId}/listening-signals`：由后端按会话状态和 30 秒节流规则写入倾听提示，返回创建的助手消息。客户端不得自行伪造或持久化助手消息。
 
 后端会在变更前等待正在运行的回复真正退出，防止删除完成后迟到的助手消息重新写入数据库。每个活跃会话最多保留最近 20 个内存撤销快照；服务重启后撤销栈不保留。
 

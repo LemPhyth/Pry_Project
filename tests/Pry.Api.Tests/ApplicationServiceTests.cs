@@ -1,7 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Configuration;
-using Pry.Api.Contracts;
+using Pry.Contracts;
 using Pry.Api.Services;
 using Pry.Core.Memory;
 using Pry.Core.Models;

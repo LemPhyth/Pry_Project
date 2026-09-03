@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Pry.Api.Contracts;
+using Pry.Contracts;
 using Pry.Core.Memory;
 using Pry.Core.Models;
 using Pry.Core.Prompting;
@@ -10,9 +10,11 @@ namespace Pry.Api.Services;
 public sealed class ConversationSessionService(MemoryDatabase database, BackendRuntime runtime, MediaAssetStore media,
     ILogger<ConversationSessionService> logger) : IAsyncDisposable
 {
+    private static readonly string[] ListeningSignals = ["嗯，我在听。", "慢慢说，我在。", "我听着呢。"];
     private readonly ConcurrentDictionary<string, Lazy<Task<ConversationSession>>> _sessions = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Stack<ConversationMutationSnapshot>> _undo = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ConversationEventLog> _eventLogs = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _lastListeningSignals = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
 
     public async Task<SubmitTurnResponse> SubmitAsync(string conversationId, SubmitTurnRequest request, CancellationToken token)
@@ -82,10 +84,29 @@ public sealed class ConversationSessionService(MemoryDatabase database, BackendR
         GetEventLog(conversationId).Publish("conversation.changed", new { reason = "mutation_undone" });
     }
 
+    public async Task<ChatMessage> SendListeningSignalAsync(string conversationId, CancellationToken token)
+    {
+        _ = await database.GetConversationAsync(conversationId, token)
+            ?? throw new ResourceNotFoundException("conversation", conversationId);
+        var now = DateTimeOffset.UtcNow;
+        if (_lastListeningSignals.TryGetValue(conversationId, out var last) && now - last < TimeSpan.FromSeconds(30))
+            throw new ApiValidationException("conversationId", "倾听提示发送过于频繁");
+        var session = await GetAsync(conversationId, token);
+        if (session.Manager.State != TurnState.Idle)
+            throw new ApiValidationException("conversationId", "当前回合状态不允许发送倾听提示");
+        var content = ListeningSignals[Random.Shared.Next(ListeningSignals.Length)];
+        var id = await database.AddMessageAsync(conversationId, ChatRole.Assistant, content, null, token);
+        _lastListeningSignals[conversationId] = now;
+        var message = (await database.GetRecentMessagesAsync(conversationId, 1, token)).Single(x => x.Id == id);
+        session.Events.Publish("message.created", new { messageId = id, role = ChatRole.Assistant.ToString(), type = ReplyMessageType.Text.ToString(), content, stickerId = (string?)null });
+        return message;
+    }
+
     public async IAsyncEnumerable<ConversationEvent> EventsAsync(string conversationId, long afterSequence,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token)
     {
         var session = await GetAsync(conversationId, token);
+        if (afterSequence < 0) afterSequence = session.Events.CurrentSequence;
         await foreach (var item in session.Events.ReadAsync(afterSequence, token)) yield return item;
     }
 

@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Pry.Api.Contracts;
+using Pry.Contracts;
 
 namespace Pry.Api.Middleware;
 

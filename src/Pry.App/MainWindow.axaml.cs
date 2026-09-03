@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using System.Net;
-using System.Net.Sockets;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -23,15 +20,17 @@ using Pry.Core.Models;
 using Pry.Core.Prompting;
 using Pry.Core.TurnTaking;
 using SkiaSharp;
+using Pry.Client;
+using Pry.Contracts;
+using Pry.App.Services;
 
 namespace Pry.App;
 
 public sealed partial class MainWindow : Window
 {
+    private readonly PryBackendClient _api;
     private readonly string _appDirectory = AppContext.BaseDirectory;
     private readonly string _dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion");
-    private LlamaServerManager _textServerManager = new();
-    private LlamaServerManager? _visionServerManager;
     private string _conversationId = Guid.NewGuid().ToString("N");
     private readonly List<ChatAttachment> _attachments = [];
     private readonly List<(Border Control, bool IsUser)> _messageAvatarControls = [];
@@ -48,7 +47,6 @@ public sealed partial class MainWindow : Window
     private double _lastChatMaskComposerHeight = -1;
     private bool _changingConversation;
     private readonly Dictionary<string, string> _conversationDrafts = new(StringComparer.Ordinal);
-    private readonly Stack<ConversationMutationSnapshot> _conversationUndo = new();
     private readonly HashSet<string> _collapsedConversationFolders = new(StringComparer.Ordinal);
     private double _expandedSidebarWidth = 300;
     private bool _sidebarCollapsed;
@@ -65,11 +63,9 @@ public sealed partial class MainWindow : Window
     private bool _changingCharacter;
     private AppSettings? _settings;
     private UserPreferences _preferences = new();
-    private MemoryDatabase? _database;
-    private ModelRouter? _router;
     private ModelProfile[] _profiles = [];
     private StickerCatalog? _stickerCatalog;
-    private ConversationTurnManager? _turnManager;
+    private RemoteConversationTurnManager? _turnManager;
     private WaveInEvent? _waveInput;
     private WaveFileWriter? _waveWriter;
     private TaskCompletionSource? _recordingStopped;
@@ -82,8 +78,11 @@ public sealed partial class MainWindow : Window
     private string ThemeMediaDirectory => Path.Combine(_dataDirectory, "theme-media");
     private string CharacterMediaDirectory => Path.Combine(_dataDirectory, "character-media");
 
-    public MainWindow()
+    public MainWindow() : this(new PryBackendClient(new HttpClient { BaseAddress = new Uri("http://127.0.0.1:5078/"), Timeout = Timeout.InfiniteTimeSpan })) { }
+
+    public MainWindow(PryBackendClient api)
     {
+        _api = api;
         InitializeComponent();
         MessagesPanel.Children.Add(_chatBottomAnchor);
         MessagesPanel.LayoutUpdated += (_, _) =>
@@ -128,7 +127,6 @@ public sealed partial class MainWindow : Window
     {
         _allowClose = true; EndUserComposition(); if (_turnManager is not null) await _turnManager.DisposeAsync();
         _waveInput?.StopRecording(); _waveWriter?.Dispose(); _waveInput?.Dispose();
-        if (stopModelService) await DisposeServerPairAsync(_textServerManager, _visionServerManager);
         foreach (var bitmap in _backgroundRenderCache.Values) bitmap.Dispose();
         _backgroundRenderCache.Clear();
     }
@@ -145,18 +143,20 @@ public sealed partial class MainWindow : Window
             await LoadCharactersAsync(Path.Combine(resources, "character.json"));
             await MigrateLegacyMediaAsync();
             ApplyTheme();
-            _database = new MemoryDatabase(Path.Combine(_dataDirectory, "memory.db")); await _database.InitializeAsync();
-            await _database.EnsureConversationAsync(_conversationId, _character?.Id);
+            if (!await _api.IsHealthyAsync()) throw new InvalidOperationException("本地后端未就绪。");
+            try { _ = await _api.GetConversationAsync(_conversationId); }
+            catch (PryBackendException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                var created = await _api.CreateConversationAsync(_character?.Id); _conversationId = created.Id;
+                _preferences = _preferences with { ActiveConversationId = _conversationId }; await JsonConfiguration.SaveAsync(PreferencesPath, _preferences);
+            }
             _stickerCatalog = new StickerCatalog(Path.Combine(resources, "Stickers", "manifest.json"), Path.Combine(_dataDirectory, "stickers")); await _stickerCatalog.LoadAsync();
             var profiles = BuildProfiles(_preferences); _profiles = profiles;
             var activeId = GetActiveModelId();
             var visionId = GetVisionModelId();
-            _router = BuildRouter(profiles, activeId, visionId);
             CreateTurnManager(); RefreshCharacterSelector(); CharacterName.Text = _character!.Name; await RefreshConversationRoomsAsync();
-            RuntimeStatus.Text = visionId == activeId ? "正在加载文字/图片共用模型…" : "正在加载文字模型，随后加载图片模型…";
-            (_textServerManager, _visionServerManager) = await StartServerPairAsync(profiles, activeId, visionId);
-            RuntimeStatus.Text = BuildRuntimeModelStatus(profiles, activeId, visionId);
-            var existingMessages = await _database.GetRecentMessagesAsync(_conversationId, 200);
+            var runtime = await _api.GetRuntimeAsync(); RuntimeStatus.Text = runtime.State == "ready" ? "本地后端已就绪" : $"后端状态：{runtime.State}";
+            var existingMessages = await _api.GetMessagesAsync(_conversationId, 200);
             if (existingMessages.Count == 0) AddTextBubble(_character.Name, _character.Greeting, false); else RenderConversationMessages(existingMessages);
         }
         catch (Exception ex) { RuntimeStatus.Text = $"初始化失败：{ex.Message}"; AddTextBubble("系统", ex.Message, false); }
@@ -247,20 +247,19 @@ public sealed partial class MainWindow : Window
         CharacterSelectorText.Text = choice.Name; CharacterSelectorPopup.IsOpen = false;
         var selected = _characters.FirstOrDefault(x => x.Id == choice.Id); if (selected is null || selected.Id == _character?.Id) return;
         _turnManager?.CancelAgentReply(); _character = selected; CharacterName.Text = selected.Name; ApplyTheme();
-        _conversationId = Guid.NewGuid().ToString("N"); ResetMessagesPanel(); CreateTurnManager(); AddTextBubble(selected.Name, selected.Greeting, false);
-        await _database!.EnsureConversationAsync(_conversationId, selected.Id);
+        var created = await _api.CreateConversationAsync(selected.Id); _conversationId = created.Id; ResetMessagesPanel(); CreateTurnManager(); AddTextBubble(selected.Name, selected.Greeting, false);
         _preferences = _preferences with { SelectedCharacterId = selected.Id, ActiveConversationId = _conversationId }; await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); await RefreshConversationRoomsAsync();
     }
 
     private void CreateTurnManager()
     {
-        if (_database is null || _router is null || _character is null || _settings is null || _stickerCatalog is null) return;
+        if (_character is null || _settings is null || _stickerCatalog is null) return;
         if (_turnManager is not null) _ = _turnManager.DisposeAsync();
-        var planner = new ReplyPlanner(_database, new PromptBuilder(), _router, _character, _character.InitialState, _stickerCatalog);
-        _turnManager = new ConversationTurnManager(_database, planner, new InterruptClassifier(_stickerCatalog), EffectiveTurnSettings(), _conversationId, _character.Id);
+        _turnManager = new RemoteConversationTurnManager(_api, _conversationId);
         _turnManager.AgentMessageDelivered += message => Dispatcher.UIThread.InvokeAsync(() => AddAgentMessage(message)).GetTask();
         _turnManager.StateChanged += state => Dispatcher.UIThread.Post(() => TurnStatus.Text = state switch { TurnState.UserPending => "等你把话说完…", TurnState.ModelThinking => "正在想…", TurnState.AgentPending => "正在输入…", TurnState.AgentSending => "正在发送…（Esc 可打断）", _ => "准备就绪" });
         _turnManager.Failed += ex => Dispatcher.UIThread.Post(() => { RuntimeStatus.Text = "模型连接失败"; AddTextBubble("系统", $"暂时无法回应：{ex.Message}", false); });
+        _turnManager.Warning += warning => Dispatcher.UIThread.Post(() => RuntimeStatus.Text = warning);
     }
 
     private ModelProfile ResolveProfile(ModelProfile profile)
@@ -305,86 +304,11 @@ public sealed partial class MainWindow : Window
         ComputeDevice = tuning.ComputeDevice ?? profile.ComputeDevice
     };
 
-    private ModelProfile[] BuildProfiles(UserPreferences preferences) => _settings!.Models.Concat(preferences.CustomModels).Select(ResolveProfile).Select(x => ApplyTuning(x, GetModelTuning(x.Id, preferences)))
-        .Select(x => x.Provider == "local-llama" ? x with { BaseUrl = WithFreePort(x.BaseUrl), ApiKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)) } : x).ToArray();
-
-    private bool RequiresServerRestart(UserPreferences candidate)
-    {
-        var oldTextId = GetActiveModelId(); var newTextId = GetActiveModelId(candidate);
-        var oldVisionId = GetVisionModelId(); var newVisionId = GetVisionModelId(candidate);
-        if (oldTextId != newTextId || oldVisionId != newVisionId) return true;
-        return RuntimeProfileChanged(oldTextId, _preferences, candidate)
-               || (newVisionId is not null && RuntimeProfileChanged(newVisionId, _preferences, candidate));
-    }
-
-    private bool RuntimeProfileChanged(string id, UserPreferences oldPreferences, UserPreferences candidate)
-    {
-        ModelProfile? Profile(UserPreferences preferences)
-        {
-            var source = _settings!.Models.Concat(preferences.CustomModels).FirstOrDefault(x => x.Id == id);
-            return source is null ? null : ApplyTuning(source, GetModelTuning(id, preferences));
-        }
-        var oldProfile = Profile(oldPreferences); var newProfile = Profile(candidate);
-        if (oldProfile is null || newProfile is null) return true;
-        if (oldProfile.Provider != "local-llama" && newProfile.Provider != "local-llama") return false;
-        return oldProfile.Provider != newProfile.Provider
-               || oldProfile.ModelPath != newProfile.ModelPath
-               || oldProfile.MmprojPath != newProfile.MmprojPath
-               || oldProfile.ContextSize != newProfile.ContextSize
-               || oldProfile.GpuLayers != newProfile.GpuLayers
-               || oldProfile.ComputeDevice != newProfile.ComputeDevice
-               || oldProfile.EnableThinking != newProfile.EnableThinking;
-    }
-
-    private static ModelRouter BuildRouter(IEnumerable<ModelProfile> profiles, string textModelId, string? visionModelId) =>
-        new(profiles.Select(x => new OpenAiCompatibleChatModel(new HttpClient { Timeout = TimeSpan.FromMinutes(5) }, x)).ToArray(), textModelId, visionModelId);
-
-    private async Task<(LlamaServerManager Text, LlamaServerManager? Vision)> StartServerPairAsync(
-        IReadOnlyCollection<ModelProfile> profiles, string textModelId, string? visionModelId)
-    {
-        var serverPath = ResolveBundledPath(_settings!.LlamaServerPath) ?? Path.GetFullPath(Path.Combine(_appDirectory, _settings.LlamaServerPath));
-        var textProfile = profiles.Single(x => x.Id == textModelId); var text = new LlamaServerManager(); LlamaServerManager? vision = null;
-        try
-        {
-            if (textProfile.Provider == "local-llama") await text.StartAsync(serverPath, textProfile);
-            if (!string.IsNullOrWhiteSpace(visionModelId) && visionModelId != textModelId)
-            {
-                var visionProfile = profiles.Single(x => x.Id == visionModelId);
-                RuntimeStatus.Text = $"文字模型已就绪 · 正在加载图片模型 {visionProfile.DisplayName}…";
-                if (visionProfile.Provider == "local-llama") { vision = new LlamaServerManager(); await vision.StartAsync(serverPath, visionProfile); }
-            }
-            return (text, vision);
-        }
-        catch { await DisposeServerPairAsync(text, vision); throw; }
-    }
-
-    private string BuildRuntimeModelStatus(IReadOnlyCollection<ModelProfile> profiles, string textModelId, string? visionModelId)
-    {
-        var text = profiles.First(x => x.Id == textModelId);
-        if (visionModelId == textModelId)
-            return $"文字/图片共用：{text.DisplayName} · {_textServerManager.ActiveComputeDevice} · 单一实例";
-        var vision = profiles.FirstOrDefault(x => x.Id == visionModelId);
-        if (vision is null) return $"文字：{text.DisplayName}（{_textServerManager.ActiveComputeDevice}） · 图片：未配置";
-        var visionDevice = vision.Provider == "local-llama" ? _visionServerManager?.ActiveComputeDevice ?? "未启动" : "API";
-        return $"文字：{text.DisplayName}（{_textServerManager.ActiveComputeDevice}） · 图片：{vision.DisplayName}（{visionDevice}）";
-    }
-
-    private static async Task DisposeServerPairAsync(LlamaServerManager text, LlamaServerManager? vision)
-    {
-        if (vision is not null) await vision.DisposeAsync();
-        await text.DisposeAsync();
-    }
-
-    private static string WithFreePort(string baseUrl)
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
-        try
-        {
-            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            var uri = new Uri(baseUrl); return new UriBuilder(uri) { Port = port }.Uri.ToString().TrimEnd('/');
-        }
-        finally { listener.Stop(); }
-    }
+    private ModelProfile[] BuildProfiles(UserPreferences preferences) => _settings!.Models
+        .Concat(preferences.CustomModels)
+        .Select(ResolveProfile)
+        .Select(x => ApplyTuning(x, GetModelTuning(x.Id, preferences)))
+        .ToArray();
 
     private TurnTakingSettings EffectiveTurnSettings() => _preferences.TurnTakingOverride ?? _settings!.TurnTaking;
 
@@ -398,18 +322,6 @@ public sealed partial class MainWindow : Window
                 .Select(x => x.GetString()).Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().ToArray();
         }
         catch { return []; }
-    }
-
-    private IReadOnlyList<string> LoadListeningSignals()
-    {
-        try
-        {
-            var path = Path.Combine(_appDirectory, "Resources", "backchannels.json");
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            return document.RootElement.GetProperty("signals").EnumerateArray()
-                .Select(x => x.GetString()).Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().ToArray();
-        }
-        catch { return ["嗯，我在听。"]; }
     }
 
     private void BeginUserComposition(bool speech)
@@ -432,11 +344,8 @@ public sealed partial class MainWindow : Window
             await Task.Delay(Math.Clamp(delayMs, 1500, 15000), cancellationToken);
             if (conversationId != _conversationId || _turnManager?.State != TurnState.Idle) return;
             var stillComposing = _waveInput is not null || _speechBusy || !string.IsNullOrWhiteSpace(InputBox.Text);
-            if (!stillComposing || _character is null || _database is null) return;
-            var signals = LoadListeningSignals();
-            var signal = signals[Random.Shared.Next(signals.Count)];
-            var messageId = await _database.AddMessageAsync(_conversationId, ChatRole.Assistant, signal, null, cancellationToken);
-            AddTextBubble(_character.Name, signal, false, messageId: messageId);
+            if (!stillComposing || _character is null) return;
+            await _api.SendListeningSignalAsync(_conversationId, cancellationToken);
             _listeningSignalSent = true; _lastListeningSignalAt = DateTimeOffset.UtcNow;
             await RefreshConversationRoomsAsync();
         }
@@ -453,9 +362,8 @@ public sealed partial class MainWindow : Window
 
     private async Task RefreshConversationRoomsAsync()
     {
-        if (_database is null) return;
-        var rooms = await _database.ListConversationsAsync();
-        var folders = await _database.ListConversationFoldersAsync();
+        var rooms = await _api.GetConversationsAsync();
+        var folders = await _api.GetFoldersAsync();
         _changingConversation = true;
         var items = new List<ListBoxItem>();
         void AddGroup(string? folderId, string name)
@@ -506,7 +414,6 @@ public sealed partial class MainWindow : Window
 
     private async Task OpenConversationRoomAsync(ConversationRoom room)
     {
-        if (_database is null) return;
         _conversationDrafts[_conversationId] = InputBox.Text ?? "";
         EndUserComposition(); _turnManager?.CancelAgentReply(); _conversationId = room.Id;
         _suppressInputActivity = true; InputBox.Text = _conversationDrafts.GetValueOrDefault(_conversationId, ""); _suppressInputActivity = false;
@@ -516,7 +423,7 @@ public sealed partial class MainWindow : Window
             if (roomCharacter is not null) { _character = roomCharacter; RefreshCharacterSelector(); ApplyTheme(); }
         }
         ResetMessagesPanel(); CreateTurnManager();
-        var messages = await _database.GetRecentMessagesAsync(_conversationId, 200);
+        var messages = await _api.GetMessagesAsync(_conversationId, 200);
         if (messages.Count == 0 && _character is not null) AddTextBubble(_character.Name, _character.Greeting, false); else RenderConversationMessages(messages);
         _preferences = _preferences with { ActiveConversationId = _conversationId, SelectedCharacterId = _character?.Id };
         await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); await RefreshConversationRoomsAsync();
@@ -525,21 +432,21 @@ public sealed partial class MainWindow : Window
     private ContextMenu CreateConversationContextMenu(ConversationRoom room, IReadOnlyList<ConversationFolder> folders)
     {
         var pin = new MenuItem { Header = room.IsPinned ? "取消顶置" : "顶置" };
-        pin.Click += async (_, _) => { if (_database is null) return; await _database.SetConversationPinnedAsync(room.Id, !room.IsPinned); await RefreshConversationRoomsAsync(); };
+        pin.Click += async (_, _) => { await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, !room.IsPinned, null)); await RefreshConversationRoomsAsync(); };
         var rename = new MenuItem { Header = "重命名" };
         rename.Click += async (_, _) =>
         {
-            if (_database is null) return; var value = await PromptTextAsync("重命名对话", "对话房间标题", room.Title);
-            if (string.IsNullOrWhiteSpace(value)) return; await _database.RenameConversationAsync(room.Id, value); await RefreshConversationRoomsAsync();
+            var value = await PromptTextAsync("重命名对话", "对话房间标题", room.Title);
+            if (string.IsNullOrWhiteSpace(value)) return; await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(value, null, null)); await RefreshConversationRoomsAsync();
         };
         var move = new MenuItem { Header = "移动到文件夹" }; var moveItems = new List<MenuItem>();
         void AddMoveItem(string label, string? folderId)
         {
-            var target = new MenuItem { Header = label }; target.Click += async (_, _) => { if (_database is null) return; await _database.MoveConversationToFolderAsync(room.Id, folderId); await RefreshConversationRoomsAsync(); }; moveItems.Add(target);
+            var target = new MenuItem { Header = label }; target.Click += async (_, _) => { await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, null, folderId, folderId is null)); await RefreshConversationRoomsAsync(); }; moveItems.Add(target);
         }
         AddMoveItem("未分类", null); foreach (var folder in folders) AddMoveItem(folder.Name, folder.Id);
         var createFolder = new MenuItem { Header = "新建文件夹…" };
-        createFolder.Click += async (_, _) => { var folderId = await CreateConversationFolderAsync(); if (folderId is not null && _database is not null) { await _database.MoveConversationToFolderAsync(room.Id, folderId); await RefreshConversationRoomsAsync(); } };
+        createFolder.Click += async (_, _) => { var folderId = await CreateConversationFolderAsync(); if (folderId is not null) { await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, null, folderId)); await RefreshConversationRoomsAsync(); } };
         moveItems.Add(createFolder); move.ItemsSource = moveItems;
         var remove = new MenuItem { Header = "删除" }; remove.Click += async (_, _) => await DeleteConversationAsync(room);
         return new ContextMenu { ItemsSource = new MenuItem[] { pin, rename, move, remove } };
@@ -550,25 +457,23 @@ public sealed partial class MainWindow : Window
         var rename = new MenuItem { Header = "重命名文件夹" };
         rename.Click += async (_, _) =>
         {
-            if (_database is null) return;
             var value = await PromptTextAsync("重命名文件夹", "文件夹名称", folder.Name);
             if (string.IsNullOrWhiteSpace(value)) return;
-            await _database.RenameConversationFolderAsync(folder.Id, value); await RefreshConversationRoomsAsync();
+            await _api.RenameFolderAsync(folder.Id, value); await RefreshConversationRoomsAsync();
         };
         var remove = new MenuItem { Header = "删除文件夹" };
         remove.Click += async (_, _) =>
         {
-            if (_database is null || !await ConfirmAsync(this, "删除文件夹", $"确定删除“{folder.Name}”吗？其中的对话会移回未分类，不会被删除。")) return;
-            await _database.DeleteConversationFolderAsync(folder.Id); _collapsedConversationFolders.Remove(folder.Id); await RefreshConversationRoomsAsync();
+            if (!await ConfirmAsync(this, "删除文件夹", $"确定删除“{folder.Name}”吗？其中的对话会移回未分类，不会被删除。")) return;
+            await _api.DeleteFolderAsync(folder.Id); _collapsedConversationFolders.Remove(folder.Id); await RefreshConversationRoomsAsync();
         };
         return new ContextMenu { ItemsSource = new[] { rename, remove } };
     }
 
     private async Task<string?> CreateConversationFolderAsync()
     {
-        if (_database is null) return null;
         var name = await PromptTextAsync("新建文件夹", "文件夹名称", "新文件夹"); if (string.IsNullOrWhiteSpace(name)) return null;
-        return await _database.CreateConversationFolderAsync(name);
+        return (await _api.CreateFolderAsync(name)).Id;
     }
 
     private async void NewConversationFolder_Click(object? sender, RoutedEventArgs e)
@@ -578,14 +483,14 @@ public sealed partial class MainWindow : Window
 
     private async void DeleteCurrentConversation_Click(object? sender, RoutedEventArgs e)
     {
-        if (_database is null) return; var room = (await _database.ListConversationsAsync()).FirstOrDefault(x => x.Id == _conversationId); if (room is not null) await DeleteConversationAsync(room);
+        var room = (await _api.GetConversationsAsync()).FirstOrDefault(x => x.Id == _conversationId); if (room is not null) await DeleteConversationAsync(room);
     }
 
     private async Task DeleteConversationAsync(ConversationRoom room)
     {
-        if (_database is null || !await ConfirmAsync(this, "删除对话房间", $"确定删除“{room.Title}”及其中全部消息吗？")) return;
-        _turnManager?.CancelAgentReply(); await _database.DeleteConversationAsync(room.Id); _conversationDrafts.Remove(room.Id);
-        var remaining = await _database.ListConversationsAsync();
+        if (!await ConfirmAsync(this, "删除对话房间", $"确定删除“{room.Title}”及其中全部消息吗？")) return;
+        _turnManager?.CancelAgentReply(); await _api.DeleteConversationAsync(room.Id); _conversationDrafts.Remove(room.Id);
+        var remaining = await _api.GetConversationsAsync();
         if (room.Id == _conversationId)
         {
             if (remaining.Count > 0) await OpenConversationRoomAsync(remaining[0]); else NewConversation_Click(null, new RoutedEventArgs());
@@ -1037,7 +942,7 @@ public sealed partial class MainWindow : Window
     private async void Window_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Handled) return;
-        if (e.Key == Key.Z && e.KeyModifiers == KeyModifiers.Control && _conversationUndo.Count > 0) { e.Handled = true; await UndoConversationMutationAsync(); }
+        if (e.Key == Key.Z && e.KeyModifiers == KeyModifiers.Control) { e.Handled = true; await UndoConversationMutationAsync(); }
         else if (Matches(e, _preferences.Shortcuts.CancelReply)) { _turnManager?.CancelAgentReply(); TurnStatus.Text = "已打断"; e.Handled = true; }
         else if (Matches(e, _preferences.Shortcuts.NewConversation)) { NewConversation_Click(sender, e); e.Handled = true; }
         else if (Matches(e, _preferences.Shortcuts.OpenStickers)) { ToggleStickerPopup(); e.Handled = true; }
@@ -1171,56 +1076,46 @@ public sealed partial class MainWindow : Window
 
     private async Task DeleteMessageFromMenuAsync(long messageId, bool isUser)
     {
-        if (_database is null) return;
         _turnManager?.CancelAgentReply();
-        var snapshot = isUser
-            ? await _database.DeleteMessageAndFollowingAsync(_conversationId, messageId)
-            : await _database.DeleteMessageAsync(_conversationId, messageId);
-        if (snapshot is null) return;
-        _conversationUndo.Push(snapshot); await ReloadActiveConversationAsync();
+        await _api.DeleteMessageAsync(_conversationId, messageId);
+        await ReloadActiveConversationAsync();
         TurnStatus.Text = isUser ? "已删除此消息及之后内容 · Ctrl+Z 撤销" : "已删除此条回复 · Ctrl+Z 撤销";
     }
 
     private async Task EditFromUserMessageAsync(long messageId, string messageText)
     {
-        if (_database is null) return;
         _turnManager?.CancelAgentReply();
-        var snapshot = await _database.DeleteMessageAndFollowingAsync(_conversationId, messageId); if (snapshot is null) return;
-        _conversationUndo.Push(snapshot); await ReloadActiveConversationAsync();
+        await _api.DeleteMessageAsync(_conversationId, messageId);
+        await ReloadActiveConversationAsync();
         _suppressInputActivity = true; InputBox.Text = messageText; InputBox.CaretIndex = InputBox.Text?.Length ?? 0; _suppressInputActivity = false;
         InputBox.Focus(); BeginUserComposition(false); TurnStatus.Text = "正在从所选消息处编辑 · Ctrl+Z 撤销";
     }
 
     private async Task RegenerateFromAssistantMessageAsync(long messageId)
     {
-        if (_database is null || _turnManager is null) return;
-        var source = await _database.GetPreviousUserMessageAsync(_conversationId, messageId);
-        if (source is null) { TurnStatus.Text = "找不到这条回复对应的用户消息"; return; }
+        if (_turnManager is null) return;
         _turnManager.CancelAgentReply();
-        var snapshot = await _database.DeleteMessageAndFollowingAsync(_conversationId, messageId); if (snapshot is null) return;
-        _conversationUndo.Push(snapshot); await ReloadActiveConversationAsync();
-        _turnManager.RegenerateFromExistingUserMessage(source);
+        await _turnManager.RegenerateAsync(messageId);
+        await ReloadActiveConversationAsync();
         TurnStatus.Text = "正在重新回复… · Ctrl+Z 可恢复原分支";
     }
 
     private async Task UndoConversationMutationAsync()
     {
-        if (_database is null || _conversationUndo.Count == 0) { TurnStatus.Text = "没有可撤销的消息操作"; return; }
-        var snapshot = _conversationUndo.Pop();
-        _turnManager?.CancelAgentReply(); await _database.RestoreConversationMutationAsync(snapshot);
-        if (snapshot.ConversationId != _conversationId)
+        try
         {
-            var room = (await _database.ListConversationsAsync()).FirstOrDefault(x => x.Id == snapshot.ConversationId);
-            if (room is not null) await OpenConversationRoomAsync(room);
+            _turnManager?.CancelAgentReply(); await _api.UndoAsync(_conversationId);
+            await ReloadActiveConversationAsync(); TurnStatus.Text = "已撤销上一条消息操作";
         }
-        else await ReloadActiveConversationAsync();
-        TurnStatus.Text = "已撤销上一条消息操作";
+        catch (PryBackendException ex) when (ex.Code == "validation_error")
+        {
+            TurnStatus.Text = "没有可撤销的消息操作";
+        }
     }
 
     private async Task ReloadActiveConversationAsync()
     {
-        if (_database is null) return;
-        var messages = await _database.GetRecentMessagesAsync(_conversationId, 200);
+        var messages = await _api.GetMessagesAsync(_conversationId, 200);
         if (messages.Count == 0) { ResetMessagesPanel(); if (_character is not null) AddTextBubble(_character.Name, _character.Greeting, false); }
         else RenderConversationMessages(messages);
         CreateTurnManager(); await RefreshConversationRoomsAsync();
@@ -1550,14 +1445,10 @@ public sealed partial class MainWindow : Window
             _waveInput!.StopRecording(); if (_recordingStopped is not null) await _recordingStopped.Task;
             _waveInput.Dispose(); _waveInput = null;
             var path = _recordingPath ?? throw new InvalidOperationException("没有可转写的录音。");
-            var profile = GetSpeechProfile() ?? throw new InvalidOperationException("语音识别模型配置已失效。");
-            ISpeechRecognizer recognizer = profile.Provider switch
-            {
-                "sherpa-onnx" => new SenseVoiceSpeechRecognizer(profile),
-                "openai-compatible" => new OpenAiSpeechRecognizer(new HttpClient { Timeout = TimeSpan.FromMinutes(3) }, profile),
-                _ => throw new NotSupportedException($"暂不支持语音识别类型：{profile.Provider}")
-            };
-            var text = await recognizer.RecognizeAsync(path);
+            await using var recording = File.OpenRead(path);
+            var uploaded = await _api.UploadAsync(recording, Path.GetFileName(path), "audio/wav");
+            foreach (var warning in uploaded.Warnings) TurnStatus.Text = warning;
+            var text = (await _api.TranscribeAsync(uploaded.Id)).Text;
             if (string.IsNullOrWhiteSpace(text)) await ShowNoticeAsync("没有识别到文字", "请靠近麦克风再试一次。录音不会保存到聊天记录。");
             else
             {
@@ -1582,10 +1473,10 @@ public sealed partial class MainWindow : Window
     private async void NewConversation_Click(object? sender, RoutedEventArgs e)
     {
         _conversationDrafts[_conversationId] = InputBox.Text ?? "";
-        EndUserComposition(); _turnManager?.CancelAgentReply(); _conversationId = Guid.NewGuid().ToString("N");
+        EndUserComposition(); _turnManager?.CancelAgentReply();
+        var conversation = await _api.CreateConversationAsync(_character?.Id); _conversationId = conversation.Id;
         _suppressInputActivity = true; InputBox.Text = ""; _suppressInputActivity = false; ResetMessagesPanel(); CreateTurnManager();
         if (_character is not null) AddTextBubble(_character.Name, _character.Greeting, false);
-        if (_database is not null) await _database.EnsureConversationAsync(_conversationId, _character?.Id);
         _preferences = _preferences with { ActiveConversationId = _conversationId };
         await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); await RefreshConversationRoomsAsync();
     }
@@ -1741,7 +1632,7 @@ public sealed partial class MainWindow : Window
 
     private async Task OpenMemoryManagerAsync(Window? owner = null)
     {
-        if (_database is null || _character is null) return;
+        if (_character is null) return;
         var window = new Window { Title = "长期记忆管理", Width = 940, Height = 680, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner };
         var search = new TextBox { Watermark = "搜索内容、标签或类型…" }; var searchButton = new Button { Content = "搜索" };
         var list = new ListBox { Background = Brushes.Transparent };
@@ -1753,7 +1644,7 @@ public sealed partial class MainWindow : Window
         long? editingId = null;
         async Task RefreshAsync(long? selectId = null)
         {
-            var memories = await _database.ListMemoriesAsync(_character.Id, search.Text);
+            var memories = await _api.GetMemoriesAsync(_character.Id, search.Text);
             var items = memories.Select(x => new MemoryListItem(x)).ToArray(); list.ItemsSource = items;
             list.SelectedItem = items.FirstOrDefault(x => x.Memory.Id == selectId);
         }
@@ -1768,11 +1659,13 @@ public sealed partial class MainWindow : Window
         save.Click += async (_, _) =>
         {
             if (string.IsNullOrWhiteSpace(summary.Text)) { await ShowNoticeAsync("无法保存", "记忆内容不能为空。"); return; }
-            if (editingId is long id) await _database.UpdateMemoryAsync(id, _character.Id, kind.SelectedItem?.ToString() ?? "other", summary.Text.Trim(), tags.Text?.Trim() ?? "", (double)(importance.Value ?? .65m));
-            else editingId = await _database.AddMemoryAsync(_character.Id, kind.SelectedItem?.ToString() ?? "other", summary.Text.Trim(), tags.Text?.Trim() ?? "", (double)(importance.Value ?? .65m), null);
+            if (editingId is long id)
+                await _api.UpdateMemoryAsync(id, _character.Id, new UpdateMemoryRequest(kind.SelectedItem?.ToString() ?? "other", summary.Text.Trim(), tags.Text?.Trim() ?? "", (double)(importance.Value ?? .65m)));
+            else
+                editingId = (await _api.CreateMemoryAsync(new CreateMemoryRequest(_character.Id, kind.SelectedItem?.ToString() ?? "other", summary.Text.Trim(), tags.Text?.Trim() ?? "", (double)(importance.Value ?? .65m)))).Id;
             await RefreshAsync(editingId);
         };
-        remove.Click += async (_, _) => { if (editingId is not long id || !await ConfirmAsync(window, "删除长期记忆", "确定永久删除这条记忆吗？")) return; await _database.DeleteMemoryAsync(id, _character.Id); NewMemory(); await RefreshAsync(); };
+        remove.Click += async (_, _) => { if (editingId is not long id || !await ConfirmAsync(window, "删除长期记忆", "确定永久删除这条记忆吗？")) return; await _api.DeleteMemoryAsync(id, _character.Id); NewMemory(); await RefreshAsync(); };
         var leftHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { search, searchButton } }; Grid.SetColumn(searchButton, 1);
         var listCard = CreateCompactDialogTextCard(list); listCard.Padding = new Thickness(8); listCard.Margin = new Thickness(0, 10);
         var left = new Grid { Margin = new Thickness(18), RowDefinitions = new RowDefinitions("Auto,*,Auto"), Children = { leftHeader, listCard, create } }; Grid.SetRow(listCard, 1); Grid.SetRow(create, 2);
@@ -2136,38 +2029,30 @@ public sealed partial class MainWindow : Window
             StoreModelFields(); var selectedModelId = (activeModel.SelectedItem as ModelChoice)?.Id ?? GetActiveModelId(); var selectedVisionId = (visionModel.SelectedItem as ModelChoice)?.Id; var selectedSpeechId = (speechModel.SelectedItem as ModelChoice)?.Id; var modelTuning = tuningDrafts.TryGetValue(selectedModelId, out var selectedTuning) ? selectedTuning with { ActiveModelId = selectedModelId } : new ModelTuningPreferences { ActiveModelId = selectedModelId };
             if (!Color.TryParse(accentColor.Text, out _)) { await ShowNoticeAsync("强调色无效", "请填写 #RRGGBB 格式的颜色，例如 #B148C6。"); return; }
             var candidate = _preferences with { ActiveModelId = selectedModelId, ActiveVisionModelId = selectedVisionId, ActiveSpeechModelId = selectedSpeechId, ModelTunings = new Dictionary<string, ModelTuningPreferences>(tuningDrafts), EnableThinking = modelTuning.EnableThinking == true, ModelTuning = modelTuning, TurnTakingOverride = turnOverride, SelectedCharacterId = _character?.Id, DesktopPet = new DesktopPetPreferences { Enabled = petEnabled.IsChecked == true, AlwaysOnTop = petTop.IsChecked == true, Scale = (double)(petScale.Value ?? 1) }, Theme = BuildThemeDraft(), Shortcuts = new ShortcutSettings { Send = send.Text ?? "Enter", SendImmediately = immediate.Text ?? "Ctrl+Enter", NewLine = newline.Text ?? "Shift+Enter", CancelReply = cancel.Text ?? "Escape", NewConversation = newChat.Text ?? "Ctrl+N", OpenStickers = stickers.Text ?? "Ctrl+E", OpenCharacterEditor = character.Text ?? "Ctrl+Shift+C" } };
-            var candidateProfiles = BuildProfiles(candidate); var oldPreferences = _preferences; var oldProfiles = _profiles; var oldRouter = _router; var oldTextId = GetActiveModelId(); var oldVisionId = GetVisionModelId();
-            var restartRequired = RequiresServerRestart(candidate);
             save.IsEnabled = false; _turnManager?.CancelAgentReply();
-            if (!restartRequired)
-            {
-                candidateProfiles = candidateProfiles.Select(profile =>
-                {
-                    var running = oldProfiles.FirstOrDefault(x => x.Id == profile.Id);
-                    return profile.Provider == "local-llama" && running is not null
-                        ? profile with { BaseUrl = running.BaseUrl, ApiKey = running.ApiKey }
-                        : profile;
-                }).ToArray();
-                _preferences = candidate; _profiles = candidateProfiles; _router = BuildRouter(candidateProfiles, selectedModelId, selectedVisionId);
-                await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); ApplyTheme(); await ReloadActiveConversationAsync();
-                RuntimeStatus.Text = BuildRuntimeModelStatus(candidateProfiles, selectedModelId, selectedVisionId) + " · 设置已保存";
-                themeCommitted = true; window.Close();
-                return;
-            }
-            RuntimeStatus.Text = "正在切换并加载本地模型…";
-            await DisposeServerPairAsync(_textServerManager, _visionServerManager);
             try
             {
-                var pair = await StartServerPairAsync(candidateProfiles, selectedModelId, selectedVisionId);
-                _textServerManager = pair.Text; _visionServerManager = pair.Vision; _preferences = candidate; _profiles = candidateProfiles; _router = BuildRouter(candidateProfiles, selectedModelId, selectedVisionId);
-                await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); ApplyTheme(); await ReloadActiveConversationAsync();
-                RuntimeStatus.Text = BuildRuntimeModelStatus(candidateProfiles, selectedModelId, selectedVisionId); themeCommitted = true; window.Close();
+                RuntimeStatus.Text = "正在由后端切换模型…";
+                await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(
+                    candidate.SelectedCharacterId, _conversationId, candidate.UserProfile, candidate.DesktopPet,
+                    candidate.Shortcuts, turnOverride, new ClientThemePreferences(candidate.Theme.ThemeMode,
+                        candidate.Theme.AccentColor, candidate.Theme.UseGlassEffects, candidate.Theme.LiveSidebarResize,
+                        candidate.Theme.BackgroundDimOpacity, candidate.Theme.BackgroundImageOpacity,
+                        candidate.Theme.BackgroundBlurMode, candidate.Theme.BackgroundBlurRadius,
+                        candidate.Theme.AvatarSize, candidate.Theme.BubbleFontSize, candidate.Theme.BubbleMaxWidth,
+                        candidate.Theme.BubbleSpacing)));
+                var backendModels = await _api.UpdateModelSelectionAsync(new UpdateModelSelectionRequest(
+                    selectedModelId, selectedVisionId, selectedSpeechId, candidate.ModelTunings));
+                _preferences = candidate;
+                _profiles = BuildProfiles(candidate);
+                await JsonConfiguration.SaveAsync(PreferencesPath, _preferences);
+                ApplyTheme(); await ReloadActiveConversationAsync();
+                RuntimeStatus.Text = $"后端模型配置已保存 · {backendModels.First(x => x.SelectedForText).DisplayName}";
+                themeCommitted = true; window.Close();
             }
             catch (Exception ex)
             {
-                _preferences = oldPreferences; _profiles = oldProfiles; _router = oldRouter;
-                try { (_textServerManager, _visionServerManager) = await StartServerPairAsync(oldProfiles, oldTextId, oldVisionId); CreateTurnManager(); } catch { }
-                save.IsEnabled = true; RuntimeStatus.Text = "模型切换失败，已回滚"; await ShowNoticeAsync("模型切换失败", ex.Message);
+                save.IsEnabled = true; RuntimeStatus.Text = "后端拒绝了模型配置"; await ShowNoticeAsync("模型切换失败", ex.Message);
             }
         };
         await window.ShowDialog(this);

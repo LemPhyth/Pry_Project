@@ -4,6 +4,9 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
+using Microsoft.AspNetCore.Builder;
+using Pry.Api;
+using Pry.Client;
 
 namespace Pry.App;
 
@@ -11,6 +14,8 @@ public sealed partial class App : Application
 {
     private TrayIcon? _trayIcon;
     private MainWindow? _mainWindow;
+    private WebApplication? _backend;
+    private HttpClient? _backendHttpClient;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -19,7 +24,11 @@ public sealed partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            _mainWindow = new MainWindow(); desktop.MainWindow = _mainWindow;
+            var backendUrl = $"http://127.0.0.1:{ReserveLoopbackPort()}";
+            _backend = BackendApplication.BuildAsync(configure: builder => builder.Configuration["Pry:Url"] = backendUrl).GetAwaiter().GetResult();
+            _backend.StartAsync().GetAwaiter().GetResult();
+            _backendHttpClient = new HttpClient { BaseAddress = new Uri(backendUrl + "/"), Timeout = Timeout.InfiniteTimeSpan };
+            _mainWindow = new MainWindow(new PryBackendClient(_backendHttpClient)); desktop.MainWindow = _mainWindow;
             CreateTrayIcon(desktop);
         }
         base.OnFrameworkInitializationCompleted();
@@ -63,12 +72,21 @@ public sealed partial class App : Application
         var messageCard = _mainWindow.CreateCompactDialogTextCard(message);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Children = { cancel, keep, stop } };
         dialog.Content = _mainWindow.CreateThemedDialogSurface(MainWindow.CreateCompactDialogLayout(messageCard, actions));
-        await dialog.ShowDialog(_mainWindow); if (choice < 0) return; await _mainWindow.PrepareForExitAsync(choice == 1); _trayIcon!.IsVisible = false; desktop.Shutdown();
+        await dialog.ShowDialog(_mainWindow); if (choice < 0) return; await _mainWindow.PrepareForExitAsync(choice == 1);
+        if (_backend is not null) { await _backend.StopAsync(); await _backend.DisposeAsync(); _backend = null; }
+        _backendHttpClient?.Dispose(); _backendHttpClient = null;
+        _trayIcon!.IsVisible = false; desktop.Shutdown();
     }
 
     private async Task ShowInfoAsync(string title, string message)
     {
         if (_mainWindow is null) return; _mainWindow.ShowFromTray(); var dialog = new Window { Title = title, Width = 500, Height = 190, WindowStartupLocation = WindowStartupLocation.CenterOwner }; var close = new Button { Content = "关闭", HorizontalAlignment = HorizontalAlignment.Right }; close.Click += (_, _) => dialog.Close();
         dialog.Content = _mainWindow.CreateThemedDialogSurface(new StackPanel { Margin = new Thickness(24), Spacing = 18, Children = { new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, close } }); await dialog.ShowDialog(_mainWindow);
+    }
+
+    private static int ReserveLoopbackPort()
+    {
+        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start(); return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
     }
 }

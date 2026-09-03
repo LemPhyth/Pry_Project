@@ -1,4 +1,4 @@
-using Pry.Api.Contracts;
+using Pry.Contracts;
 using Pry.Core.Configuration;
 using Pry.Core.Expression;
 using Pry.Core.Inference;

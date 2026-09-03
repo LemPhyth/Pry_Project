@@ -1,4 +1,4 @@
-using Pry.Api.Contracts;
+using Pry.Contracts;
 using Pry.Core.Models;
 
 namespace Pry.Api.Services;

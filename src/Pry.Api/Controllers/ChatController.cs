@@ -1,7 +1,8 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
-using Pry.Api.Contracts;
+using Pry.Contracts;
 using Pry.Api.Services;
+using Pry.Core.Models;
 
 namespace Pry.Api.Controllers;
 
@@ -42,6 +43,10 @@ public sealed class ChatController(ConversationSessionService sessions, BackendR
         await sessions.UndoAsync(id, token); return NoContent();
     }
 
+    [HttpPost("conversations/{id}/listening-signals")]
+    public async Task<ActionResult<ChatMessage>> ListeningSignal(string id, CancellationToken token) =>
+        Ok(await sessions.SendListeningSignalAsync(id, token));
+
     [HttpGet("conversations/{id}/events")]
     public async Task Events(string id, [FromQuery] long after = 0, CancellationToken token = default)
     {
@@ -49,7 +54,7 @@ public sealed class ChatController(ConversationSessionService sessions, BackendR
         Response.ContentType = "text/event-stream";
         Response.Headers.CacheControl = "no-cache";
         Response.Headers.Connection = "keep-alive";
-        await foreach (var item in sessions.EventsAsync(id, Math.Max(0, after), token))
+        await foreach (var item in sessions.EventsAsync(id, after, token))
         {
             await Response.WriteAsync($"id: {item.Sequence}\n", token);
             await Response.WriteAsync($"event: {item.Type}\n", token);

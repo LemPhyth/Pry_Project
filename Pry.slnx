@@ -1,7 +1,10 @@
 <Solution>
   <Project Path="src/Pry.Core/Pry.Core.csproj" />
+  <Project Path="src/Pry.Contracts/Pry.Contracts.csproj" />
+  <Project Path="src/Pry.Client/Pry.Client.csproj" />
   <Project Path="src/Pry.Api/Pry.Api.csproj" />
   <Project Path="src/Pry.App/Pry.App.csproj" />
   <Project Path="tests/Pry.Api.Tests/Pry.Api.Tests.csproj" />
+  <Project Path="tests/Pry.Client.Tests/Pry.Client.Tests.csproj" />
   <Project Path="tests/Pry.Core.Tests/Pry.Core.Tests.csproj" />
 </Solution>
