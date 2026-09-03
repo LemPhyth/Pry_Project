@@ -89,3 +89,8 @@ public sealed class ApiValidationException(string field, string message) : Excep
 }
 
 public sealed class ResourceNotFoundException(string resource, object id) : Exception($"{resource} '{id}' 不存在");
+public sealed class ResourceConflictException(string resource, object id, string message) : Exception(message)
+{
+    public string Resource { get; } = resource;
+    public object Id { get; } = id;
+}

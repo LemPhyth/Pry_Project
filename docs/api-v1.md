@@ -209,6 +209,7 @@
 - `GET /api/v1/characters/{id}`：完整角色设定；不包含磁盘路径。
 - `POST /api/v1/characters`：由服务端生成角色 ID并保存角色卡。
 - `PUT /api/v1/characters/{id}`：全量更新角色卡。
+- `DELETE /api/v1/characters/{id}`：仅删除用户创建的角色卡。内置角色卡或仍被对话/长期记忆引用的角色返回 `409 resource_conflict`；客户端应提示用户先处理关联数据。
 - `GET /api/v1/characters/{id}/avatar`：获取角色头像，支持 Range。
 
 角色头像先通过媒体 API 上传，再在角色请求中传 `avatarMediaId`；传 `clearAvatar:true` 恢复默认头像。结构化角色必须提供 `identity`，Legacy 角色必须提供 `legacySystemPrompt`。配置写入使用临时文件替换；写入前会取消并排空活跃回合。

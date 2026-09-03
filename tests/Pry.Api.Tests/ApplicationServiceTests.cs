@@ -168,6 +168,35 @@ public sealed class ApplicationServiceTests
     }
 
     [Fact]
+    public async Task Character_deletion_rejects_built_in_and_referenced_cards()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        var configuration = new ConfigurationManager(); configuration["Pry:DataDirectory"] = fixture.Directory;
+        await using var registry = new ModelProcessRegistry(NullLogger<ModelProcessRegistry>.Instance);
+        var runtime = new BackendRuntime(configuration, registry, NullLogger<BackendRuntime>.Instance);
+        await runtime.StartAsync(TestContext.Current.CancellationToken);
+        var media = new MediaAssetStore(configuration);
+        await using var sessions = new ConversationSessionService(fixture.Database, runtime, media,
+            NullLogger<ConversationSessionService>.Instance);
+        var service = new ConfigurationApplicationService(configuration, runtime, sessions, media, fixture.Database);
+        var builtIn = runtime.Characters[0];
+        await Assert.ThrowsAsync<ResourceConflictException>(() =>
+            service.DeleteCharacterAsync(builtIn.Id, TestContext.Current.CancellationToken));
+
+        var created = await service.CreateCharacterAsync(new SaveCharacterRequest(
+            "待删除角色", "待删除角色-v1", "你", "测试身份", "", "", [], [], new RuntimeState(), "你好。",
+            CharacterPromptMode.Structured, "", null, false, new ImageDisplayPreferences()),
+            TestContext.Current.CancellationToken);
+        await fixture.Database.EnsureConversationAsync("uses-character", created.Id, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<ResourceConflictException>(() =>
+            service.DeleteCharacterAsync(created.Id, TestContext.Current.CancellationToken));
+
+        await fixture.Database.DeleteConversationAsync("uses-character", TestContext.Current.CancellationToken);
+        await service.DeleteCharacterAsync(created.Id, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(service.ListCharacters(), x => x.Id == created.Id);
+    }
+
+    [Fact]
     public async Task Sticker_management_uses_managed_media_and_hides_storage_path()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();

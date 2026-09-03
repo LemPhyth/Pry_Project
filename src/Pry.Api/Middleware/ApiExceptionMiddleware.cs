@@ -17,6 +17,11 @@ public sealed class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExce
         {
             await WriteAsync(context, 404, "resource_not_found", "资源不存在", ex.Message);
         }
+        catch (ResourceConflictException ex)
+        {
+            await WriteAsync(context, 409, "resource_conflict", "资源仍在使用", ex.Message,
+                new Dictionary<string, object?> { ["resource"] = ex.Resource, ["id"] = ex.Id });
+        }
         catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
         {
             logger.LogInformation("Request {TraceId} was cancelled by the client", context.TraceIdentifier);

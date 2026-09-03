@@ -14,6 +14,10 @@ public sealed class ConfigurationController(ConfigurationApplicationService serv
         var result = await service.CreateCharacterAsync(request, token); return Created($"/api/v1/characters/{result.Id}", result);
     }
     [HttpPut("characters/{id}")] public Task<CharacterResponse> UpdateCharacter(string id, SaveCharacterRequest request, CancellationToken token) => service.UpdateCharacterAsync(id, request, token);
+    [HttpDelete("characters/{id}")] public async Task<IActionResult> DeleteCharacter(string id, CancellationToken token)
+    {
+        await service.DeleteCharacterAsync(id, token); return NoContent();
+    }
     [HttpGet("characters/{id}/avatar")]
     public IActionResult Avatar(string id)
     {

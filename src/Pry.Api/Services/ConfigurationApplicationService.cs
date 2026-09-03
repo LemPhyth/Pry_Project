@@ -27,6 +27,43 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         return SaveCharacterAsync(id, request, creating: false, token);
     }
 
+    public async Task DeleteCharacterAsync(string id, CancellationToken token)
+    {
+        await _gate.WaitAsync(token);
+        try
+        {
+            ValidateId(id); _ = FindCharacter(id);
+            var path = Path.Combine(CharacterDirectory, id + ".json");
+            if (!File.Exists(path))
+                throw new ResourceConflictException("character", id, "内置角色卡不能删除，可以创建或编辑自定义角色卡。");
+            if (await database.CharacterHasReferencesAsync(id, token))
+                throw new ResourceConflictException("character", id, "角色卡仍被对话或长期记忆引用，请先删除相关数据。");
+
+            var fallback = runtime.Characters.FirstOrDefault(x => x.Id != id)?.Id;
+            if (fallback is null)
+                throw new ResourceConflictException("character", id, "至少需要保留一张可用角色卡。");
+            var backup = path + $".deleting-{Guid.NewGuid():N}";
+            File.Move(path, backup);
+            try
+            {
+                await sessions.ReconfigureAsync(async ct =>
+                {
+                    if (runtime.Preferences.SelectedCharacterId == id)
+                        await JsonConfiguration.SaveAsync(PreferencesPath,
+                            runtime.Preferences with { SelectedCharacterId = fallback }, ct);
+                    await runtime.RefreshContentAsync(ct);
+                }, token);
+                File.Delete(backup);
+            }
+            catch
+            {
+                if (File.Exists(backup) && !File.Exists(path)) File.Move(backup, path);
+                throw;
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
     public ClientPreferencesResponse GetPreferences() => ToResponse(runtime.Preferences);
 
     public IReadOnlyList<ModelProfileResponse> GetModels() => runtime.ModelProfiles.Select(profile =>

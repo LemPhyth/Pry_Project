@@ -185,6 +185,15 @@ public sealed class MemoryDatabase(string databasePath)
             : null;
     }
 
+    public async Task<bool> CharacterHasReferencesAsync(string characterId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT EXISTS(SELECT 1 FROM conversations WHERE character_id=$id UNION ALL SELECT 1 FROM memories WHERE character_id=$id)";
+        command.Parameters.AddWithValue("$id", characterId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken)) == 1;
+    }
+
     public async Task<bool> ConversationFolderExistsAsync(string folderId, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken); await using var command = connection.CreateCommand();

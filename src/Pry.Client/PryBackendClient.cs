@@ -37,6 +37,9 @@ public sealed class PryBackendClient(HttpClient httpClient)
 
     public Task<IReadOnlyList<CharacterSummaryResponse>> GetCharactersAsync(CancellationToken token = default) => GetAsync<IReadOnlyList<CharacterSummaryResponse>>("api/v1/characters", token);
     public Task<CharacterResponse> GetCharacterAsync(string id, CancellationToken token = default) => GetAsync<CharacterResponse>($"api/v1/characters/{Escape(id)}", token);
+    public Task<CharacterResponse> CreateCharacterAsync(SaveCharacterRequest request, CancellationToken token = default) => SendAsync<CharacterResponse>(HttpMethod.Post, "api/v1/characters", request, token);
+    public Task<CharacterResponse> UpdateCharacterAsync(string id, SaveCharacterRequest request, CancellationToken token = default) => SendAsync<CharacterResponse>(HttpMethod.Put, $"api/v1/characters/{Escape(id)}", request, token);
+    public Task DeleteCharacterAsync(string id, CancellationToken token = default) => SendNoContentAsync(HttpMethod.Delete, $"api/v1/characters/{Escape(id)}", null, token);
     public Task<ClientPreferencesResponse> GetPreferencesAsync(CancellationToken token = default) => GetAsync<ClientPreferencesResponse>("api/v1/preferences", token);
     public Task<ClientPreferencesResponse> UpdatePreferencesAsync(UpdateClientPreferencesRequest request, CancellationToken token = default) => SendAsync<ClientPreferencesResponse>(HttpMethod.Patch, "api/v1/preferences", request, token);
     public Task<IReadOnlyList<ModelProfileResponse>> GetModelsAsync(CancellationToken token = default) => GetAsync<IReadOnlyList<ModelProfileResponse>>("api/v1/models", token);

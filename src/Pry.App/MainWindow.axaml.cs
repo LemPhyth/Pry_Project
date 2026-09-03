@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Net;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -248,7 +249,9 @@ public sealed partial class MainWindow : Window
         var selected = _characters.FirstOrDefault(x => x.Id == choice.Id); if (selected is null || selected.Id == _character?.Id) return;
         _turnManager?.CancelAgentReply(); _character = selected; CharacterName.Text = selected.Name; ApplyTheme();
         var created = await _api.CreateConversationAsync(selected.Id); _conversationId = created.Id; ResetMessagesPanel(); CreateTurnManager(); AddTextBubble(selected.Name, selected.Greeting, false);
-        _preferences = _preferences with { SelectedCharacterId = selected.Id, ActiveConversationId = _conversationId }; await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); await RefreshConversationRoomsAsync();
+        _preferences = _preferences with { SelectedCharacterId = selected.Id, ActiveConversationId = _conversationId };
+        await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(selected.Id, _conversationId, null, null, null, null, null));
+        await RefreshConversationRoomsAsync();
     }
 
     private void CreateTurnManager()
@@ -1586,7 +1589,8 @@ public sealed partial class MainWindow : Window
         form.Children.Add(new TextBlock { Text = "从原始图片直接解码；拖动调整取景，滚轮缩放，不会压缩或改写原图。", Foreground = Brush.Parse("#8EA2B5"), TextWrapping = TextWrapping.Wrap });
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Children = { CreateVisualCropEditor(avatarPreview, avatarFocusX, avatarFocusY, avatarZoom, 180, 180, true), new StackPanel { Spacing = 7, VerticalAlignment = VerticalAlignment.Center, Children = { chooseAvatar, clearAvatar } } } });
         form.Children.Add(currentHint); form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { structuredButton, legacyButton } }); form.Children.Add(structuredPanel); form.Children.Add(legacyPanel); Field(form, "开场白", greeting);
-        var save = new Button { Content = "保存", Classes = { "primary" } }; var saveAndSwitch = new Button { Content = "保存并切换到此角色" }; form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Margin = new Thickness(0, 10, 0, 0), Children = { saveAndSwitch, save } });
+        var removeCard = new Button { Content = "删除角色卡" };
+        var save = new Button { Content = "保存", Classes = { "primary" } }; var saveAndSwitch = new Button { Content = "保存并切换到此角色" }; form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Margin = new Thickness(0, 10, 0, 0), Children = { removeCard, saveAndSwitch, save } });
         var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), Background = Brushes.Transparent, Children = { new TextBlock { Text = "角色卡", FontSize = 21, FontWeight = FontWeight.SemiBold, Margin = new Thickness(16, 18, 12, 4) }, cardList, newCard } }; Grid.SetRow(cardList, 1); Grid.SetRow(newCard, 2);
         var editorScroll = new ScrollViewer { Content = form, Background = Brushes.Transparent };
         var divider = new Border { Width = 1, Background = Brush.Parse("#263746"), HorizontalAlignment = HorizontalAlignment.Right };
@@ -1596,7 +1600,7 @@ public sealed partial class MainWindow : Window
         {
             var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "选择角色头像", AllowMultiple = false, FileTypeFilter = [new FilePickerFileType("图片") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"] }] });
             var source = files.FirstOrDefault()?.TryGetLocalPath();
-            if (!string.IsNullOrWhiteSpace(source)) { avatarPath = CacheManagedImage(source, "characters"); RefreshAvatarPreview(); }
+            if (!string.IsNullOrWhiteSpace(source)) { avatarPath = source; RefreshAvatarPreview(); }
         };
         clearAvatar.Click += (_, _) => { avatarPath = null; RefreshAvatarPreview(); };
         void RefreshList(string? selectId)
@@ -1619,16 +1623,60 @@ public sealed partial class MainWindow : Window
         async Task SaveAsync(bool switchToCard)
         {
             var edited = ReadEditedCard(); if (edited is null) { await ShowNoticeAsync("无法保存", "角色名以及当前模式的角色设定不能为空。"); return; }
-            await JsonConfiguration.SaveAsync(Path.Combine(CharacterDirectory, edited.Id + ".json"), edited); _characters.RemoveAll(x => x.Id == edited.Id); _characters.Add(edited); editingId = edited.Id;
+            string? avatarMediaId = null;
+            if (!string.IsNullOrWhiteSpace(avatarPath) && File.Exists(avatarPath))
+            {
+                await using var avatar = File.OpenRead(avatarPath);
+                avatarMediaId = (await _api.UploadAsync(avatar, Path.GetFileName(avatarPath), ImageContentType(avatarPath))).Id;
+            }
+            var request = new SaveCharacterRequest(edited.Name, edited.CardName, edited.UserName, edited.Identity,
+                edited.Personality, edited.SpeechStyle, edited.BehavioralRules, edited.WorldFacts, edited.InitialState,
+                edited.Greeting, edited.PromptMode, edited.LegacySystemPrompt, avatarMediaId,
+                avatarPath is null, edited.AvatarDisplay);
+            var saved = editingId is null
+                ? await _api.CreateCharacterAsync(request)
+                : await _api.UpdateCharacterAsync(editingId, request);
+            edited = edited with { Id = saved.Id };
+            _characters.RemoveAll(x => x.Id == edited.Id); _characters.Add(edited); editingId = edited.Id;
             if (_character?.Id == edited.Id || switchToCard) { _character = edited; CharacterName.Text = edited.Name; ApplyTheme(); CreateTurnManager(); }
-            if (switchToCard) { _conversationId = Guid.NewGuid().ToString("N"); ResetMessagesPanel(); AddTextBubble(edited.Name, edited.Greeting, false); _preferences = _preferences with { SelectedCharacterId = edited.Id }; await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); }
+            if (switchToCard)
+            {
+                var conversation = await _api.CreateConversationAsync(edited.Id); _conversationId = conversation.Id;
+                ResetMessagesPanel(); AddTextBubble(edited.Name, edited.Greeting, false);
+                _preferences = _preferences with { SelectedCharacterId = edited.Id, ActiveConversationId = _conversationId };
+                await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(edited.Id, _conversationId, null, null, null, null, null));
+            }
             RefreshCharacterSelector(); RefreshList(edited.Id); currentHint.Text = edited.Id == _character?.Id ? "这是当前聊天角色" : "已保存；当前聊天角色没有改变"; RuntimeStatus.Text = "角色卡已保存";
         }
+        removeCard.Click += async (_, _) =>
+        {
+            if (editingId is null) { await ShowNoticeAsync("无法删除", "这张角色卡尚未保存。"); return; }
+            var deletingId = editingId;
+            var deleting = _characters.FirstOrDefault(x => x.Id == deletingId);
+            if (deleting is null || !await ConfirmAsync(window, "删除角色卡", "确定删除“" + CardLabel(deleting) + "”吗？此操作不可撤销。")) return;
+            try
+            {
+                await _api.DeleteCharacterAsync(deletingId);
+                _characters.RemoveAll(x => x.Id == deletingId);
+                var next = _characters.FirstOrDefault();
+                if (next is null) { window.Close(); return; }
+                LoadCard(next); RefreshCharacterSelector(); RefreshList(next.Id); RuntimeStatus.Text = "角色卡已删除";
+            }
+            catch (PryBackendException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+            {
+                await ShowNoticeAsync("无法删除角色卡", ex.Message);
+            }
+        };
         save.Click += async (_, _) => await SaveAsync(false); saveAndSwitch.Click += async (_, _) => await SaveAsync(true);
         RefreshList(_character.Id); LoadCard(_character); await window.ShowDialog(owner ?? this);
     }
 
     private static string CardLabel(CharacterDefinition card) => string.IsNullOrWhiteSpace(card.CardName) ? $"{card.Name}-正式-v1" : card.CardName;
+
+    private static string ImageContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".png" => "image/png", ".webp" => "image/webp", ".gif" => "image/gif", ".bmp" => "image/bmp", _ => "image/jpeg"
+    };
 
     private async void MemoryManager_Click(object? sender, RoutedEventArgs e) => await OpenMemoryManagerAsync();
 
