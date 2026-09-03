@@ -154,7 +154,7 @@
           </ScrollViewer>
           <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,*,Auto" VerticalAlignment="Center">
           <Button x:Name="ImageButton" Classes="composer-action" Content="＋" ToolTip.Tip="添加图片或文件" FontSize="21" Width="42" Height="42" Click="ImageButton_Click" Margin="0,0,6,0"/>
-          <Button Grid.Column="1" x:Name="StickerButton" Classes="composer-action" Content="☺" FontSize="20" Width="42" Height="42" Click="StickerButton_Click" Margin="0,0,6,0"/>
+          <Button Grid.Column="1" x:Name="StickerButton" Classes="composer-action" Content="☺" FontSize="20" Width="42" Height="42" Click="StickerButton_Click" Margin="0,0,6,0" ToolTip.Tip="选择表情" AutomationProperties.Name="选择表情"/>
           <Button Grid.Column="2" x:Name="VoiceButton" Classes="composer-action" ToolTip.Tip="语音输入" Width="42" Height="42" Click="VoiceButton_Click" Margin="0,0,8,0">
             <Grid>
               <PathIcon x:Name="VoiceMicIcon" Width="19" Height="19" Data="M12,2 C10.34,2 9,3.34 9,5 L9,12 C9,13.66 10.34,15 12,15 C13.66,15 15,13.66 15,12 L15,5 C15,3.34 13.66,2 12,2 Z M5,11 L7,11 C7,13.76 9.24,16 12,16 C14.76,16 17,13.76 17,11 L19,11 C19,14.53 16.39,17.43 13,17.92 L13,21 L17,21 L17,23 L7,23 L7,21 L11,21 L11,17.92 C7.61,17.43 5,14.53 5,11 Z"/>
@@ -162,7 +162,7 @@
             </Grid>
           </Button>
           <TextBox Grid.Column="3" x:Name="InputBox" Watermark="发送消息…（可粘贴或拖入附件）" AcceptsReturn="True" MinHeight="42" MaxHeight="130" Padding="14,10" VerticalContentAlignment="Center" TextWrapping="Wrap" TextChanged="InputBox_TextChanged"/>
-          <Button Grid.Column="4" x:Name="SendButton" Classes="primary composer-action" Content="➤" FontSize="19" Width="48" Height="42" Click="SendButton_Click" Margin="8,0,0,0"/>
+          <Button Grid.Column="4" x:Name="SendButton" Classes="primary composer-action" Content="➤" FontSize="19" Width="48" Height="42" Click="SendButton_Click" Margin="8,0,0,0" ToolTip.Tip="发送消息" AutomationProperties.Name="发送消息"/>
           <Popup x:Name="StickerPopup" Grid.Column="1" PlacementTarget="{Binding #StickerButton}" Placement="TopEdgeAlignedLeft" IsLightDismissEnabled="True" HorizontalOffset="-70" VerticalOffset="-8">
             <Border Background="#202B36" BorderBrush="#344452" BorderThickness="1" CornerRadius="12" Padding="12" Width="390" MaxHeight="330" BoxShadow="0 8 24 0 #80000000">
               <ScrollViewer><WrapPanel x:Name="StickerGrid" Orientation="Horizontal" ItemWidth="86" ItemHeight="102"/></ScrollViewer>

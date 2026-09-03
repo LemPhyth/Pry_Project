@@ -798,29 +798,18 @@ public sealed partial class MainWindow : Window
             if (!await TryPasteAttachmentsAsync()) await PasteClipboardTextAsync();
             return;
         }
-        if (Matches(e, _preferences.Shortcuts.NewLine)) return;
-        if (Matches(e, _preferences.Shortcuts.SendImmediately)) { e.Handled = true; await SendAsync(true); }
-        else if (Matches(e, _preferences.Shortcuts.Send)) { e.Handled = true; await SendAsync(false); }
+        if (ShortcutGestureMatcher.Matches(e.Key, e.KeyModifiers, _preferences.Shortcuts.NewLine)) return;
+        if (ShortcutGestureMatcher.Matches(e.Key, e.KeyModifiers, _preferences.Shortcuts.SendImmediately)) { e.Handled = true; await SendAsync(true); }
+        else if (ShortcutGestureMatcher.Matches(e.Key, e.KeyModifiers, _preferences.Shortcuts.Send)) { e.Handled = true; await SendAsync(false); }
     }
     private async void Window_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Handled) return;
         if (e.Key == Key.Z && e.KeyModifiers == KeyModifiers.Control) { e.Handled = true; await UndoConversationMutationAsync(); }
-        else if (Matches(e, _preferences.Shortcuts.CancelReply)) { _turnManager?.CancelAgentReply(); TurnStatus.Text = "已打断"; e.Handled = true; }
-        else if (Matches(e, _preferences.Shortcuts.NewConversation)) { NewConversation_Click(sender, e); e.Handled = true; }
-        else if (Matches(e, _preferences.Shortcuts.OpenStickers)) { ToggleStickerPopup(); e.Handled = true; }
-        else if (Matches(e, _preferences.Shortcuts.OpenCharacterEditor)) { await OpenCharacterEditorAsync(); e.Handled = true; }
-    }
-    private static bool Matches(KeyEventArgs e, string gesture)
-    {
-        var parts = gesture.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); if (parts.Length == 0) return false;
-        var modifiers = KeyModifiers.None;
-        foreach (var part in parts[..^1]) modifiers |= part.ToLowerInvariant() switch { "ctrl" or "control" => KeyModifiers.Control, "shift" => KeyModifiers.Shift, "alt" => KeyModifiers.Alt, "meta" or "win" => KeyModifiers.Meta, _ => KeyModifiers.None };
-        var keyName = parts[^1];
-        var keyMatches = keyName.Equals("Enter", StringComparison.OrdinalIgnoreCase)
-            ? e.Key is Key.Enter or Key.Return
-            : Enum.TryParse<Key>(keyName, true, out var key) && e.Key == key;
-        return keyMatches && e.KeyModifiers == modifiers;
+        else if (ShortcutGestureMatcher.Matches(e.Key, e.KeyModifiers, _preferences.Shortcuts.CancelReply)) { _turnManager?.CancelAgentReply(); TurnStatus.Text = "已打断"; e.Handled = true; }
+        else if (ShortcutGestureMatcher.Matches(e.Key, e.KeyModifiers, _preferences.Shortcuts.NewConversation)) { NewConversation_Click(sender, e); e.Handled = true; }
+        else if (ShortcutGestureMatcher.Matches(e.Key, e.KeyModifiers, _preferences.Shortcuts.OpenStickers)) { ToggleStickerPopup(); e.Handled = true; }
+        else if (ShortcutGestureMatcher.Matches(e.Key, e.KeyModifiers, _preferences.Shortcuts.OpenCharacterEditor)) { await OpenCharacterEditorAsync(); e.Handled = true; }
     }
     private void InputBox_TextChanged(object? sender, TextChangedEventArgs e)
     {
@@ -1184,19 +1173,11 @@ public sealed partial class MainWindow : Window
         AttachmentPreviewPanel.Children.Clear();
         foreach (var attachment in _attachmentDraft.Items.ToArray())
         {
-            Control preview;
-            if (attachment.IsImage)
+            AttachmentPreviewPanel.Children.Add(AttachmentPreviewFactory.Create(attachment, () =>
             {
-                try { preview = new Image { Source = new Bitmap(attachment.Path), Width = 72, Height = 58, Stretch = Stretch.Uniform }; }
-                catch { preview = new TextBlock { Text = "IMG", Width = 72, TextAlignment = TextAlignment.Center }; }
-            }
-            else preview = new Border { Width = 58, Height = 58, CornerRadius = new CornerRadius(8), Background = Brush.Parse("#263746"), Child = new TextBlock { Text = Path.GetExtension(attachment.Name).TrimStart('.').ToUpperInvariant(), FontSize = 10, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
-            var remove = new Button { Content = "×", Classes = { "composer-action" }, Width = 26, Height = 26, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Top };
-            remove.Click += (_, _) => { _attachmentDraft.Remove(attachment); RefreshAttachmentTray(); };
-            var card = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto"), Margin = new Thickness(0, 0, 8, 0), Children = { preview, remove } };
-            Grid.SetColumn(remove, 1);
-            ToolTip.SetTip(card, attachment.Name);
-            AttachmentPreviewPanel.Children.Add(card);
+                _attachmentDraft.Remove(attachment);
+                RefreshAttachmentTray();
+            }));
         }
         AttachmentTray.IsVisible = _attachmentDraft.Items.Count > 0;
         ScrollChatToEnd();
