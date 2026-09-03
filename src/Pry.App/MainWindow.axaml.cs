@@ -290,40 +290,23 @@ public sealed partial class MainWindow : Window
         var rooms = await _api.GetConversationsAsync();
         var folders = await _api.GetFoldersAsync();
         _changingConversation = true;
-        var items = new List<ListBoxItem>();
-        void AddGroup(string? folderId, string name)
-        {
-            var grouped = rooms.Where(x => x.FolderId == folderId).ToArray(); if (grouped.Length == 0 && folderId is null) return;
-            var key = folderId ?? "__unfiled"; var collapsed = _collapsedConversationFolders.Contains(key);
-            var header = new ListBoxItem { Tag = new ConversationFolderChoice(key, name), Content = $"{(collapsed ? "▸" : "▾")}  📁 {name}", FontWeight = FontWeight.SemiBold, Padding = new Thickness(10, 8) };
-            header.PointerPressed += async (_, args) =>
+        var items = ConversationListItemFactory.Create(rooms, folders, _collapsedConversationFolders,
+            async key =>
             {
-                if (!args.GetCurrentPoint(header).Properties.IsLeftButtonPressed) return;
                 if (!_collapsedConversationFolders.Add(key)) _collapsedConversationFolders.Remove(key);
-                args.Handled = true;
                 await RefreshConversationRoomsAsync();
-            };
-            if (folderId is not null)
-            {
-                var folder = folders.First(x => x.Id == folderId);
-                header.ContextMenu = CreateFolderContextMenu(folder);
-            }
-            else
+            },
+            CreateFolderContextMenu,
+            () =>
             {
                 var createFolder = new MenuItem { Header = "新建文件夹…" };
-                createFolder.Click += async (_, _) => { if (await CreateConversationFolderAsync() is not null) await RefreshConversationRoomsAsync(); };
-                header.ContextMenu = new ContextMenu { ItemsSource = new[] { createFolder } };
-            }
-            items.Add(header); if (collapsed) return;
-            foreach (var room in grouped)
-            {
-                var title = new TextBlock { Text = $"{(room.IsPinned ? "📌 " : "")}{room.Title}", TextTrimming = TextTrimming.CharacterEllipsis, FontWeight = FontWeight.SemiBold };
-                var detail = new TextBlock { Text = $"{room.UpdatedAt.LocalDateTime:MM-dd HH:mm} · {room.MessageCount} 条消息", Foreground = Brush.Parse("#8EA2B5"), FontSize = 11 };
-                var item = new ListBoxItem { Tag = room, Padding = new Thickness(14, 9), Content = new StackPanel { Spacing = 2, Children = { title, detail } } };
-                item.ContextMenu = CreateConversationContextMenu(room, folders); items.Add(item);
-            }
-        }
-        AddGroup(null, "未分类"); foreach (var folder in folders) AddGroup(folder.Id, folder.Name);
+                createFolder.Click += async (_, _) =>
+                {
+                    if (await CreateConversationFolderAsync() is not null) await RefreshConversationRoomsAsync();
+                };
+                return new ContextMenu { ItemsSource = new[] { createFolder } };
+            },
+            room => CreateConversationContextMenu(room, folders));
         ConversationList.ItemsSource = items;
         ConversationList.SelectedItem = items.FirstOrDefault(x => x.Tag is ConversationRoom room && room.Id == _conversationId);
         var activeRoom = rooms.FirstOrDefault(x => x.Id == _conversationId); if (activeRoom is not null) CharacterName.Text = activeRoom.Title;
@@ -333,7 +316,7 @@ public sealed partial class MainWindow : Window
     private async void ConversationList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_changingConversation || ConversationList.SelectedItem is not ListBoxItem item) return;
-        if (item.Tag is ConversationFolderChoice) return;
+        if (item.Tag is ConversationFolderHeader) return;
         if (item.Tag is ConversationRoom room && room.Id != _conversationId) await OpenConversationRoomAsync(room);
     }
 
@@ -2091,5 +2074,4 @@ public sealed partial class MainWindow : Window
     {
         public override string ToString() => $"{Room.Title}\n{Room.UpdatedAt.LocalDateTime:MM-dd HH:mm} · {Room.MessageCount} 条消息";
     }
-    private sealed record ConversationFolderChoice(string Id, string Name);
 }
