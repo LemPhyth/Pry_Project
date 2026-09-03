@@ -1685,8 +1685,7 @@ public sealed partial class MainWindow : Window
     {
         if (_settings is null) return;
         var settingsOriginalPreferences = _preferences; var themeCommitted = false;
-        var llamaPath = ResolveBundledPath(_settings.LlamaServerPath) ?? Path.GetFullPath(Path.Combine(_appDirectory, _settings.LlamaServerPath));
-        var detectedDevices = await LlamaHardwareDetector.ListDevicesAsync(llamaPath);
+        var detectedDevices = await _api.GetComputeDevicesAsync();
         var computeChoices = new List<ComputeChoice>
         {
             new("auto-discrete", detectedDevices.Count == 0 ? "自动（优先独显；当前未检测到 GPU 后端）" : "自动（优先独立显卡）"),

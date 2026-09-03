@@ -14,6 +14,10 @@ public sealed class ChatController(ConversationSessionService sessions, BackendR
     [HttpGet("runtime")]
     public RuntimeStatusResponse RuntimeStatus() => runtime.Status;
 
+    [HttpGet("runtime/compute-devices")]
+    public Task<IReadOnlyList<ComputeDeviceResponse>> ComputeDevices(CancellationToken token) =>
+        runtime.ListComputeDevicesAsync(token);
+
     [HttpPost("conversations/{id}/turns")]
     public async Task<ActionResult<SubmitTurnResponse>> Submit(string id, SubmitTurnRequest request, CancellationToken token)
     {

@@ -14,6 +14,7 @@ public sealed record SubmitTurnRequest(string Content, string? StickerId = null,
     IReadOnlyList<string>? AttachmentIds = null);
 public sealed record SubmitTurnResponse(long MessageId);
 public sealed record RuntimeStatusResponse(string State, string? TextModelId, string? VisionModelId, string? Error);
+public sealed record ComputeDeviceResponse(string Id, string Name, bool IsIntegrated);
 public sealed record ConversationEvent(long Sequence, string Type, DateTimeOffset OccurredAt, object Data);
 public sealed record MediaAssetResponse(string Id, string Name, string ContentType, long Size, string Kind,
     DateTimeOffset CreatedAt, string DownloadUrl, IReadOnlyList<string> Warnings);

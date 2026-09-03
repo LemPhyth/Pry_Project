@@ -22,6 +22,7 @@ public sealed class PryBackendClient(HttpClient httpClient)
     }
 
     public Task<RuntimeStatusResponse> GetRuntimeAsync(CancellationToken token = default) => GetAsync<RuntimeStatusResponse>("api/v1/runtime", token);
+    public Task<IReadOnlyList<ComputeDeviceResponse>> GetComputeDevicesAsync(CancellationToken token = default) => GetAsync<IReadOnlyList<ComputeDeviceResponse>>("api/v1/runtime/compute-devices", token);
     public Task<IReadOnlyList<ConversationRoom>> GetConversationsAsync(int limit = 100, CancellationToken token = default) => GetAsync<IReadOnlyList<ConversationRoom>>($"api/v1/conversations?limit={Math.Clamp(limit, 1, 200)}", token);
     public Task<ConversationRoom> GetConversationAsync(string id, CancellationToken token = default) => GetAsync<ConversationRoom>($"api/v1/conversations/{Escape(id)}", token);
     public Task<IReadOnlyList<ChatMessage>> GetMessagesAsync(string id, int limit = 200, CancellationToken token = default) => GetAsync<IReadOnlyList<ChatMessage>>($"api/v1/conversations/{Escape(id)}/messages?limit={Math.Clamp(limit, 1, 500)}", token);

@@ -29,6 +29,8 @@
 
 `GET /api/v1/runtime`：返回后端状态和当前文字/视觉模型 ID。`state` 为 `starting`、`loading_models`、`ready` 或 `failed`。模型按第一次聊天请求延迟加载；错误只返回安全提示，详细原因写入本机日志。
 
+`GET /api/v1/runtime/compute-devices`：由后端调用本地推理运行时探测可用设备，返回稳定的设备 ID、名称和是否为集成显卡。桌面端不得直接启动 `llama-server` 执行硬件探测。
+
 ## 会话
 
 ### 查询列表

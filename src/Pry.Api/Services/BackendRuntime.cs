@@ -46,6 +46,13 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
     public string? ActiveSpeechModelId => _preferences.ActiveSpeechModelId ?? _settings?.ActiveSpeechModelId;
     public StickerCatalog Stickers => _stickers ?? throw new InvalidOperationException("贴纸目录尚未就绪。");
 
+    public async Task<IReadOnlyList<ComputeDeviceResponse>> ListComputeDevicesAsync(CancellationToken token)
+    {
+        var settings = _settings ?? throw new InvalidOperationException("后端配置尚未就绪。");
+        var devices = await LlamaHardwareDetector.ListDevicesAsync(ResolveAssetPath(settings.LlamaServerPath), cancellationToken: token);
+        return devices.Select(x => new ComputeDeviceResponse(x.Id, x.Name, x.IsIntegrated)).ToArray();
+    }
+
     public async Task ReloadAsync(CancellationToken token)
     {
         await _gate.WaitAsync(token);
