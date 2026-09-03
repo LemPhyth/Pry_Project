@@ -297,15 +297,10 @@ public sealed partial class MainWindow : Window
                 await RefreshConversationRoomsAsync();
             },
             CreateFolderContextMenu,
-            () =>
+            () => ConversationContextMenuFactory.CreateUnfiled(async () =>
             {
-                var createFolder = new MenuItem { Header = "新建文件夹…" };
-                createFolder.Click += async (_, _) =>
-                {
-                    if (await CreateConversationFolderAsync() is not null) await RefreshConversationRoomsAsync();
-                };
-                return new ContextMenu { ItemsSource = new[] { createFolder } };
-            },
+                if (await CreateConversationFolderAsync() is not null) await RefreshConversationRoomsAsync();
+            }),
             room => CreateConversationContextMenu(room, folders));
         ConversationList.ItemsSource = items;
         ConversationList.SelectedItem = items.FirstOrDefault(x => x.Tag is ConversationRoom room && room.Id == _conversationId);
@@ -339,45 +334,50 @@ public sealed partial class MainWindow : Window
     }
 
     private ContextMenu CreateConversationContextMenu(ConversationRoom room, IReadOnlyList<ConversationFolder> folders)
-    {
-        var pin = new MenuItem { Header = room.IsPinned ? "取消顶置" : "顶置" };
-        pin.Click += async (_, _) => { await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, !room.IsPinned, null)); await RefreshConversationRoomsAsync(); };
-        var rename = new MenuItem { Header = "重命名" };
-        rename.Click += async (_, _) =>
-        {
-            var value = await PromptTextAsync("重命名对话", "对话房间标题", room.Title);
-            if (string.IsNullOrWhiteSpace(value)) return; await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(value, null, null)); await RefreshConversationRoomsAsync();
-        };
-        var move = new MenuItem { Header = "移动到文件夹" }; var moveItems = new List<MenuItem>();
-        void AddMoveItem(string label, string? folderId)
-        {
-            var target = new MenuItem { Header = label }; target.Click += async (_, _) => { await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, null, folderId, folderId is null)); await RefreshConversationRoomsAsync(); }; moveItems.Add(target);
-        }
-        AddMoveItem("未分类", null); foreach (var folder in folders) AddMoveItem(folder.Name, folder.Id);
-        var createFolder = new MenuItem { Header = "新建文件夹…" };
-        createFolder.Click += async (_, _) => { var folderId = await CreateConversationFolderAsync(); if (folderId is not null) { await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, null, folderId)); await RefreshConversationRoomsAsync(); } };
-        moveItems.Add(createFolder); move.ItemsSource = moveItems;
-        var remove = new MenuItem { Header = "删除" }; remove.Click += async (_, _) => await DeleteConversationAsync(room);
-        return new ContextMenu { ItemsSource = new MenuItem[] { pin, rename, move, remove } };
-    }
+        => ConversationContextMenuFactory.CreateRoom(room, folders,
+            async () =>
+            {
+                await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, !room.IsPinned, null));
+                await RefreshConversationRoomsAsync();
+            },
+            async () =>
+            {
+                var value = await PromptTextAsync("重命名对话", "对话房间标题", room.Title);
+                if (string.IsNullOrWhiteSpace(value)) return;
+                await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(value, null, null));
+                await RefreshConversationRoomsAsync();
+            },
+            async folderId =>
+            {
+                await _api.UpdateConversationAsync(room.Id,
+                    new UpdateConversationRequest(null, null, folderId, folderId is null));
+                await RefreshConversationRoomsAsync();
+            },
+            async () =>
+            {
+                var folderId = await CreateConversationFolderAsync();
+                if (folderId is null) return;
+                await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, null, folderId));
+                await RefreshConversationRoomsAsync();
+            },
+            () => DeleteConversationAsync(room));
 
-    private ContextMenu CreateFolderContextMenu(ConversationFolder folder)
-    {
-        var rename = new MenuItem { Header = "重命名文件夹" };
-        rename.Click += async (_, _) =>
-        {
-            var value = await PromptTextAsync("重命名文件夹", "文件夹名称", folder.Name);
-            if (string.IsNullOrWhiteSpace(value)) return;
-            await _api.RenameFolderAsync(folder.Id, value); await RefreshConversationRoomsAsync();
-        };
-        var remove = new MenuItem { Header = "删除文件夹" };
-        remove.Click += async (_, _) =>
-        {
-            if (!await ConfirmAsync(this, "删除文件夹", $"确定删除“{folder.Name}”吗？其中的对话会移回未分类，不会被删除。")) return;
-            await _api.DeleteFolderAsync(folder.Id); _collapsedConversationFolders.Remove(folder.Id); await RefreshConversationRoomsAsync();
-        };
-        return new ContextMenu { ItemsSource = new[] { rename, remove } };
-    }
+    private ContextMenu CreateFolderContextMenu(ConversationFolder folder) =>
+        ConversationContextMenuFactory.CreateFolder(
+            async () =>
+            {
+                var value = await PromptTextAsync("重命名文件夹", "文件夹名称", folder.Name);
+                if (string.IsNullOrWhiteSpace(value)) return;
+                await _api.RenameFolderAsync(folder.Id, value);
+                await RefreshConversationRoomsAsync();
+            },
+            async () =>
+            {
+                if (!await ConfirmAsync(this, "删除文件夹", $"确定删除“{folder.Name}”吗？其中的对话会移回未分类，不会被删除。")) return;
+                await _api.DeleteFolderAsync(folder.Id);
+                _collapsedConversationFolders.Remove(folder.Id);
+                await RefreshConversationRoomsAsync();
+            });
 
     private async Task<string?> CreateConversationFolderAsync()
     {
