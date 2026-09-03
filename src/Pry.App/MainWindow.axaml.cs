@@ -1720,16 +1720,16 @@ public sealed partial class MainWindow : Window
         ThemePreferences BuildThemeDraft()
         {
             StoreCurrentImageDisplays();
-            return new ThemePreferences
+            return SettingsDraftService.BuildTheme(themePreferences, new ThemeSettingsDraft
             {
-                BackgroundImagePath = selectedBackground, BackgroundHistory = backgroundHistory.ToArray(), BackgroundDisplays = new Dictionary<string, ImageDisplayPreferences>(backgroundDisplays),
-                UserAvatarPath = selectedUserAvatar, UserAvatarHistory = userAvatarHistory.ToArray(), UserAvatarDisplays = new Dictionary<string, ImageDisplayPreferences>(userAvatarDisplays), CharacterAvatarPath = themePreferences.CharacterAvatarPath,
-                ThemeMode = themeMode.SelectedIndex switch { 1 => "dark", 2 => "light", _ => "system" }, AccentColor = accentColor.Text?.Trim() ?? "#B148C6",
+                BackgroundImagePath = selectedBackground, BackgroundHistory = backgroundHistory, BackgroundDisplays = backgroundDisplays,
+                UserAvatarPath = selectedUserAvatar, UserAvatarHistory = userAvatarHistory, UserAvatarDisplays = userAvatarDisplays,
+                ThemeModeIndex = themeMode.SelectedIndex, AccentColor = accentColor.Text?.Trim() ?? "#B148C6",
                 UseGlassEffects = glassEffects.IsChecked == true, LiveSidebarResize = liveSidebarResize.IsChecked == true,
                 BackgroundImageOpacity = (double)(backgroundOpacity.Value ?? 1m), BackgroundDimOpacity = (double)(backgroundDim.Value ?? .34m),
-                BackgroundBlurMode = (backgroundBlur.Value ?? 0) > 0 ? "blur" : "none", BackgroundBlurRadius = (double)(backgroundBlur.Value ?? 0),
+                BackgroundBlurRadius = (double)(backgroundBlur.Value ?? 0),
                 AvatarSize = (double)(avatarSize.Value ?? 48), BubbleFontSize = (double)(bubbleFontSize.Value ?? 14), BubbleMaxWidth = (double)(bubbleMaxWidth.Value ?? 620), BubbleSpacing = (double)(bubbleSpacing.Value ?? 10)
-            };
+            });
         }
         void UpdateSettingsSurface(ThemePreferences draft)
         {
@@ -1842,10 +1842,11 @@ public sealed partial class MainWindow : Window
         save.Click += async (_, _) =>
         {
             var minCount = (int)(minReplies.Value ?? 1); var maxCount = (int)(maxReplies.Value ?? 4);
-            if (maxCount < minCount || (minDelay.Value ?? 0) > (maxDelay.Value ?? 0)) { await ShowNoticeAsync("参数无效", "最多消息数不能小于最少消息数，最长延迟也不能小于最短延迟。"); return; }
+            var validationError = SettingsDraftService.Validate(minCount, maxCount,
+                minDelay.Value ?? 0, maxDelay.Value ?? 0, accentColor.Text);
+            if (validationError is not null) { await ShowNoticeAsync(validationError.Title, validationError.Message); return; }
             var turnOverride = new TurnTakingSettings { DebounceMs = (int)(debounce.Value ?? 1200), MaxPendingMs = (int)(maxPending.Value ?? 5000), SplitReplies = split.IsChecked == true, AutoClassifyInterrupts = interrupts.IsChecked == true, EnableListeningSignals = listeningSignals.IsChecked == true, ListeningSignalDelayMs = (int)(listeningDelay.Value ?? 4500), MinReplyMessages = minCount, MaxReplyMessages = maxCount, MaxMessageCharacters = (int)(maxChars.Value ?? 90), StyleInstruction = style.Text?.Trim() ?? "", TypingStyle = new TypingStyle { Speed = (double)(speed.Value ?? 1), Burstiness = (double)(burst.Value ?? .75m), MinDelayMs = (int)(minDelay.Value ?? 450), MaxDelayMs = (int)(maxDelay.Value ?? 3200) } };
             StoreModelFields(); var selectedModelId = (activeModel.SelectedItem as ModelChoice)?.Id ?? GetActiveModelId(); var selectedVisionId = (visionModel.SelectedItem as ModelChoice)?.Id; var selectedSpeechId = (speechModel.SelectedItem as ModelChoice)?.Id; var modelTuning = tuningDrafts.TryGetValue(selectedModelId, out var selectedTuning) ? selectedTuning with { ActiveModelId = selectedModelId } : new ModelTuningPreferences { ActiveModelId = selectedModelId };
-            if (!Color.TryParse(accentColor.Text, out _)) { await ShowNoticeAsync("强调色无效", "请填写 #RRGGBB 格式的颜色，例如 #B148C6。"); return; }
             var candidate = _preferences with { ActiveModelId = selectedModelId, ActiveVisionModelId = selectedVisionId, ActiveSpeechModelId = selectedSpeechId, ModelTunings = new Dictionary<string, ModelTuningPreferences>(tuningDrafts), EnableThinking = modelTuning.EnableThinking == true, ModelTuning = modelTuning, TurnTakingOverride = turnOverride, SelectedCharacterId = _character?.Id, DesktopPet = new DesktopPetPreferences { Enabled = petEnabled.IsChecked == true, AlwaysOnTop = petTop.IsChecked == true, Scale = (double)(petScale.Value ?? 1) }, Theme = BuildThemeDraft(), Shortcuts = new ShortcutSettings { Send = send.Text ?? "Enter", SendImmediately = immediate.Text ?? "Ctrl+Enter", NewLine = newline.Text ?? "Shift+Enter", CancelReply = cancel.Text ?? "Escape", NewConversation = newChat.Text ?? "Ctrl+N", OpenStickers = stickers.Text ?? "Ctrl+E", OpenCharacterEditor = character.Text ?? "Ctrl+Shift+C" } };
             save.IsEnabled = false; _turnManager?.CancelAgentReply();
             try
