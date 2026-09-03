@@ -34,7 +34,7 @@ public sealed partial class MainWindow : Window
     private readonly string _appDirectory = AppContext.BaseDirectory;
     private readonly string _dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion");
     private string _conversationId = Guid.NewGuid().ToString("N");
-    private readonly List<ChatAttachment> _attachments = [];
+    private readonly AttachmentDraftService _attachmentDraft = new();
     private readonly List<(Border Control, bool IsUser)> _messageAvatarControls = [];
     private readonly List<(Border Control, bool IsUser)> _messageBubbleControls = [];
     private readonly List<(TextBlock Control, bool IsUser)> _bubbleTextControls = [];
@@ -832,11 +832,11 @@ public sealed partial class MainWindow : Window
     private async Task SendAsync(bool immediate, string? stickerId = null)
     {
         var text = InputBox.Text?.Trim() ?? "";
-        if (_sendBusy || _turnManager is null || (text.Length == 0 && stickerId is null && _attachments.Count == 0)) return;
+        if (_sendBusy || _turnManager is null || (text.Length == 0 && stickerId is null && _attachmentDraft.Items.Count == 0)) return;
         _sendBusy = true;
         SendButton.IsEnabled = false;
         EndUserComposition();
-        var sentAttachments = _attachments.ToArray();
+        var sentAttachments = _attachmentDraft.Items.ToArray();
         try
         {
             var messageId = await _turnManager.SubmitUserInputAsync(new UserInputPart(text, stickerId, sentAttachments), immediate);
@@ -846,7 +846,7 @@ public sealed partial class MainWindow : Window
                 InputBox.Text = "";
                 _suppressInputActivity = false;
             }
-            foreach (var attachment in sentAttachments) _attachments.Remove(attachment);
+            _attachmentDraft.RemoveRange(sentAttachments);
             RefreshAttachmentTray();
             _conversationDrafts.Remove(_conversationId);
             if (text.Length > 0) AddTextBubble("你", text, true, messageId: messageId);
@@ -857,7 +857,7 @@ public sealed partial class MainWindow : Window
         catch (Exception ex)
         {
             TurnStatus.Text = "发送失败 · 输入内容已保留";
-            if (!string.IsNullOrWhiteSpace(InputBox.Text) || _attachments.Count > 0) BeginUserComposition(false);
+            if (!string.IsNullOrWhiteSpace(InputBox.Text) || _attachmentDraft.Items.Count > 0) BeginUserComposition(false);
             await ShowNoticeAsync("消息发送失败", $"没有发送成功，你的文字和附件仍保留在输入区。\n\n{ex.Message}");
         }
         finally
@@ -1172,42 +1172,17 @@ public sealed partial class MainWindow : Window
 
     private async Task AddAttachmentPathsAsync(IEnumerable<string> paths)
     {
-        var rejected = new List<string>();
-        var warnings = new List<string>();
-        foreach (var sourcePath in paths.Where(File.Exists))
-        {
-            if (_attachments.Count >= 12) { rejected.Add("最多同时添加 12 个附件"); break; }
-            var kind = GetAttachmentKind(sourcePath);
-            if (kind is null) { rejected.Add($"{Path.GetFileName(sourcePath)}：格式不支持"); continue; }
-            try
-            {
-                var file = new FileInfo(sourcePath);
-                using (file.OpenRead()) { }
-                if (file.Length > 10 * 1024 * 1024)
-                    warnings.Add($"{file.Name} 较大（{file.Length / 1024d / 1024d:F1} MiB），上传和处理可能需要更长时间");
-                _attachments.Add(new ChatAttachment(file.FullName, kind.Value, file.Name));
-            }
-            catch { rejected.Add($"{Path.GetFileName(sourcePath)}：无法读取"); }
-        }
+        var result = _attachmentDraft.AddPaths(paths);
         RefreshAttachmentTray();
-        if (_attachments.Count > 0) _turnManager?.NotifyInputActivity();
-        if (rejected.Count > 0) await ShowNoticeAsync("部分附件未添加", string.Join(Environment.NewLine, rejected.Distinct()));
-        if (warnings.Count > 0) await ShowNoticeAsync("大文件提醒", string.Join(Environment.NewLine, warnings));
+        if (_attachmentDraft.Items.Count > 0) _turnManager?.NotifyInputActivity();
+        if (result.Rejected.Count > 0) await ShowNoticeAsync("部分附件未添加", string.Join(Environment.NewLine, result.Rejected));
+        if (result.Warnings.Count > 0) await ShowNoticeAsync("大文件提醒", string.Join(Environment.NewLine, result.Warnings));
     }
-
-    private static ChatAttachmentKind? GetAttachmentKind(string path) => Path.GetExtension(path).ToLowerInvariant() switch
-    {
-        ".png" or ".jpg" or ".jpeg" or ".webp" or ".gif" => ChatAttachmentKind.Image,
-        ".txt" => ChatAttachmentKind.Text,
-        ".csv" or ".scv" => ChatAttachmentKind.Csv,
-        ".docx" => ChatAttachmentKind.Docx,
-        _ => null
-    };
 
     private void RefreshAttachmentTray()
     {
         AttachmentPreviewPanel.Children.Clear();
-        foreach (var attachment in _attachments.ToArray())
+        foreach (var attachment in _attachmentDraft.Items.ToArray())
         {
             Control preview;
             if (attachment.IsImage)
@@ -1217,13 +1192,13 @@ public sealed partial class MainWindow : Window
             }
             else preview = new Border { Width = 58, Height = 58, CornerRadius = new CornerRadius(8), Background = Brush.Parse("#263746"), Child = new TextBlock { Text = Path.GetExtension(attachment.Name).TrimStart('.').ToUpperInvariant(), FontSize = 10, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
             var remove = new Button { Content = "×", Classes = { "composer-action" }, Width = 26, Height = 26, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Top };
-            remove.Click += (_, _) => { _attachments.Remove(attachment); RefreshAttachmentTray(); };
+            remove.Click += (_, _) => { _attachmentDraft.Remove(attachment); RefreshAttachmentTray(); };
             var card = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto"), Margin = new Thickness(0, 0, 8, 0), Children = { preview, remove } };
             Grid.SetColumn(remove, 1);
             ToolTip.SetTip(card, attachment.Name);
             AttachmentPreviewPanel.Children.Add(card);
         }
-        AttachmentTray.IsVisible = _attachments.Count > 0;
+        AttachmentTray.IsVisible = _attachmentDraft.Items.Count > 0;
         ScrollChatToEnd();
     }
 
