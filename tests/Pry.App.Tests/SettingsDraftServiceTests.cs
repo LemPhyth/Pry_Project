@@ -25,6 +25,24 @@ public sealed class SettingsDraftServiceTests
         Assert.Null(SettingsDraftService.Validate(1, 4, 450, 3200, " #06A6a6 "));
 
     [Fact]
+    public void ValidateShortcuts_rejects_invalid_and_conflicting_bindings()
+    {
+        var invalid = SettingsDraftService.ValidateShortcuts(new ShortcutSettings { Send = "Foo+E" });
+        var conflict = SettingsDraftService.ValidateShortcuts(new ShortcutSettings
+        {
+            Send = "Ctrl+Enter",
+            SendImmediately = "ctrl+enter"
+        });
+
+        Assert.Equal("快捷键无效", invalid?.Title);
+        Assert.Equal("快捷键冲突", conflict?.Title);
+    }
+
+    [Fact]
+    public void ValidateShortcuts_accepts_default_bindings() =>
+        Assert.Null(SettingsDraftService.ValidateShortcuts(new ShortcutSettings()));
+
+    [Fact]
     public void BuildTheme_clamps_values_and_copies_mutable_collections()
     {
         var history = new List<string> { "background.png" };

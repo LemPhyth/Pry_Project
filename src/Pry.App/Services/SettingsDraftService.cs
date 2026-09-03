@@ -17,6 +17,25 @@ public static partial class SettingsDraftService
         return null;
     }
 
+    public static SettingsValidationError? ValidateShortcuts(ShortcutSettings shortcuts)
+    {
+        var entries = new[]
+        {
+            ("发送", shortcuts.Send), ("立即回复", shortcuts.SendImmediately),
+            ("换行", shortcuts.NewLine), ("打断回复", shortcuts.CancelReply),
+            ("新对话", shortcuts.NewConversation), ("打开表情", shortcuts.OpenStickers),
+            ("角色卡", shortcuts.OpenCharacterEditor)
+        };
+        var invalid = entries.FirstOrDefault(entry => !ShortcutGestureMatcher.IsValid(entry.Item2));
+        if (invalid != default)
+            return new SettingsValidationError("快捷键无效", $"“{invalid.Item1}”的快捷键格式无法识别。");
+        var conflict = entries.GroupBy(entry => entry.Item2.Trim(), StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => group.Count() > 1);
+        return conflict is null
+            ? null
+            : new SettingsValidationError("快捷键冲突", $"快捷键 {conflict.Key} 被多个操作重复使用。");
+    }
+
     public static ThemePreferences BuildTheme(ThemePreferences source, ThemeSettingsDraft draft) => new()
     {
         BackgroundImagePath = draft.BackgroundImagePath,
