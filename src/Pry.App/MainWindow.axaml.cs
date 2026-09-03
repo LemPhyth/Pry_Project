@@ -866,33 +866,38 @@ public sealed partial class MainWindow : Window
     private void AddTextBubble(string author, string content, bool isUser, DateTimeOffset? timestamp = null, long? messageId = null)
     {
         var theme = _preferences.Theme ?? new ThemePreferences();
-        var text = new TextBlock { Text = content, TextWrapping = TextWrapping.Wrap, MaxWidth = Math.Clamp(theme.BubbleMaxWidth, 280, 900), FontSize = Math.Clamp(theme.BubbleFontSize, 11, 24), Foreground = isUser ? AccentTextBrush() : ThemeTextBrush() };
-        _bubbleTextControls.Add((text, isUser));
-        AddBubble(author, new Border { Background = isUser ? ThemeAccentBrush() : AssistantBubbleBrush(), CornerRadius = new CornerRadius(12), Padding = new Thickness(13, 9), Child = text }, isUser, timestamp, messageId, content);
+        var view = MessageContentFactory.CreateText(content, isUser, theme, ThemeAccentBrush(), AssistantBubbleBrush(), AccentTextBrush(), ThemeTextBrush());
+        TrackMessageContent(view, isUser);
+        AddBubble(author, view.Content, isUser, timestamp, messageId, content);
     }
     private void AddStickerBubble(string author, string stickerId, bool isUser, DateTimeOffset? timestamp = null, long? messageId = null)
     {
         var sticker = _stickers.FirstOrDefault(x => x.Id == stickerId && x.Enabled); if (sticker is null) { AddTextBubble(author, "[表情]", isUser); return; }
-        try { AddBubble(author, new Border { CornerRadius = new CornerRadius(14), Child = new Image { Source = new Bitmap(sticker.FilePath), MaxWidth = 220, MaxHeight = 220, Stretch = Stretch.Uniform } }, isUser, timestamp, messageId, ""); }
+        try { AddBubble(author, MessageContentFactory.CreateSticker(sticker.FilePath).Content, isUser, timestamp, messageId, ""); }
         catch { AddTextBubble(author, $"[表情：{sticker.Name}]", isUser); }
     }
     private void AddImageBubble(string author, string imagePath, bool isUser, DateTimeOffset? timestamp = null, long? messageId = null)
     {
         try
         {
-            var image = new Image { Source = new Bitmap(imagePath), MaxWidth = 360, MaxHeight = 280, Stretch = Stretch.Uniform };
-            AddBubble(author, new Border { Background = isUser ? ThemeAccentBrush() : AssistantBubbleBrush(), CornerRadius = new CornerRadius(12), Padding = new Thickness(5), Child = image }, isUser, timestamp, messageId, "");
+            var view = MessageContentFactory.CreateImage(imagePath, isUser ? ThemeAccentBrush() : AssistantBubbleBrush());
+            TrackMessageContent(view, isUser);
+            AddBubble(author, view.Content, isUser, timestamp, messageId, "");
         }
         catch { AddTextBubble(author, $"[图片无法显示：{Path.GetFileName(imagePath)}]", isUser); }
     }
     private void AddAttachmentBubble(string author, ChatAttachment attachment, bool isUser, long? messageId = null)
     {
-        if (attachment.IsImage) { AddImageBubble(author, attachment.Path, isUser); return; }
-        var extension = Path.GetExtension(attachment.Name).TrimStart('.').ToUpperInvariant();
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-        panel.Children.Add(new Border { Width = 42, Height = 42, CornerRadius = new CornerRadius(8), Background = Brush.Parse("#263746"), Child = new TextBlock { Text = extension, FontSize = 10, FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } });
-        panel.Children.Add(new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { new TextBlock { Text = attachment.Name, MaxWidth = 300, TextTrimming = TextTrimming.CharacterEllipsis }, new TextBlock { Text = "文档附件", FontSize = 10, Foreground = Brush.Parse("#8EA2B5") } } });
-        AddBubble(author, new Border { Background = isUser ? ThemeAccentBrush() : AssistantBubbleBrush(), CornerRadius = new CornerRadius(12), Padding = new Thickness(10), Child = panel }, isUser, messageId: messageId, messageText: "");
+        if (attachment.IsImage) { AddImageBubble(author, attachment.Path, isUser, messageId: messageId); return; }
+        var view = MessageContentFactory.CreateDocument(attachment, isUser ? ThemeAccentBrush() : AssistantBubbleBrush());
+        TrackMessageContent(view, isUser);
+        AddBubble(author, view.Content, isUser, messageId: messageId, messageText: "");
+    }
+
+    private void TrackMessageContent(MessageContentView view, bool isUser)
+    {
+        if (view.ThemedBubble is not null) _messageBubbleControls.Add((view.ThemedBubble, isUser));
+        if (view.Text is not null) _bubbleTextControls.Add((view.Text, isUser));
     }
     private Control CreateMessageAvatar(bool isUser)
     {
@@ -924,7 +929,6 @@ public sealed partial class MainWindow : Window
         panel.Children.Add(meta); panel.Children.Add(content);
         var row = new Grid { ColumnDefinitions = isUser ? new ColumnDefinitions("*,Auto") : new ColumnDefinitions("Auto,*"), ColumnSpacing = 8 };
         var avatar = CreateMessageAvatar(isUser);
-        if (content is Border bubble && bubble.Background is not null) _messageBubbleControls.Add((bubble, isUser));
         if (isUser) { Grid.SetColumn(panel, 0); Grid.SetColumn(avatar, 1); } else { Grid.SetColumn(avatar, 0); Grid.SetColumn(panel, 1); }
         row.Children.Add(panel); row.Children.Add(avatar); if (panel.ContextMenu is not null) row.ContextMenu = panel.ContextMenu;
         MessagesPanel.Children.Insert(Math.Max(0, MessagesPanel.Children.Count - 1), row); ScrollChatToEnd();
