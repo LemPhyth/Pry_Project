@@ -76,8 +76,6 @@ public sealed partial class MainWindow : Window
     private string PreferencesPath => Path.Combine(_dataDirectory, "preferences.json");
     private string CharacterPath => Path.Combine(_dataDirectory, "character.json");
     private string CharacterDirectory => Path.Combine(_dataDirectory, "characters");
-    private string ThemeMediaDirectory => Path.Combine(_dataDirectory, "theme-media");
-    private string CharacterMediaDirectory => Path.Combine(_dataDirectory, "character-media");
 
     public MainWindow() : this(new PryBackendClient(new HttpClient { BaseAddress = new Uri("http://127.0.0.1:5078/"), Timeout = Timeout.InfiniteTimeSpan })) { }
 
@@ -142,14 +140,14 @@ public sealed partial class MainWindow : Window
             if (File.Exists(PreferencesPath)) _preferences = await JsonConfiguration.LoadAsync<UserPreferences>(PreferencesPath);
             if (!string.IsNullOrWhiteSpace(_preferences.ActiveConversationId)) _conversationId = _preferences.ActiveConversationId;
             await LoadCharactersAsync(Path.Combine(resources, "character.json"));
-            await MigrateLegacyMediaAsync();
             ApplyTheme();
             if (!await _api.IsHealthyAsync()) throw new InvalidOperationException("本地后端未就绪。");
             try { _ = await _api.GetConversationAsync(_conversationId); }
             catch (PryBackendException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 var created = await _api.CreateConversationAsync(_character?.Id); _conversationId = created.Id;
-                _preferences = _preferences with { ActiveConversationId = _conversationId }; await JsonConfiguration.SaveAsync(PreferencesPath, _preferences);
+                _preferences = _preferences with { ActiveConversationId = _conversationId };
+                await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(null, _conversationId, null, null, null, null, null));
             }
             _stickerCatalog = new StickerCatalog(Path.Combine(resources, "Stickers", "manifest.json"), Path.Combine(_dataDirectory, "stickers")); await _stickerCatalog.LoadAsync();
             var profiles = BuildProfiles(_preferences); _profiles = profiles;
@@ -170,7 +168,6 @@ public sealed partial class MainWindow : Window
         {
             var loaded = await JsonConfiguration.LoadAsync<CharacterDefinition>(path); JsonConfiguration.Validate(loaded);
             var card = NormalizeCharacterNaming(loaded);
-            if (card != loaded && !Path.GetFullPath(path).Equals(Path.GetFullPath(bundledPath), StringComparison.OrdinalIgnoreCase)) await JsonConfiguration.SaveAsync(path, card);
             _characters.RemoveAll(x => x.Id == card.Id); _characters.Add(card);
         }
         await AddOrReplaceAsync(bundledPath);
@@ -186,45 +183,6 @@ public sealed partial class MainWindow : Window
         return separator > 0
             ? card with { CardName = card.Name, Name = card.Name[..separator].Trim() }
             : card with { CardName = $"{card.Name}-正式-v1" };
-    }
-
-    private async Task MigrateLegacyMediaAsync()
-    {
-        var theme = _preferences.Theme ?? new ThemePreferences();
-        var migratedPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        string? Migrate(string? source, string category)
-        {
-            if (string.IsNullOrWhiteSpace(source) || !File.Exists(source)) return null;
-            if (migratedPaths.TryGetValue($"{category}|{source}", out var existing)) return existing;
-            var targetDirectory = Path.Combine(category == "characters" ? CharacterMediaDirectory : ThemeMediaDirectory, category);
-            var result = IsPathInside(source, targetDirectory) ? source : CacheManagedImage(source, category);
-            migratedPaths[$"{category}|{source}"] = result; return result;
-        }
-        List<string> MigrateMany(IEnumerable<string?> sources, string category) => sources
-            .Select(x => Migrate(x, category)).Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>()
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-        var backgrounds = MigrateMany(theme.BackgroundHistory.Append(theme.BackgroundImagePath), "backgrounds");
-        var userAvatars = MigrateMany(theme.UserAvatarHistory.Append(theme.UserAvatarPath), "user-avatars");
-        var selectedBackground = Migrate(theme.BackgroundImagePath, "backgrounds");
-        var selectedUserAvatar = Migrate(theme.UserAvatarPath, "user-avatars");
-        var legacyCharacterAvatar = Migrate(theme.CharacterAvatarPath, "characters");
-        if (_character is not null && string.IsNullOrWhiteSpace(_character.AvatarPath) && legacyCharacterAvatar is not null)
-        {
-            _character = _character with { AvatarPath = legacyCharacterAvatar };
-            _characters.RemoveAll(x => x.Id == _character.Id); _characters.Add(_character);
-            await JsonConfiguration.SaveAsync(Path.Combine(CharacterDirectory, _character.Id + ".json"), _character);
-        }
-        for (var index = 0; index < _characters.Count; index++)
-        {
-            var card = _characters[index]; var migrated = Migrate(card.AvatarPath, "characters");
-            if (migrated is null || migrated == card.AvatarPath) continue;
-            card = card with { AvatarPath = migrated }; _characters[index] = card;
-            if (_character?.Id == card.Id) _character = card;
-            await JsonConfiguration.SaveAsync(Path.Combine(CharacterDirectory, card.Id + ".json"), card);
-        }
-        _preferences = _preferences with { Theme = theme with { BackgroundImagePath = selectedBackground, BackgroundHistory = backgrounds, UserAvatarPath = selectedUserAvatar, UserAvatarHistory = userAvatars, CharacterAvatarPath = null } };
-        await JsonConfiguration.SaveAsync(PreferencesPath, _preferences);
     }
 
     private void RefreshCharacterSelector()
@@ -429,7 +387,8 @@ public sealed partial class MainWindow : Window
         var messages = await _api.GetMessagesAsync(_conversationId, 200);
         if (messages.Count == 0 && _character is not null) AddTextBubble(_character.Name, _character.Greeting, false); else RenderConversationMessages(messages);
         _preferences = _preferences with { ActiveConversationId = _conversationId, SelectedCharacterId = _character?.Id };
-        await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); await RefreshConversationRoomsAsync();
+        await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(_character?.Id, _conversationId, null, null, null, null, null));
+        await RefreshConversationRoomsAsync();
     }
 
     private ContextMenu CreateConversationContextMenu(ConversationRoom room, IReadOnlyList<ConversationFolder> folders)
@@ -910,23 +869,6 @@ public sealed partial class MainWindow : Window
         foreach (var item in _bubbleTextControls) { item.Control.FontSize = Math.Clamp(theme.BubbleFontSize, 11, 24); item.Control.MaxWidth = Math.Clamp(theme.BubbleMaxWidth, 280, 900); item.Control.Foreground = item.IsUser ? AccentTextBrush() : Brush.Parse(lightTheme() ? "#17212B" : "#F2F6FA"); }
         MessagesPanel.Spacing = Math.Clamp(theme.BubbleSpacing, 2, 36);
         bool lightTheme() => theme.ThemeMode.Equals("light", StringComparison.OrdinalIgnoreCase) || (theme.ThemeMode.Equals("system", StringComparison.OrdinalIgnoreCase) && Application.Current?.ActualThemeVariant == ThemeVariant.Light);
-    }
-
-    private string CacheManagedImage(string sourcePath, string category)
-    {
-        var targetDirectory = Path.Combine(category == "characters" ? CharacterMediaDirectory : ThemeMediaDirectory, category);
-        Directory.CreateDirectory(targetDirectory);
-        var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
-        var target = Path.Combine(targetDirectory, $"{Guid.NewGuid():N}{extension}");
-        File.Copy(sourcePath, target, false);
-        return target;
-    }
-
-    private static bool IsPathInside(string path, string directory)
-    {
-        var fullPath = Path.GetFullPath(path);
-        var fullDirectory = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return fullPath.StartsWith(fullDirectory, StringComparison.OrdinalIgnoreCase);
     }
 
     private async void SendButton_Click(object? sender, RoutedEventArgs e) => await SendAsync(false);
@@ -1483,7 +1425,8 @@ public sealed partial class MainWindow : Window
         _suppressInputActivity = true; InputBox.Text = ""; _suppressInputActivity = false; ResetMessagesPanel(); CreateTurnManager();
         if (_character is not null) AddTextBubble(_character.Name, _character.Greeting, false);
         _preferences = _preferences with { ActiveConversationId = _conversationId };
-        await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); await RefreshConversationRoomsAsync();
+        await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(_character?.Id, _conversationId, null, null, null, null, null));
+        await RefreshConversationRoomsAsync();
     }
 
     private async void CharacterEditor_Click(object? sender, RoutedEventArgs e) => await OpenCharacterEditorAsync();
@@ -1538,7 +1481,7 @@ public sealed partial class MainWindow : Window
             var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "选择用户头像", AllowMultiple = false, FileTypeFilter = [new FilePickerFileType("图片") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"] }] });
             var source = files.FirstOrDefault()?.TryGetLocalPath();
             if (string.IsNullOrWhiteSpace(source)) return;
-            avatarPath = CacheManagedImage(source, "user-avatars"); focusX.Value = .5m; focusY.Value = .5m; zoom.Value = 1; RefreshPreview();
+            avatarPath = source; focusX.Value = .5m; focusY.Value = .5m; zoom.Value = 1; RefreshPreview();
         };
         clear.Click += (_, _) => { avatarPath = null; preview.Source = null; };
         save.Click += async (_, _) =>
@@ -1551,7 +1494,17 @@ public sealed partial class MainWindow : Window
                 UserProfile = new UserProfilePreferences { DisplayName = displayName.Text.Trim(), Signature = signature.Text?.Trim() ?? "" },
                 Theme = theme with { UserAvatarPath = avatarPath, UserAvatarHistory = history, UserAvatarDisplays = displays }
             };
-            await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); ApplyTheme(); window.Close();
+            await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(null, null, _preferences.UserProfile,
+                null, null, null, null));
+            string? avatarMediaId = null;
+            if (!string.IsNullOrWhiteSpace(avatarPath) && File.Exists(avatarPath))
+            {
+                await using var content = File.OpenRead(avatarPath);
+                avatarMediaId = (await _api.UploadAsync(content, Path.GetFileName(avatarPath), ImageContentType(avatarPath))).Id;
+            }
+            await _api.UpdateAppearanceAsync(new UpdateAppearanceMediaRequest(null, false, avatarMediaId,
+                avatarPath is null, null, avatarPath is null ? null : displays[avatarPath]));
+            ApplyTheme(); window.Close();
         };
         await window.ShowDialog(this);
     }
@@ -2029,7 +1982,7 @@ public sealed partial class MainWindow : Window
         async Task<string?> PickThemeImageAsync(string title, string category)
         {
             var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = title, AllowMultiple = false, FileTypeFilter = [new FilePickerFileType("图片") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"] }] });
-            var path = files.FirstOrDefault()?.TryGetLocalPath(); return string.IsNullOrWhiteSpace(path) ? null : CacheManagedImage(path, category);
+            var path = files.FirstOrDefault()?.TryGetLocalPath(); return string.IsNullOrWhiteSpace(path) ? null : path;
         }
         browseBackground.Click += async (_, _) => { var path = await PickThemeImageAsync("导入聊天背景", "backgrounds"); if (path is null) return; backgroundHistory.Add(path); selectedBackground = path; LoadDisplay(path, backgroundDisplays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); RefreshBackgroundGallery(); PreviewTheme(); };
         clearBackground.Click += (_, _) => { selectedBackground = null; backgroundPreview.Source = null; RefreshBackgroundGallery(); PreviewTheme(); };
@@ -2037,7 +1990,6 @@ public sealed partial class MainWindow : Window
         {
             if (selectedBackground is null || !await ConfirmAsync(window, "删除背景", "确定从 Pry 素材库永久删除当前背景吗？")) return;
             var path = selectedBackground; backgroundHistory.RemoveAll(x => string.Equals(x, path, StringComparison.OrdinalIgnoreCase)); selectedBackground = null;
-            if (IsPathInside(path, Path.Combine(ThemeMediaDirectory, "backgrounds"))) try { File.Delete(path); } catch { }
             backgroundPreview.Source = null; RefreshBackgroundGallery(); PreviewTheme();
         };
         browseUserAvatar.Click += async (_, _) => { var path = await PickThemeImageAsync("导入用户头像", "user-avatars"); if (path is null) return; userAvatarHistory.Add(path); selectedUserAvatar = path; LoadDisplay(path, userAvatarDisplays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview); RefreshUserAvatarGallery(); PreviewTheme(); };
@@ -2046,7 +1998,6 @@ public sealed partial class MainWindow : Window
         {
             if (selectedUserAvatar is null || !await ConfirmAsync(window, "删除用户头像", "确定从 Pry 素材库永久删除当前头像吗？")) return;
             var path = selectedUserAvatar; userAvatarHistory.RemoveAll(x => string.Equals(x, path, StringComparison.OrdinalIgnoreCase)); selectedUserAvatar = null;
-            if (IsPathInside(path, Path.Combine(ThemeMediaDirectory, "user-avatars"))) try { File.Delete(path); } catch { }
             userAvatarPreview.Source = null; RefreshUserAvatarGallery(); PreviewTheme();
         };
         characterManagerButton.Click += async (_, _) => await OpenCharacterEditorAsync(window);
@@ -2091,11 +2042,24 @@ public sealed partial class MainWindow : Window
                         candidate.Theme.BackgroundBlurMode, candidate.Theme.BackgroundBlurRadius,
                         candidate.Theme.AvatarSize, candidate.Theme.BubbleFontSize, candidate.Theme.BubbleMaxWidth,
                         candidate.Theme.BubbleSpacing)));
+                async Task<string?> UploadAppearanceAsync(string? path)
+                {
+                    if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
+                    await using var content = File.OpenRead(path);
+                    var uploaded = await _api.UploadAsync(content, Path.GetFileName(path), ImageContentType(path));
+                    foreach (var warning in uploaded.Warnings) RuntimeStatus.Text = warning;
+                    return uploaded.Id;
+                }
+                var backgroundMediaId = await UploadAppearanceAsync(selectedBackground);
+                var userAvatarMediaId = await UploadAppearanceAsync(selectedUserAvatar);
+                await _api.UpdateAppearanceAsync(new UpdateAppearanceMediaRequest(backgroundMediaId,
+                    selectedBackground is null, userAvatarMediaId, selectedUserAvatar is null,
+                    selectedBackground is null ? null : ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom),
+                    selectedUserAvatar is null ? null : ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)));
                 var backendModels = await _api.UpdateModelSelectionAsync(new UpdateModelSelectionRequest(
                     selectedModelId, selectedVisionId, selectedSpeechId, candidate.ModelTunings));
                 _preferences = candidate;
                 _profiles = BuildProfiles(candidate);
-                await JsonConfiguration.SaveAsync(PreferencesPath, _preferences);
                 ApplyTheme(); await ReloadActiveConversationAsync();
                 RuntimeStatus.Text = $"后端模型配置已保存 · {backendModels.First(x => x.SelectedForText).DisplayName}";
                 themeCommitted = true; window.Close();
@@ -2133,10 +2097,23 @@ public sealed partial class MainWindow : Window
             save.Click += (_, _) => { if (string.IsNullOrWhiteSpace(name.Text)) return; result = new SpeechModelProfile { Id = source?.Id ?? $"speech-{Guid.NewGuid():N}", DisplayName = name.Text.Trim(), Provider = provider.SelectedItem?.ToString() ?? "sherpa-onnx", ModelName = modelName.Text?.Trim() ?? "whisper-1", ModelPath = path.Text?.Trim() ?? "", BaseUrl = baseUrl.Text?.Trim() ?? "", Language = language.Text?.Trim() ?? "zh", SampleRate = (int)(sampleRate.Value ?? 16000) }; editor.Close(); };
             await editor.ShowDialog(owner); return result;
         }
-        add.Click += async (_, _) => { var value = await EditAsync(null); if (value is not null) { models.Add(value); Refresh(); } };
-        edit.Click += async (_, _) => { if (list.SelectedItem is not ModelChoice choice) return; var index = models.FindIndex(x => x.Id == choice.Id); if (index < 0) return; var value = await EditAsync(models[index]); if (value is not null) { models[index] = value; Refresh(); } };
-        remove.Click += async (_, _) => { if (list.SelectedItem is not ModelChoice choice || !await ConfirmAsync(window, "删除语音模型配置", $"确定删除“{choice.Name}”吗？本地模型文件不会被删除。")) return; models.RemoveAll(x => x.Id == choice.Id); Refresh(); };
-        done.Click += async (_, _) => { _preferences = _preferences with { CustomSpeechModels = models.ToArray() }; await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); window.Close(); };
+        static SaveSpeechModelRequest SpeechRequest(SpeechModelProfile value) => new(value.DisplayName,
+            value.Provider, value.ModelName, value.ModelPath, value.BaseUrl, value.Language, value.SampleRate);
+        add.Click += async (_, _) =>
+        {
+            var value = await EditAsync(null); if (value is null) return;
+            var saved = await _api.CreateSpeechModelAsync(SpeechRequest(value));
+            models.Add(value with { Id = saved.Id }); Refresh();
+        };
+        edit.Click += async (_, _) =>
+        {
+            if (list.SelectedItem is not ModelChoice choice) return;
+            var index = models.FindIndex(x => x.Id == choice.Id); if (index < 0) return;
+            var value = await EditAsync(models[index]); if (value is null) return;
+            await _api.UpdateSpeechModelAsync(choice.Id, SpeechRequest(value)); models[index] = value; Refresh();
+        };
+        remove.Click += async (_, _) => { if (list.SelectedItem is not ModelChoice choice || !await ConfirmAsync(window, "删除语音模型配置", $"确定删除“{choice.Name}”吗？本地模型文件不会被删除。")) return; await _api.DeleteSpeechModelAsync(choice.Id); models.RemoveAll(x => x.Id == choice.Id); Refresh(); };
+        done.Click += (_, _) => { _preferences = _preferences with { CustomSpeechModels = models.ToArray() }; window.Close(); };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { add, edit, remove, done } };
         var speechLayout = new Grid { Margin = new Thickness(22), RowDefinitions = new RowDefinitions("Auto,*,Auto"), Children = { new TextBlock { Text = "保留多个本地或 API 语音识别配置，在主设置页选择当前使用项。", TextWrapping = TextWrapping.Wrap }, list, buttons } }; Grid.SetRow(list, 1); Grid.SetRow(buttons, 2); window.Content = CreateThemedDialogSurface(speechLayout);
         await window.ShowDialog(owner);
@@ -2160,8 +2137,19 @@ public sealed partial class MainWindow : Window
             }
         }
         Refresh();
-        import.Click += async (_, _) => { var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "导入表情包", AllowMultiple = true, FileTypeFilter = [new FilePickerFileType("表情图片") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"] }] }); foreach (var file in files) { var path = file.TryGetLocalPath(); if (path is not null) await _stickerCatalog.ImportAsync(path, Path.GetFileNameWithoutExtension(path), []); } Refresh(); };
-        remove.Click += async (_, _) => { if (selected is { Source: StickerSource.User } && await ConfirmAsync(window, "删除表情", $"确定删除“{selected.Name}”吗？这会同时删除应用数据目录里的副本。")) { await _stickerCatalog.RemoveUserAsync(selected.Id); selected = null; Refresh(); } };
+        import.Click += async (_, _) =>
+        {
+            var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "导入表情包", AllowMultiple = true, FileTypeFilter = [new FilePickerFileType("表情图片") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"] }] });
+            foreach (var file in files)
+            {
+                var path = file.TryGetLocalPath(); if (path is null) continue;
+                await using var content = File.OpenRead(path);
+                var media = await _api.UploadAsync(content, Path.GetFileName(path), ImageContentType(path));
+                await _api.ImportStickerAsync(media.Id, Path.GetFileNameWithoutExtension(path), []);
+            }
+            await _stickerCatalog.LoadAsync(); Refresh();
+        };
+        remove.Click += async (_, _) => { if (selected is { Source: StickerSource.User } && await ConfirmAsync(window, "删除表情", $"确定删除“{selected.Name}”吗？这会同时删除应用数据目录里的副本。")) { await _api.DeleteStickerAsync(selected.Id); await _stickerCatalog.LoadAsync(); selected = null; Refresh(); } };
         edit.Click += async (_, _) => { if (selected is { Source: StickerSource.User }) { await EditStickerAsync(window, selected); selected = _stickerCatalog.Find(selected.Id); Refresh(); } }; close.Click += (_, _) => window.Close();
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 9, HorizontalAlignment = HorizontalAlignment.Right, Children = { import, edit, remove, close } };
         var scroll = new ScrollViewer { Content = grid, Background = Brushes.Transparent };
@@ -2186,10 +2174,24 @@ public sealed partial class MainWindow : Window
             ModelProfile? result = null; save.Click += (_, _) => { if (string.IsNullOrWhiteSpace(name.Text) || string.IsNullOrWhiteSpace(modelName.Text) || string.IsNullOrWhiteSpace(baseUrl.Text)) return; result = new ModelProfile { Id = source?.Id ?? $"custom-{Guid.NewGuid():N}", DisplayName = name.Text.Trim(), Provider = provider.SelectedItem?.ToString() ?? "local-llama", ModelName = modelName.Text.Trim(), BaseUrl = baseUrl.Text.Trim(), ModelPath = string.IsNullOrWhiteSpace(modelPath.Text) ? null : modelPath.Text.Trim(), MmprojPath = string.IsNullOrWhiteSpace(mmproj.Text) ? null : mmproj.Text.Trim(), Capabilities = new ModelCapabilities(Text: true, Vision: vision.IsChecked == true), ContextSize = source?.ContextSize ?? 4096, MaxOutputTokens = source?.MaxOutputTokens ?? 512, Temperature = source?.Temperature ?? .8, GpuLayers = source?.GpuLayers is > 0 ? source.GpuLayers : 999, ComputeDevice = source?.ComputeDevice ?? "auto-discrete", EnableThinking = source?.EnableThinking ?? true }; editor.Close(); };
             await editor.ShowDialog(owner); return result;
         }
-        add.Click += async (_, _) => { var result = await EditModelAsync(null); if (result is not null) { models.Add(result); Refresh(); } };
-        edit.Click += async (_, _) => { if (list.SelectedItem is not ModelChoice choice) return; var index = models.FindIndex(x => x.Id == choice.Id); if (index < 0) return; var result = await EditModelAsync(models[index]); if (result is not null) { models[index] = result; Refresh(); } };
-        remove.Click += async (_, _) => { if (list.SelectedItem is not ModelChoice choice || !await ConfirmAsync(window, "删除自定义模型", $"确定从配置中删除“{choice.Name}”吗？模型文件不会被删除。")) return; models.RemoveAll(x => x.Id == choice.Id); Refresh(); };
-        done.Click += async (_, _) => { _preferences = _preferences with { CustomModels = models.ToArray() }; await JsonConfiguration.SaveAsync(PreferencesPath, _preferences); window.Close(); };
+        static SaveCustomModelRequest ModelRequest(ModelProfile value) => new(value.DisplayName, value.Provider,
+            value.ModelName, value.BaseUrl, value.ModelPath, value.MmprojPath, value.Capabilities, value.ContextSize,
+            value.MaxOutputTokens, value.Temperature, value.GpuLayers, value.ComputeDevice, value.EnableThinking);
+        add.Click += async (_, _) =>
+        {
+            var result = await EditModelAsync(null); if (result is null) return;
+            var saved = await _api.CreateCustomModelAsync(ModelRequest(result));
+            models.Add(result with { Id = saved.Id }); Refresh();
+        };
+        edit.Click += async (_, _) =>
+        {
+            if (list.SelectedItem is not ModelChoice choice) return;
+            var index = models.FindIndex(x => x.Id == choice.Id); if (index < 0) return;
+            var result = await EditModelAsync(models[index]); if (result is null) return;
+            await _api.UpdateCustomModelAsync(choice.Id, ModelRequest(result)); models[index] = result; Refresh();
+        };
+        remove.Click += async (_, _) => { if (list.SelectedItem is not ModelChoice choice || !await ConfirmAsync(window, "删除自定义模型", $"确定从配置中删除“{choice.Name}”吗？模型文件不会被删除。")) return; await _api.DeleteCustomModelAsync(choice.Id); models.RemoveAll(x => x.Id == choice.Id); Refresh(); };
+        done.Click += (_, _) => { _preferences = _preferences with { CustomModels = models.ToArray() }; window.Close(); };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { add, edit, remove, done } }; var modelLayout = new Grid { Margin = new Thickness(20), RowDefinitions = new RowDefinitions("Auto,*,Auto"), Children = { new TextBlock { Text = "内置模型不会出现在这里；自定义模型可长期保存多个。", TextWrapping = TextWrapping.Wrap }, list, buttons } }; window.Content = CreateThemedDialogSurface(modelLayout); Grid.SetRow(list, 1); Grid.SetRow(buttons, 2); await window.ShowDialog(owner);
     }
 
@@ -2197,7 +2199,7 @@ public sealed partial class MainWindow : Window
     {
         var name = new TextBox { Text = sticker.Name }; var tags = new TextBox { Text = string.Join("，", sticker.Emotions) }; var role = new ComboBox { ItemsSource = new[] { "reaction", "backchannel", "topic" }, SelectedItem = sticker.InteractionRole }; var backchannel = new CheckBox { Content = "这个表情通常表示“我在听”", IsChecked = sticker.LikelyBackchannel }; var save = new Button { Content = "保存", HorizontalAlignment = HorizontalAlignment.Right };
         var editor = new Window { Title = "编辑表情", Width = 480, Height = 430, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        save.Click += async (_, _) => { var values = (tags.Text ?? "").Split(['，', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); await _stickerCatalog!.UpdateUserAsync(sticker.Id, name.Text ?? sticker.Name, values, role.SelectedItem?.ToString() ?? "reaction", backchannel.IsChecked == true); editor.Close(); };
+        save.Click += async (_, _) => { var values = (tags.Text ?? "").Split(['，', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); await _api.UpdateStickerAsync(sticker.Id, new UpdateStickerRequest(name.Text ?? sticker.Name, values, role.SelectedItem?.ToString() ?? "reaction", backchannel.IsChecked == true)); await _stickerCatalog!.LoadAsync(); editor.Close(); };
         var form = new StackPanel { Spacing = 10, Children = { new TextBlock { Text = "名称" }, name, new TextBlock { Text = "情绪标签" }, tags, new TextBlock { Text = "互动作用" }, role, backchannel } };
         editor.Content = CreateThemedDialogSurface(CreateCompactDialogLayout(CreateCompactDialogTextCard(form), save)); await editor.ShowDialog(owner);
     }

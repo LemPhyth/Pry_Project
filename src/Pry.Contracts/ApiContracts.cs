@@ -50,6 +50,8 @@ public sealed record SpeechModelResponse(string Id, string DisplayName, string P
     string Language, int SampleRate, bool Selected, bool Available);
 public sealed record TranscribeSpeechRequest(string MediaId, string? ModelId = null);
 public sealed record TranscribeSpeechResponse(string Text, string ModelId);
+public sealed record SaveSpeechModelRequest(string DisplayName, string Provider, string ModelName,
+    string? LocalModelDirectory, string BaseUrl, string Language, int SampleRate);
 public sealed record ModelProfileResponse(string Id, string DisplayName, string Provider, string ModelName,
     ModelCapabilities Capabilities, int ContextSize, int MaxOutputTokens, double Temperature, int GpuLayers,
     string ComputeDevice, bool EnableThinking, bool SelectedForText, bool SelectedForVision, bool Custom);

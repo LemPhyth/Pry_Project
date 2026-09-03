@@ -80,6 +80,39 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
     public Task<ModelProfileResponse> CreateCustomModelAsync(SaveCustomModelRequest request, CancellationToken token) =>
         SaveCustomModelAsync($"custom-{Guid.NewGuid():N}", request, true, token);
 
+    public Task<SpeechModelResponse> CreateSpeechModelAsync(SaveSpeechModelRequest request, CancellationToken token) =>
+        SaveSpeechModelAsync($"speech-{Guid.NewGuid():N}", request, true, token);
+
+    public Task<SpeechModelResponse> UpdateSpeechModelAsync(string id, SaveSpeechModelRequest request, CancellationToken token)
+    {
+        ValidateId(id);
+        if (!runtime.Preferences.CustomSpeechModels.Any(x => x.Id == id))
+            throw new ResourceNotFoundException("speech_model", id);
+        return SaveSpeechModelAsync(id, request, false, token);
+    }
+
+    public async Task DeleteSpeechModelAsync(string id, CancellationToken token)
+    {
+        await _gate.WaitAsync(token);
+        try
+        {
+            ValidateId(id);
+            if (!runtime.Preferences.CustomSpeechModels.Any(x => x.Id == id))
+                throw new ResourceNotFoundException("speech_model", id);
+            if (runtime.ActiveSpeechModelId == id)
+                throw new ResourceConflictException("speech_model", id, "不能删除当前选中的语音模型，请先切换模型。");
+            var updated = runtime.Preferences with
+            {
+                CustomSpeechModels = runtime.Preferences.CustomSpeechModels.Where(x => x.Id != id).ToArray()
+            };
+            await sessions.ReconfigureAsync(async ct =>
+            {
+                await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct); await runtime.ReloadAsync(ct);
+            }, token);
+        }
+        finally { _gate.Release(); }
+    }
+
     public async Task<ModelProfileResponse> UpdateCustomModelAsync(string id, SaveCustomModelRequest request,
         CancellationToken token)
     {
@@ -377,6 +410,54 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
                 await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct); await runtime.ReloadAsync(ct);
             }, token);
             return GetModels().Single(x => x.Id == id);
+        }
+        finally { _gate.Release(); }
+    }
+
+    private async Task<SpeechModelResponse> SaveSpeechModelAsync(string id, SaveSpeechModelRequest request,
+        bool creating, CancellationToken token)
+    {
+        await _gate.WaitAsync(token);
+        try
+        {
+            ValidateId(id);
+            if (!creating && !runtime.Preferences.CustomSpeechModels.Any(x => x.Id == id))
+                throw new ResourceNotFoundException("speech_model", id);
+            var provider = request.Provider?.Trim();
+            if (provider is not ("sherpa-onnx" or "openai-compatible"))
+                throw new ApiValidationException("provider", "只支持 sherpa-onnx 或 openai-compatible");
+            if (request.SampleRate is < 8000 or > 192000)
+                throw new ApiValidationException("sampleRate", "必须在 8000 到 192000 之间");
+            string modelPath = ""; var baseUrl = "";
+            if (provider == "sherpa-onnx")
+            {
+                var directory = request.LocalModelDirectory?.Trim();
+                if (string.IsNullOrWhiteSpace(directory) || !Path.IsPathRooted(directory) || !Directory.Exists(directory)
+                    || !File.Exists(Path.Combine(directory, "model.int8.onnx")) || !File.Exists(Path.Combine(directory, "tokens.txt")))
+                    throw new ApiValidationException("localModelDirectory", "必须选择包含 model.int8.onnx 和 tokens.txt 的绝对目录");
+                modelPath = Path.GetFullPath(directory);
+            }
+            else baseUrl = ValidateModelUrl(request.BaseUrl, provider);
+            var profile = new SpeechModelProfile
+            {
+                Id = id, DisplayName = ContractValidation.Required(request.DisplayName, "displayName", 150),
+                Provider = provider, ModelName = ContractValidation.Required(request.ModelName, "modelName", 200),
+                ModelPath = modelPath, BaseUrl = baseUrl,
+                Language = string.IsNullOrWhiteSpace(request.Language) ? "zh" : Limit(request.Language, "language", 30),
+                SampleRate = request.SampleRate
+            };
+            var updated = runtime.Preferences with
+            {
+                CustomSpeechModels = runtime.Preferences.CustomSpeechModels.Where(x => x.Id != id).Append(profile).ToArray()
+            };
+            await sessions.ReconfigureAsync(async ct =>
+            {
+                await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct); await runtime.ReloadAsync(ct);
+            }, token);
+            var saved = runtime.SpeechProfiles.Single(x => x.Id == id);
+            return new SpeechModelResponse(saved.Id, saved.DisplayName, saved.Provider, saved.ModelName,
+                saved.Language, saved.SampleRate, runtime.ActiveSpeechModelId == saved.Id,
+                saved.Provider != "sherpa-onnx" || Directory.Exists(saved.ModelPath));
         }
         finally { _gate.Release(); }
     }

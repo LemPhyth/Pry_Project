@@ -155,6 +155,18 @@ public sealed class ApplicationServiceTests
         Assert.DoesNotContain("19998", System.Text.Json.JsonSerializer.Serialize(custom));
         await service.DeleteCustomModelAsync(custom.Id, TestContext.Current.CancellationToken);
         Assert.DoesNotContain(service.GetModels(), x => x.Id == custom.Id);
+        var customSpeech = await service.CreateSpeechModelAsync(new SaveSpeechModelRequest("测试语音接口",
+            "openai-compatible", "whisper-1", null, "http://127.0.0.1:19997/v1", "zh", 16000),
+            TestContext.Current.CancellationToken);
+        Assert.DoesNotContain("19997", System.Text.Json.JsonSerializer.Serialize(customSpeech));
+        await service.UpdateModelSelectionAsync(new UpdateModelSelectionRequest(text.Id, vision.Id,
+            customSpeech.Id, null), TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<ResourceConflictException>(() =>
+            service.DeleteSpeechModelAsync(customSpeech.Id, TestContext.Current.CancellationToken));
+        await service.UpdateModelSelectionAsync(new UpdateModelSelectionRequest(text.Id, vision.Id,
+            runtime.SpeechProfiles.First(x => x.Id != customSpeech.Id).Id, null), TestContext.Current.CancellationToken);
+        await service.DeleteSpeechModelAsync(customSpeech.Id, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(runtime.SpeechProfiles, x => x.Id == customSpeech.Id);
         await Assert.ThrowsAsync<ApiValidationException>(() => service.CreateCustomModelAsync(new SaveCustomModelRequest(
             "不安全接口", "openai-compatible", "model", "http://example.com/v1", null, null,
             new ModelCapabilities(), 4096, 256, .5, 0, "cpu", false), TestContext.Current.CancellationToken));

@@ -57,36 +57,46 @@ public sealed class RemoteConversationTurnManager : IAsyncDisposable
 
     private async Task ReadEventsAsync(CancellationToken token)
     {
-        try
+        var after = -1L;
+        while (!token.IsCancellationRequested)
         {
-            await foreach (var item in _api.ReadEventsAsync(_conversationId, after: -1, token: token))
+            try
             {
-                if (item.Data is not JsonElement data) continue;
-                if (item.Type == "turn.state" && data.TryGetProperty("state", out var stateValue)
-                    && Enum.TryParse<TurnState>(stateValue.GetString(), out var state))
+                await foreach (var item in _api.ReadEventsAsync(_conversationId, after, token))
                 {
-                    _state = state; StateChanged?.Invoke(state);
-                }
-                else if (item.Type == "message.created" && data.TryGetProperty("role", out var role)
-                         && role.GetString() == "Assistant")
-                {
-                    var type = data.TryGetProperty("type", out var typeValue)
-                               && Enum.TryParse<ReplyMessageType>(typeValue.GetString(), out var parsed) ? parsed : ReplyMessageType.Text;
-                    var message = new PlannedReplyMessage
+                    after = item.Sequence;
+                    if (item.Data is not JsonElement data) continue;
+                    if (item.Type == "turn.state" && data.TryGetProperty("state", out var stateValue)
+                        && Enum.TryParse<TurnState>(stateValue.GetString(), out var state))
                     {
-                        Id = data.GetProperty("messageId").GetInt64(), Type = type,
-                        Content = data.TryGetProperty("content", out var content) ? content.GetString() : null,
-                        StickerId = data.TryGetProperty("stickerId", out var sticker) && sticker.ValueKind != JsonValueKind.Null ? sticker.GetString() : null,
-                        State = DeliveryState.Delivered
-                    };
-                    if (AgentMessageDelivered is not null) await AgentMessageDelivered(message);
+                        _state = state; StateChanged?.Invoke(state);
+                    }
+                    else if (item.Type == "message.created" && data.TryGetProperty("role", out var role)
+                             && role.GetString() == "Assistant")
+                    {
+                        var type = data.TryGetProperty("type", out var typeValue)
+                                   && Enum.TryParse<ReplyMessageType>(typeValue.GetString(), out var parsed) ? parsed : ReplyMessageType.Text;
+                        var message = new PlannedReplyMessage
+                        {
+                            Id = data.GetProperty("messageId").GetInt64(), Type = type,
+                            Content = data.TryGetProperty("content", out var content) ? content.GetString() : null,
+                            StickerId = data.TryGetProperty("stickerId", out var sticker) && sticker.ValueKind != JsonValueKind.Null ? sticker.GetString() : null,
+                            State = DeliveryState.Delivered
+                        };
+                        if (AgentMessageDelivered is not null) await AgentMessageDelivered(message);
+                    }
+                    else if (item.Type == "turn.failed") Failed?.Invoke(new InvalidOperationException(
+                        data.TryGetProperty("message", out var failure) ? failure.GetString() : "模型暂时无法完成回复"));
                 }
-                else if (item.Type == "turn.failed") Failed?.Invoke(new InvalidOperationException(
-                    data.TryGetProperty("message", out var message) ? message.GetString() : "模型暂时无法完成回复"));
+                if (!token.IsCancellationRequested) await Task.Delay(250, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
+            catch (Exception ex)
+            {
+                Warning?.Invoke("与本地后端的事件连接中断，正在重连：" + ex.Message);
+                await Task.Delay(500, token);
             }
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (Exception ex) { Failed?.Invoke(ex); }
     }
 
     public async ValueTask DisposeAsync()

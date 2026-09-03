@@ -250,9 +250,13 @@
 ## 语音识别
 
 - `GET /api/v1/speech/models`：语音模型列表、选中和可用状态。
+- `POST /api/v1/speech/models/custom`：创建自定义语音模型。
+- `PUT /api/v1/speech/models/custom/{id}`：更新自定义语音模型。
+- `DELETE /api/v1/speech/models/custom/{id}`：删除未被选中的自定义语音模型；当前选中模型返回 `409 resource_conflict`。
 - `POST /api/v1/speech/transcriptions`：正文 `{"mediaId":"...","modelId":null}`。
 
 录音由客户端完成，然后以 WAV 上传到媒体 API。识别由后端串行执行，返回 `text` 和实际 `modelId`；音频资源不能作为聊天附件。首版保持现有能力，只支持 16-bit PCM WAV，不引入隐式转码。
+本地 `sherpa-onnx` 配置要求绝对模型目录，并验证 `model.int8.onnx` 与 `tokens.txt`；在线转写地址必须使用 HTTPS，回环开发地址可以使用 HTTP。响应不返回目录、服务地址或密钥。
 
 ## 尚未冻结的接口
 
