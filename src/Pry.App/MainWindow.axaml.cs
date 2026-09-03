@@ -1564,9 +1564,9 @@ public sealed partial class MainWindow : Window
         var listeningSignals = new CheckBox { Content = "输入或语音持续较久时发送“我在听”信号", IsChecked = turn.EnableListeningSignals };
         var listeningDelay = Number(turn.ListeningSignalDelayMs, 1500, 15000, 250);
         var style = Box(turn.StyleInstruction, 110);
-        var send = Box(_preferences.Shortcuts.Send); var immediate = Box(_preferences.Shortcuts.SendImmediately); var newline = Box(_preferences.Shortcuts.NewLine); var cancel = Box(_preferences.Shortcuts.CancelReply); var newChat = Box(_preferences.Shortcuts.NewConversation); var stickers = Box(_preferences.Shortcuts.OpenStickers); var character = Box(_preferences.Shortcuts.OpenCharacterEditor);
+        var shortcutEditor = new ShortcutSettingsEditor(_preferences.Shortcuts, settingsUi);
         var settingCards = settingsUi.Cards;
-        var modelPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var conversationPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var shortcutPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var desktopPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var themePanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
+        var modelPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var conversationPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var shortcutPanel = shortcutEditor.Panel; var desktopPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var themePanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
         void Header(Panel target, string value) => settingsUi.AddHeader(target, value);
         void Field(Panel target, string label, Control control) => settingsUi.AddField(target, label, control);
         Border Card(string title, params Control[] controls) => settingsUi.CreateCard(title, controls);
@@ -1578,7 +1578,6 @@ public sealed partial class MainWindow : Window
         var tips = LoadTips();
         var tipText = tips.Count == 0 ? "暂无使用提示。" : tips[Random.Shared.Next(tips.Count)];
         Header(conversationPanel, "回复风格与轮次"); Field(conversationPanel, "额外对话风格指令", style); Field(conversationPanel, "每轮最少消息数", minReplies); Field(conversationPanel, "每轮最多消息数", maxReplies); Field(conversationPanel, "单条建议最大字符数", maxChars); conversationPanel.Children.Add(split); conversationPanel.Children.Add(interrupts); conversationPanel.Children.Add(listeningSignals); Field(conversationPanel, "“我在听”信号等待时间（毫秒）", listeningDelay); Field(conversationPanel, "等待用户补话（毫秒）", debounce); Field(conversationPanel, "最长等待（毫秒）", maxPending); Field(conversationPanel, "打字速度倍率（越大越快）", speed); Field(conversationPanel, "节奏随机度", burst); Field(conversationPanel, "单条最短延迟（毫秒）", minDelay); Field(conversationPanel, "单条最长延迟（毫秒）", maxDelay);
-        Header(shortcutPanel, "快捷键"); shortcutPanel.Children.Add(new TextBlock { Text = "格式示例：Enter、Ctrl+Enter、Ctrl+Shift+C", Foreground = Brush.Parse("#7F91A4") }); Field(shortcutPanel, "发送", send); Field(shortcutPanel, "立即回复", immediate); Field(shortcutPanel, "换行", newline); Field(shortcutPanel, "打断回复", cancel); Field(shortcutPanel, "新对话", newChat); Field(shortcutPanel, "打开表情", stickers); Field(shortcutPanel, "角色卡", character);
         var petEnabled = new CheckBox { Content = "启用桌宠模式（等待美术素材）", IsChecked = _preferences.DesktopPet.Enabled }; var petTop = new CheckBox { Content = "桌宠始终置顶", IsChecked = _preferences.DesktopPet.AlwaysOnTop }; var petScale = Number((decimal)_preferences.DesktopPet.Scale, .5m, 3, .1m);
         Header(desktopPanel, "桌宠与托盘"); desktopPanel.Children.Add(petEnabled); desktopPanel.Children.Add(petTop); Field(desktopPanel, "桌宠缩放", petScale); desktopPanel.Children.Add(new TextBlock { Text = "托盘菜单会始终可用；桌宠渲染将在你提供美术素材后接入现有占位接口。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") });
         string? selectedBackground = themePreferences.BackgroundImagePath;
@@ -1842,7 +1841,7 @@ public sealed partial class MainWindow : Window
         save.Click += async (_, _) =>
         {
             var minCount = (int)(minReplies.Value ?? 1); var maxCount = (int)(maxReplies.Value ?? 4);
-            var shortcutDraft = new ShortcutSettings { Send = send.Text ?? "Enter", SendImmediately = immediate.Text ?? "Ctrl+Enter", NewLine = newline.Text ?? "Shift+Enter", CancelReply = cancel.Text ?? "Escape", NewConversation = newChat.Text ?? "Ctrl+N", OpenStickers = stickers.Text ?? "Ctrl+E", OpenCharacterEditor = character.Text ?? "Ctrl+Shift+C" };
+            var shortcutDraft = shortcutEditor.BuildDraft();
             var validationError = SettingsDraftService.Validate(minCount, maxCount,
                 minDelay.Value ?? 0, maxDelay.Value ?? 0, accentColor.Text)
                 ?? SettingsDraftService.ValidateShortcuts(shortcutDraft);
