@@ -1556,18 +1556,11 @@ public sealed partial class MainWindow : Window
         computeDevice.SelectionChanged += (_, _) => { if (loadingModel) return; var cpu = (computeDevice.SelectedItem as ComputeChoice)?.Id == "cpu"; gpuLayers.IsEnabled = !cpu; if (cpu) gpuLayers.Value = 0; else if (gpuLayers.Value <= 0) gpuLayers.Value = 999; };
         parameterModel.SelectionChanged += (_, _) => { if (parameterModel.SelectedItem is not ModelChoice choice || choice.Id == currentModelId) return; StoreModelFields(); currentModelId = choice.Id; LoadModelFields(currentModelId); };
         parameterModel.SelectedItem = parameterChoices.FirstOrDefault(x => x.Id == currentModelId) ?? parameterChoices.FirstOrDefault(); if (parameterModel.SelectedItem is ModelChoice initialChoice) { currentModelId = initialChoice.Id; LoadModelFields(currentModelId); }
-        var debounce = Number(turn.DebounceMs, 0, 10000, 100); var maxPending = Number(turn.MaxPendingMs, 200, 30000, 100);
-        var minReplies = Number(turn.MinReplyMessages, 1, 6); var maxReplies = Number(turn.MaxReplyMessages, 1, 6); var maxChars = Number(turn.MaxMessageCharacters, 20, 500, 10);
-        var speed = Number((decimal)turn.TypingStyle.Speed, .25m, 4, .05m); var burst = Number((decimal)turn.TypingStyle.Burstiness, 0, 2, .05m);
-        var minDelay = Number(turn.TypingStyle.MinDelayMs, 0, 10000, 50); var maxDelay = Number(turn.TypingStyle.MaxDelayMs, 0, 30000, 100);
-        var split = new CheckBox { Content = "将回复拆成多条气泡", IsChecked = turn.SplitReplies }; var interrupts = new CheckBox { Content = "自动识别附和与打断", IsChecked = turn.AutoClassifyInterrupts };
-        var listeningSignals = new CheckBox { Content = "输入或语音持续较久时发送“我在听”信号", IsChecked = turn.EnableListeningSignals };
-        var listeningDelay = Number(turn.ListeningSignalDelayMs, 1500, 15000, 250);
-        var style = Box(turn.StyleInstruction, 110);
+        var conversationEditor = new ConversationSettingsEditor(turn, settingsUi);
         var shortcutEditor = new ShortcutSettingsEditor(_preferences.Shortcuts, settingsUi);
         var desktopPetEditor = new DesktopPetSettingsEditor(_preferences.DesktopPet, settingsUi);
         var settingCards = settingsUi.Cards;
-        var modelPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var conversationPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var shortcutPanel = shortcutEditor.Panel; var desktopPanel = desktopPetEditor.Panel; var themePanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
+        var modelPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var conversationPanel = conversationEditor.Panel; var shortcutPanel = shortcutEditor.Panel; var desktopPanel = desktopPetEditor.Panel; var themePanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
         void Header(Panel target, string value) => settingsUi.AddHeader(target, value);
         void Field(Panel target, string label, Control control) => settingsUi.AddField(target, label, control);
         Border Card(string title, params Control[] controls) => settingsUi.CreateCard(title, controls);
@@ -1578,7 +1571,6 @@ public sealed partial class MainWindow : Window
         var speechFields = new StackPanel { Spacing = 7 }; Field(speechFields, "语音识别模型", speechModel); var manageSpeech = new Button { Content = "管理自定义语音模型…", HorizontalAlignment = HorizontalAlignment.Left }; speechFields.Children.Add(manageSpeech); speechFields.Children.Add(new TextBlock { Text = "点击聊天输入框旁的麦克风开始录音，再点一次结束；本地 SenseVoice 会直接转写到输入框。API 配置会按你的选择上传录音。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") }); modelPanel.Children.Add(Card("语音识别", speechFields));
         var tips = LoadTips();
         var tipText = tips.Count == 0 ? "暂无使用提示。" : tips[Random.Shared.Next(tips.Count)];
-        Header(conversationPanel, "回复风格与轮次"); Field(conversationPanel, "额外对话风格指令", style); Field(conversationPanel, "每轮最少消息数", minReplies); Field(conversationPanel, "每轮最多消息数", maxReplies); Field(conversationPanel, "单条建议最大字符数", maxChars); conversationPanel.Children.Add(split); conversationPanel.Children.Add(interrupts); conversationPanel.Children.Add(listeningSignals); Field(conversationPanel, "“我在听”信号等待时间（毫秒）", listeningDelay); Field(conversationPanel, "等待用户补话（毫秒）", debounce); Field(conversationPanel, "最长等待（毫秒）", maxPending); Field(conversationPanel, "打字速度倍率（越大越快）", speed); Field(conversationPanel, "节奏随机度", burst); Field(conversationPanel, "单条最短延迟（毫秒）", minDelay); Field(conversationPanel, "单条最长延迟（毫秒）", maxDelay);
         string? selectedBackground = themePreferences.BackgroundImagePath;
         string? selectedUserAvatar = themePreferences.UserAvatarPath;
         var backgroundDisplays = themePreferences.BackgroundDisplays.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
@@ -1839,13 +1831,13 @@ public sealed partial class MainWindow : Window
         manageSpeech.Click += async (_, _) => { await ManageSpeechModelsAsync(window); speechChoices = _builtInSpeechProfiles.Concat(_preferences.CustomSpeechModels).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray(); speechModel.ItemsSource = speechChoices; speechModel.SelectedItem = speechChoices.FirstOrDefault(x => x.Id == GetSpeechModelId()) ?? speechChoices.FirstOrDefault(); };
         save.Click += async (_, _) =>
         {
-            var minCount = (int)(minReplies.Value ?? 1); var maxCount = (int)(maxReplies.Value ?? 4);
+            var turnOverride = conversationEditor.BuildDraft();
             var shortcutDraft = shortcutEditor.BuildDraft();
-            var validationError = SettingsDraftService.Validate(minCount, maxCount,
-                minDelay.Value ?? 0, maxDelay.Value ?? 0, accentColor.Text)
+            var validationError = SettingsDraftService.Validate(turnOverride.MinReplyMessages,
+                turnOverride.MaxReplyMessages, turnOverride.TypingStyle.MinDelayMs,
+                turnOverride.TypingStyle.MaxDelayMs, accentColor.Text)
                 ?? SettingsDraftService.ValidateShortcuts(shortcutDraft);
             if (validationError is not null) { await ShowNoticeAsync(validationError.Title, validationError.Message); return; }
-            var turnOverride = new TurnTakingSettings { DebounceMs = (int)(debounce.Value ?? 1200), MaxPendingMs = (int)(maxPending.Value ?? 5000), SplitReplies = split.IsChecked == true, AutoClassifyInterrupts = interrupts.IsChecked == true, EnableListeningSignals = listeningSignals.IsChecked == true, ListeningSignalDelayMs = (int)(listeningDelay.Value ?? 4500), MinReplyMessages = minCount, MaxReplyMessages = maxCount, MaxMessageCharacters = (int)(maxChars.Value ?? 90), StyleInstruction = style.Text?.Trim() ?? "", TypingStyle = new TypingStyle { Speed = (double)(speed.Value ?? 1), Burstiness = (double)(burst.Value ?? .75m), MinDelayMs = (int)(minDelay.Value ?? 450), MaxDelayMs = (int)(maxDelay.Value ?? 3200) } };
             StoreModelFields(); var selectedModelId = (activeModel.SelectedItem as ModelChoice)?.Id ?? GetActiveModelId(); var selectedVisionId = (visionModel.SelectedItem as ModelChoice)?.Id; var selectedSpeechId = (speechModel.SelectedItem as ModelChoice)?.Id; var modelTuning = tuningDrafts.TryGetValue(selectedModelId, out var selectedTuning) ? selectedTuning with { ActiveModelId = selectedModelId } : new ModelTuningPreferences { ActiveModelId = selectedModelId };
             var candidate = _preferences with { ActiveModelId = selectedModelId, ActiveVisionModelId = selectedVisionId, ActiveSpeechModelId = selectedSpeechId, ModelTunings = new Dictionary<string, ModelTuningPreferences>(tuningDrafts), EnableThinking = modelTuning.EnableThinking == true, ModelTuning = modelTuning, TurnTakingOverride = turnOverride, SelectedCharacterId = _character?.Id, DesktopPet = desktopPetEditor.BuildDraft(), Theme = BuildThemeDraft(), Shortcuts = shortcutDraft };
             save.IsEnabled = false; _turnManager?.CancelAgentReply();
