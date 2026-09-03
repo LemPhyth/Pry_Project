@@ -1522,8 +1522,9 @@ public sealed partial class MainWindow : Window
             new("cpu", "仅使用 CPU")
         };
         computeChoices.AddRange(detectedDevices.Select(x => new ComputeChoice(x.Id, $"{x.Name}（{x.IsIntegrated switch { true => "核显", false => "独显/加速卡" }}）")));
-        TextBox Box(string value, int height = 34) => new() { Text = value, MinHeight = height, AcceptsReturn = height > 60, TextWrapping = TextWrapping.Wrap };
-        NumericUpDown Number(decimal value, decimal min, decimal max, decimal step = 1) => new() { Value = value, Minimum = min, Maximum = max, Increment = step };
+        var settingsUi = new SettingsUiFactory();
+        TextBox Box(string value, int height = 34) => settingsUi.CreateTextBox(value, height);
+        NumericUpDown Number(decimal value, decimal min, decimal max, decimal step = 1) => settingsUi.CreateNumber(value, min, max, step);
         var turn = EffectiveTurnSettings();
         var themePreferences = _preferences.Theme ?? new ThemePreferences();
         var allModels = _builtInProfiles.Concat(_preferences.CustomModels).ToArray();
@@ -1564,19 +1565,11 @@ public sealed partial class MainWindow : Window
         var listeningDelay = Number(turn.ListeningSignalDelayMs, 1500, 15000, 250);
         var style = Box(turn.StyleInstruction, 110);
         var send = Box(_preferences.Shortcuts.Send); var immediate = Box(_preferences.Shortcuts.SendImmediately); var newline = Box(_preferences.Shortcuts.NewLine); var cancel = Box(_preferences.Shortcuts.CancelReply); var newChat = Box(_preferences.Shortcuts.NewConversation); var stickers = Box(_preferences.Shortcuts.OpenStickers); var character = Box(_preferences.Shortcuts.OpenCharacterEditor);
-        var settingCards = new List<Border>();
+        var settingCards = settingsUi.Cards;
         var modelPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var conversationPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var shortcutPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var desktopPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var themePanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
-        void Header(Panel target, string value) => target.Children.Add(new TextBlock { Text = value, FontSize = 21, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 4, 0, 8) });
-        void Field(Panel target, string label, Control control) { target.Children.Add(new TextBlock { Text = label, Foreground = Brush.Parse("#B8CCE0") }); target.Children.Add(control); }
-        Border Card(string title, params Control[] controls)
-        {
-            var panel = new StackPanel { Spacing = 9 };
-            panel.Children.Add(new TextBlock { Text = title, FontSize = 15, FontWeight = FontWeight.SemiBold });
-            foreach (var control in controls) panel.Children.Add(control);
-            var card = new Border { Background = Brush.Parse("#B017212B"), BorderBrush = Brush.Parse("#263746"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(18), Child = panel };
-            settingCards.Add(card);
-            return card;
-        }
+        void Header(Panel target, string value) => settingsUi.AddHeader(target, value);
+        void Field(Panel target, string label, Control control) => settingsUi.AddField(target, label, control);
+        Border Card(string title, params Control[] controls) => settingsUi.CreateCard(title, controls);
         Header(modelPanel, "模型与语音");
         var textFields = new StackPanel { Spacing = 7 }; Field(textFields, "文字聊天模型", activeModel); Field(textFields, "图片理解模型", visionModel); textFields.Children.Add(new TextBlock { Text = "原生多模态模型会同时出现在两个列表；选择不同模型时，图片先转为内部描述再交给文字模型。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") });
         var manageModels = new Button { Content = "管理自定义对话模型…", HorizontalAlignment = HorizontalAlignment.Left }; textFields.Children.Add(manageModels); modelPanel.Children.Add(Card("对话模型分工", textFields));
@@ -1666,17 +1659,12 @@ public sealed partial class MainWindow : Window
         avatarPage.Children.Add(Card("头像图片与取景", new TextBlock { Text = "头像与背景采用相同的可视化操作：拖动取景、滚轮缩放；始终从原始素材直接解码，不压缩、不生成缩略副本。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#B8CCE0") }, avatarCropEditor, userAvatarGallery, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { browseUserAvatar, clearUserAvatar, deleteUserAvatar } }));
         var uiSizeFields = new StackPanel { Spacing = 7 }; Field(uiSizeFields, "头像尺寸", avatarSize); Field(uiSizeFields, "聊天文字大小", bubbleFontSize); Field(uiSizeFields, "气泡最大宽度", bubbleMaxWidth); Field(uiSizeFields, "气泡纵向间距", bubbleSpacing);
         themePanel.Children.Add(Card("界面尺寸（实时预览）", liveSidebarResize, new TextBlock { Text = "关闭时拖动只显示位置指示线，松手后调整宽度；开启时侧边栏会跟随指针实时变化。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") }, uiSizeFields, new TextBlock { Text = "调整后主聊天窗口会立即呈现效果；关闭设置而不保存会恢复原值。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") }));
-        StackPanel ManagerPanel(string title, string description, Button action)
-        {
-            var panel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; Header(panel, title);
-            panel.Children.Add(Card(title, new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#B8CCE0") }, action)); return panel;
-        }
         var characterManagerButton = new Button { Content = "打开角色卡管理…", HorizontalAlignment = HorizontalAlignment.Left };
         var stickerManagerButton = new Button { Content = "打开表情包管理…", HorizontalAlignment = HorizontalAlignment.Left };
         var memoryManagerButton = new Button { Content = "打开长期记忆管理…", HorizontalAlignment = HorizontalAlignment.Left };
-        var characterManagerPanel = ManagerPanel("角色卡", $"当前角色：{_character?.Name ?? "未加载"}。可编辑、切换或新建角色卡。", characterManagerButton);
-        var stickerManagerPanel = ManagerPanel("表情包", "管理预装与用户导入的表情，设置情绪标签和互动作用。", stickerManagerButton);
-        var memoryManagerPanel = ManagerPanel("长期记忆", "查看、检索和编辑当前角色的长期记忆库。", memoryManagerButton);
+        var characterManagerPanel = settingsUi.CreateManagerPanel("角色卡", $"当前角色：{_character?.Name ?? "未加载"}。可编辑、切换或新建角色卡。", characterManagerButton);
+        var stickerManagerPanel = settingsUi.CreateManagerPanel("表情包", "管理预装与用户导入的表情，设置情绪标签和互动作用。", stickerManagerButton);
+        var memoryManagerPanel = settingsUi.CreateManagerPanel("长期记忆", "查看、检索和编辑当前角色的长期记忆库。", memoryManagerButton);
         var categories = new ListBox { Padding = new Thickness(10, 18), Background = Brushes.Transparent, ItemsSource = new[] { "模型与语音", "对话与节奏", "快捷键", "桌宠与托盘", "外观与主题", "角色卡", "表情包", "长期记忆" }, SelectedIndex = 0 };
         var tipValue = new TextBlock { Text = tipText, TextWrapping = TextWrapping.Wrap, Foreground = ThemeAccentBrush(), FontSize = 12 };
         var tipPanel = new StackPanel { Spacing = 6, Children = { new TextBlock { Text = "Tips", FontWeight = FontWeight.SemiBold }, tipValue } };
