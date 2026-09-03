@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Verify repository contents
+        shell: pwsh
+        run: ./scripts/verify-repository.ps1
+
+      - name: Restore
+        run: dotnet restore Pry.slnx
+
+      - name: Check changed-file whitespace
+        shell: pwsh
+        run: git diff --check HEAD^ HEAD
+
+      - name: Build
+        run: dotnet build Pry.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test Pry.slnx -c Release --no-build
