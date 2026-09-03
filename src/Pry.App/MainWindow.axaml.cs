@@ -910,25 +910,11 @@ public sealed partial class MainWindow : Window
     }
 
     private ContextMenu CreateMessageContextMenu(long messageId, bool isUser, string messageText)
-    {
-        var items = new List<MenuItem>();
-        if (isUser)
-        {
-            var edit = new MenuItem { Header = "从此条消息开始编辑" };
-            edit.Click += async (_, _) => await EditFromUserMessageAsync(messageId, messageText);
-            items.Add(edit);
-        }
-        else
-        {
-            var regenerate = new MenuItem { Header = "从此条开始重新回复" };
-            regenerate.Click += async (_, _) => await RegenerateFromAssistantMessageAsync(messageId);
-            items.Add(regenerate);
-        }
-        var remove = new MenuItem { Header = "删除" };
-        remove.Click += async (_, _) => await DeleteMessageFromMenuAsync(messageId, isUser);
-        items.Add(remove);
-        return new ContextMenu { ItemsSource = items };
-    }
+        => MessageContextMenuFactory.Create(isUser,
+            () => isUser
+                ? EditFromUserMessageAsync(messageId, messageText)
+                : RegenerateFromAssistantMessageAsync(messageId),
+            () => DeleteMessageFromMenuAsync(messageId, isUser));
 
     private async Task DeleteMessageFromMenuAsync(long messageId, bool isUser)
     {
