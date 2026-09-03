@@ -20,7 +20,6 @@ using Pry.Core.Memory;
 using Pry.Core.Models;
 using Pry.Core.Prompting;
 using Pry.Core.TurnTaking;
-using SkiaSharp;
 using Pry.Client;
 using Pry.Contracts;
 using Pry.App.Services;
@@ -39,7 +38,7 @@ public sealed partial class MainWindow : Window
     private readonly List<(Border Control, bool IsUser)> _messageAvatarControls = [];
     private readonly List<(Border Control, bool IsUser)> _messageBubbleControls = [];
     private readonly List<(TextBlock Control, bool IsUser)> _bubbleTextControls = [];
-    private readonly Dictionary<string, Bitmap> _backgroundRenderCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly BackgroundImageCache _backgroundImages = new();
     private string? _currentBackgroundRenderKey;
     private readonly Border _chatBottomAnchor = new() { Height = 64, IsHitTestVisible = false };
     private readonly DispatcherTimer _chatScrollTimer = new() { Interval = TimeSpan.FromMilliseconds(24) };
@@ -130,8 +129,7 @@ public sealed partial class MainWindow : Window
     {
         _allowClose = true; EndUserComposition(); if (_turnManager is not null) await _turnManager.DisposeAsync();
         _waveInput?.StopRecording(); _waveWriter?.Dispose(); _waveInput?.Dispose();
-        foreach (var bitmap in _backgroundRenderCache.Values) bitmap.Dispose();
-        _backgroundRenderCache.Clear();
+        _backgroundImages.Dispose();
         _projectionService.Dispose();
     }
 
@@ -556,10 +554,10 @@ public sealed partial class MainWindow : Window
             try
             {
                 var blurRadius = Math.Clamp(theme.BackgroundBlurRadius, 0, 32);
-                var renderKey = BackgroundRenderKey(theme.BackgroundImagePath!, blurRadius);
+                var renderKey = _backgroundImages.GetKey(theme.BackgroundImagePath!, blurRadius);
                 if (!string.Equals(_currentBackgroundRenderKey, renderKey, StringComparison.Ordinal))
                 {
-                    ChatBackgroundImage.Source = GetBackgroundBitmap(theme.BackgroundImagePath!, blurRadius);
+                    ChatBackgroundImage.Source = _backgroundImages.Get(theme.BackgroundImagePath!, blurRadius);
                     _currentBackgroundRenderKey = renderKey;
                 }
                 ChatBackgroundImage.Effect = null;
@@ -692,7 +690,7 @@ public sealed partial class MainWindow : Window
             try
             {
                 var backgroundPath = theme.BackgroundImagePath!;
-                dialogBackground.Source = GetBackgroundBitmap(backgroundPath, Math.Clamp(theme.BackgroundBlurRadius, 0, 32));
+                dialogBackground.Source = _backgroundImages.Get(backgroundPath, Math.Clamp(theme.BackgroundBlurRadius, 0, 32));
                 dialogBackground.Opacity = Math.Clamp(theme.BackgroundImageOpacity, 0, 1);
                 dialogBackground.IsVisible = true;
                 var display = theme.BackgroundDisplays.TryGetValue(backgroundPath, out var saved) ? saved : new ImageDisplayPreferences();
@@ -773,37 +771,6 @@ public sealed partial class MainWindow : Window
             if (TopLevel.GetTopLevel(root) is Window dialog) TryBeginWindowResize(dialog, root, args);
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
         return root;
-    }
-
-    private string BackgroundRenderKey(string path, double radius) => $"{Path.GetFullPath(path)}|{File.GetLastWriteTimeUtc(path).Ticks}|{Math.Round(radius, 1):0.0}";
-
-    private Bitmap GetBackgroundBitmap(string path, double radius)
-    {
-        var key = BackgroundRenderKey(path, radius);
-        if (_backgroundRenderCache.TryGetValue(key, out var cached)) return cached;
-        var bitmap = CreateBackgroundBitmap(path, radius);
-        _backgroundRenderCache[key] = bitmap;
-        if (_backgroundRenderCache.Count > 12)
-        {
-            var stale = _backgroundRenderCache.Keys.FirstOrDefault(x => !string.Equals(x, key, StringComparison.Ordinal));
-            if (stale is not null && _backgroundRenderCache.Remove(stale, out var removed)) removed.Dispose();
-        }
-        return bitmap;
-    }
-
-    private static Bitmap CreateBackgroundBitmap(string path, double radius)
-    {
-        if (radius < .5) return new Bitmap(path);
-        using var decoded = SKBitmap.Decode(path) ?? throw new InvalidDataException("无法读取背景图片。");
-        const int maxSide = 1800;
-        var scale = Math.Min(1d, maxSide / (double)Math.Max(decoded.Width, decoded.Height));
-        var width = Math.Max(1, (int)Math.Round(decoded.Width * scale)); var height = Math.Max(1, (int)Math.Round(decoded.Height * scale));
-        using var resized = scale < 1 ? decoded.Resize(new SKImageInfo(width, height), SKFilterQuality.High) : decoded.Copy();
-        using var surface = SKSurface.Create(new SKImageInfo(width, height));
-        using var paint = new SKPaint { ImageFilter = SKImageFilter.CreateBlur((float)Math.Clamp(radius, 0, 40), (float)Math.Clamp(radius, 0, 40)), IsAntialias = true };
-        surface.Canvas.Clear(SKColors.Transparent); surface.Canvas.DrawBitmap(resized, 0, 0, paint); surface.Canvas.Flush();
-        using var image = surface.Snapshot(); using var data = image.Encode(SKEncodedImageFormat.Png, 92); using var stream = new MemoryStream(data.ToArray());
-        return new Bitmap(stream);
     }
 
     private void ApplyUiSizing(ThemePreferences theme)
@@ -1902,7 +1869,7 @@ public sealed partial class MainWindow : Window
                 {
                     try
                     {
-                        settingsBackgroundImage.Source = GetBackgroundBitmap(draft.BackgroundImagePath!, Math.Clamp(draft.BackgroundBlurRadius, 0, 32));
+                        settingsBackgroundImage.Source = _backgroundImages.Get(draft.BackgroundImagePath!, Math.Clamp(draft.BackgroundBlurRadius, 0, 32));
                         var display = draft.BackgroundDisplays.TryGetValue(draft.BackgroundImagePath!, out var savedDisplay) ? savedDisplay : new ImageDisplayPreferences();
                         ApplyImageDisplay(settingsBackgroundImage, display);
                     }
