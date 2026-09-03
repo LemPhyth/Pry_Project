@@ -1,0 +1,71 @@
+<Application xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="Pry.App.App" RequestedThemeVariant="Default">
+  <Application.Resources>
+    <SolidColorBrush x:Key="PryAccentBrush" Color="#B148C6"/>
+    <SolidColorBrush x:Key="PryAccentTextBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="PryCanvasBrush" Color="#0E1621"/>
+    <SolidColorBrush x:Key="PryPanelBrush" Color="#17212B"/>
+    <SolidColorBrush x:Key="PryCardBrush" Color="#182533"/>
+    <SolidColorBrush x:Key="PryPopupBrush" Color="#182533"/>
+    <SolidColorBrush x:Key="PryBorderBrush" Color="#263746"/>
+    <SolidColorBrush x:Key="PryTextBrush" Color="#F2F6FA"/>
+    <SolidColorBrush x:Key="PryMutedBrush" Color="#8EA2B5"/>
+    <SolidColorBrush x:Key="PryButtonBrush" Color="#273442"/>
+    <SolidColorBrush x:Key="PryButtonHoverBrush" Color="#344556"/>
+    <SolidColorBrush x:Key="PryButtonPressedBrush" Color="#40566B"/>
+    <SolidColorBrush x:Key="PrySelectionBrush" Color="#563069"/>
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+    <Style Selector="Button">
+      <Setter Property="Background" Value="{DynamicResource PryButtonBrush}"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="13,8"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button:pointerover"><Setter Property="Background" Value="{DynamicResource PryButtonHoverBrush}"/></Style>
+    <Style Selector="Button:pressed"><Setter Property="Background" Value="{DynamicResource PryButtonPressedBrush}"/></Style>
+    <Style Selector="Button.primary"><Setter Property="Background" Value="{DynamicResource PryAccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource PryAccentTextBrush}"/></Style>
+    <Style Selector="Button.primary:pointerover"><Setter Property="Background" Value="{DynamicResource PryButtonHoverBrush}"/></Style>
+    <Style Selector="Button.composer-action"><Setter Property="Padding" Value="0"/><Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="0"/></Style>
+    <Style Selector="Button.recording"><Setter Property="Background" Value="#D75454"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.sidebar-nav">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Padding" Value="14,11"/>
+    </Style>
+    <Style Selector="Button.sidebar-nav:pointerover"><Setter Property="Background" Value="#202F3D"/></Style>
+    <Style Selector="ListBoxItem:selected"><Setter Property="Background" Value="{DynamicResource PrySelectionBrush}"/></Style>
+    <Style Selector="TextBox"><Setter Property="CornerRadius" Value="10"/><Setter Property="BorderBrush" Value="{DynamicResource PryBorderBrush}"/><Setter Property="BorderThickness" Value="1"/></Style>
+    <Style Selector="ScrollViewer.pry-chat-scroll ScrollBar:vertical">
+      <Setter Property="Width" Value="8"/>
+      <Setter Property="Margin" Value="0,92,2,92"/>
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="ScrollViewer.pry-chat-scroll ScrollBar:vertical /template/ Thumb">
+      <Setter Property="Background" Value="{DynamicResource PryAccentBrush}"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="MinHeight" Value="34"/>
+    </Style>
+    <Style Selector="ScrollViewer.pry-chat-scroll ScrollBar:vertical /template/ RepeatButton">
+      <Setter Property="IsVisible" Value="False"/>
+    </Style>
+    <Style Selector="ScrollViewer.pry-settings-scroll ScrollBar:vertical">
+      <Setter Property="Width" Value="8"/>
+      <Setter Property="Margin" Value="0,4,2,4"/>
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="ScrollViewer.pry-settings-scroll ScrollBar:vertical /template/ Thumb">
+      <Setter Property="Background" Value="{DynamicResource PryAccentBrush}"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="MinHeight" Value="36"/>
+    </Style>
+    <Style Selector="ScrollViewer.pry-settings-scroll ScrollBar:vertical /template/ RepeatButton">
+      <Setter Property="IsVisible" Value="False"/>
+    </Style>
+  </Application.Styles>
+</Application>
