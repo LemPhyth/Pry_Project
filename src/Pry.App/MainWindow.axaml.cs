@@ -1285,24 +1285,26 @@ public sealed partial class MainWindow : Window
     private async Task AddAttachmentPathsAsync(IEnumerable<string> paths)
     {
         var rejected = new List<string>();
+        var warnings = new List<string>();
         foreach (var sourcePath in paths.Where(File.Exists))
         {
             if (_attachments.Count >= 12) { rejected.Add("最多同时添加 12 个附件"); break; }
             var kind = GetAttachmentKind(sourcePath);
             if (kind is null) { rejected.Add($"{Path.GetFileName(sourcePath)}：格式不支持"); continue; }
-            if (new FileInfo(sourcePath).Length > 20 * 1024 * 1024) { rejected.Add($"{Path.GetFileName(sourcePath)}：超过 20 MB"); continue; }
             try
             {
-                var directory = Path.Combine(_dataDirectory, "attachments"); Directory.CreateDirectory(directory);
-                var storedPath = Path.Combine(directory, $"{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}{Path.GetExtension(sourcePath).ToLowerInvariant()}");
-                File.Copy(sourcePath, storedPath);
-                _attachments.Add(new ChatAttachment(storedPath, kind.Value, Path.GetFileName(sourcePath)));
+                var file = new FileInfo(sourcePath);
+                using (file.OpenRead()) { }
+                if (file.Length > 10 * 1024 * 1024)
+                    warnings.Add($"{file.Name} 较大（{file.Length / 1024d / 1024d:F1} MiB），上传和处理可能需要更长时间");
+                _attachments.Add(new ChatAttachment(file.FullName, kind.Value, file.Name));
             }
             catch { rejected.Add($"{Path.GetFileName(sourcePath)}：无法读取"); }
         }
         RefreshAttachmentTray();
         if (_attachments.Count > 0) _turnManager?.NotifyInputActivity();
         if (rejected.Count > 0) await ShowNoticeAsync("部分附件未添加", string.Join(Environment.NewLine, rejected.Distinct()));
+        if (warnings.Count > 0) await ShowNoticeAsync("大文件提醒", string.Join(Environment.NewLine, warnings));
     }
 
     private static ChatAttachmentKind? GetAttachmentKind(string path) => Path.GetExtension(path).ToLowerInvariant() switch
