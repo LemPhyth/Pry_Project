@@ -158,6 +158,7 @@ public sealed class ApplicationServiceTests
         var customSpeech = await service.CreateSpeechModelAsync(new SaveSpeechModelRequest("测试语音接口",
             "openai-compatible", "whisper-1", null, "http://127.0.0.1:19997/v1", "zh", 16000),
             TestContext.Current.CancellationToken);
+        Assert.True(customSpeech.Custom);
         Assert.DoesNotContain("19997", System.Text.Json.JsonSerializer.Serialize(customSpeech));
         await service.UpdateModelSelectionAsync(new UpdateModelSelectionRequest(text.Id, vision.Id,
             customSpeech.Id, null), TestContext.Current.CancellationToken);

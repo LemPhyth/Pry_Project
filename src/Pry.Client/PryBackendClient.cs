@@ -78,6 +78,18 @@ public sealed class PryBackendClient(HttpClient httpClient)
         return await ReadAsync<MediaAssetResponse>(response, token);
     }
 
+    public async Task<DownloadedContent> DownloadAsync(string relativeUrl, CancellationToken token = default)
+    {
+        var decodedUrl = Uri.UnescapeDataString(relativeUrl);
+        if (!relativeUrl.StartsWith("/api/v1/", StringComparison.Ordinal) || decodedUrl.Contains("..", StringComparison.Ordinal)
+            || !Uri.TryCreate(relativeUrl, UriKind.Relative, out var uri))
+            throw new ArgumentException("只允许下载后端返回的相对资源 URL。", nameof(relativeUrl));
+        using var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token);
+        await EnsureSuccessAsync(response, token);
+        return new DownloadedContent(await response.Content.ReadAsByteArrayAsync(token),
+            response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream");
+    }
+
     public async IAsyncEnumerable<ConversationEvent> ReadEventsAsync(string conversationId, long after = 0,
         [EnumeratorCancellation] CancellationToken token = default)
     {
@@ -148,3 +160,5 @@ public sealed class PryBackendException(HttpStatusCode statusCode, string? code,
     public string? Code { get; } = code;
     public string? TraceId { get; } = traceId;
 }
+
+public sealed record DownloadedContent(byte[] Bytes, string ContentType);

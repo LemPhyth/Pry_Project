@@ -48,7 +48,7 @@ public sealed record ImportStickerRequest(string MediaId, string Name, IReadOnly
 public sealed record UpdateStickerRequest(string Name, IReadOnlyList<string>? Emotions, string InteractionRole,
     bool LikelyBackchannel);
 public sealed record SpeechModelResponse(string Id, string DisplayName, string Provider, string ModelName,
-    string Language, int SampleRate, bool Selected, bool Available);
+    string Language, int SampleRate, bool Selected, bool Available, bool Custom);
 public sealed record TranscribeSpeechRequest(string MediaId, string? ModelId = null);
 public sealed record TranscribeSpeechResponse(string Text, string ModelId);
 public sealed record SaveSpeechModelRequest(string DisplayName, string Provider, string ModelName,

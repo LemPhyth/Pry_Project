@@ -381,14 +381,18 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         await _gate.WaitAsync(token);
         try
         {
+            var existing = creating ? null : runtime.Preferences.CustomModels.FirstOrDefault(x => x.Id == id)
+                ?? throw new ResourceNotFoundException("custom_model", id);
             var provider = request.Provider?.Trim();
             if (provider is not ("local-llama" or "openai-compatible")) throw new ApiValidationException("provider", "只支持 local-llama 或 openai-compatible");
-            var baseUrl = ValidateModelUrl(request.BaseUrl, provider);
+            var requestedUrl = string.IsNullOrWhiteSpace(request.BaseUrl) && existing?.Provider == provider
+                ? existing.BaseUrl : request.BaseUrl;
+            var baseUrl = ValidateModelUrl(requestedUrl, provider);
             string? modelPath = null, mmprojPath = null;
             if (provider == "local-llama")
             {
-                modelPath = ValidateGguf(request.LocalModelPath, "localModelPath", required: true);
-                mmprojPath = ValidateGguf(request.LocalMmprojPath, "localMmprojPath", required: false);
+                modelPath = ValidateGguf(request.LocalModelPath ?? (existing?.Provider == provider ? existing.ModelPath : null), "localModelPath", required: true);
+                mmprojPath = ValidateGguf(request.LocalMmprojPath ?? (existing?.Provider == provider ? existing.MmprojPath : null), "localMmprojPath", required: false);
             }
             var tuning = new ModelTuningPreferences { ContextSize = request.ContextSize, MaxOutputTokens = request.MaxOutputTokens,
                 Temperature = request.Temperature, GpuLayers = request.GpuLayers, ComputeDevice = request.ComputeDevice,
@@ -421,8 +425,8 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         try
         {
             ValidateId(id);
-            if (!creating && !runtime.Preferences.CustomSpeechModels.Any(x => x.Id == id))
-                throw new ResourceNotFoundException("speech_model", id);
+            var existing = creating ? null : runtime.Preferences.CustomSpeechModels.FirstOrDefault(x => x.Id == id)
+                ?? throw new ResourceNotFoundException("speech_model", id);
             var provider = request.Provider?.Trim();
             if (provider is not ("sherpa-onnx" or "openai-compatible"))
                 throw new ApiValidationException("provider", "只支持 sherpa-onnx 或 openai-compatible");
@@ -431,13 +435,14 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
             string modelPath = ""; var baseUrl = "";
             if (provider == "sherpa-onnx")
             {
-                var directory = request.LocalModelDirectory?.Trim();
+                var directory = (request.LocalModelDirectory ?? (existing?.Provider == provider ? existing.ModelPath : null))?.Trim();
                 if (string.IsNullOrWhiteSpace(directory) || !Path.IsPathRooted(directory) || !Directory.Exists(directory)
                     || !File.Exists(Path.Combine(directory, "model.int8.onnx")) || !File.Exists(Path.Combine(directory, "tokens.txt")))
                     throw new ApiValidationException("localModelDirectory", "必须选择包含 model.int8.onnx 和 tokens.txt 的绝对目录");
                 modelPath = Path.GetFullPath(directory);
             }
-            else baseUrl = ValidateModelUrl(request.BaseUrl, provider);
+            else baseUrl = ValidateModelUrl(string.IsNullOrWhiteSpace(request.BaseUrl) && existing?.Provider == provider
+                ? existing.BaseUrl : request.BaseUrl, provider);
             var profile = new SpeechModelProfile
             {
                 Id = id, DisplayName = ContractValidation.Required(request.DisplayName, "displayName", 150),
@@ -457,7 +462,7 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
             var saved = runtime.SpeechProfiles.Single(x => x.Id == id);
             return new SpeechModelResponse(saved.Id, saved.DisplayName, saved.Provider, saved.ModelName,
                 saved.Language, saved.SampleRate, runtime.ActiveSpeechModelId == saved.Id,
-                saved.Provider != "sherpa-onnx" || Directory.Exists(saved.ModelPath));
+                saved.Provider != "sherpa-onnx" || Directory.Exists(saved.ModelPath), true);
         }
         finally { _gate.Release(); }
     }

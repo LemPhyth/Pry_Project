@@ -44,6 +44,23 @@ public sealed class PryBackendClientTests
         Assert.Equal("turn.state", events.Current.Type);
     }
 
+    [Fact]
+    public async Task Media_download_only_accepts_backend_api_paths()
+    {
+        using var http = new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent([1, 2, 3])
+        })) { BaseAddress = new Uri("http://127.0.0.1:5078/") };
+        var client = new PryBackendClient(http);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            client.DownloadAsync("https://example.com/private.png", TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            client.DownloadAsync("/api/v1/media/%2e%2e/private", TestContext.Current.CancellationToken));
+        var content = await client.DownloadAsync("/api/v1/media/safe/content", TestContext.Current.CancellationToken);
+        Assert.Equal([1, 2, 3], content.Bytes);
+    }
+
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> response) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>

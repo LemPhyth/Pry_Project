@@ -14,7 +14,8 @@ public sealed class SpeechApplicationService(BackendRuntime runtime, MediaAssetS
         var resolved = runtime.ResolveSpeechProfile(profile.Id);
         ISpeechRecognizer recognizer = CreateRecognizer(resolved);
         return new SpeechModelResponse(profile.Id, profile.DisplayName, profile.Provider, profile.ModelName,
-            profile.Language, profile.SampleRate, profile.Id == runtime.ActiveSpeechModelId, recognizer.IsAvailable);
+            profile.Language, profile.SampleRate, profile.Id == runtime.ActiveSpeechModelId, recognizer.IsAvailable,
+            runtime.Preferences.CustomSpeechModels.Any(x => x.Id == profile.Id));
     }).ToArray();
 
     public async Task<TranscribeSpeechResponse> TranscribeAsync(TranscribeSpeechRequest request, CancellationToken token)

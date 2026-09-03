@@ -30,6 +30,7 @@ namespace Pry.App;
 public sealed partial class MainWindow : Window
 {
     private readonly PryBackendClient _api;
+    private readonly BackendMediaCache _mediaCache;
     private readonly string _appDirectory = AppContext.BaseDirectory;
     private readonly string _dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion");
     private string _conversationId = Guid.NewGuid().ToString("N");
@@ -62,10 +63,12 @@ public sealed partial class MainWindow : Window
     private CharacterDefinition? _character;
     private readonly List<CharacterDefinition> _characters = [];
     private bool _changingCharacter;
-    private AppSettings? _settings;
     private UserPreferences _preferences = new();
     private ModelProfile[] _profiles = [];
-    private StickerCatalog? _stickerCatalog;
+    private ModelProfile[] _builtInProfiles = [];
+    private SpeechModelProfile[] _speechProfiles = [];
+    private SpeechModelProfile[] _builtInSpeechProfiles = [];
+    private readonly List<StickerDefinition> _stickers = [];
     private RemoteConversationTurnManager? _turnManager;
     private WaveInEvent? _waveInput;
     private WaveFileWriter? _waveWriter;
@@ -73,15 +76,13 @@ public sealed partial class MainWindow : Window
     private string? _recordingPath;
     private bool _speechBusy;
     private bool _allowClose;
-    private string PreferencesPath => Path.Combine(_dataDirectory, "preferences.json");
-    private string CharacterPath => Path.Combine(_dataDirectory, "character.json");
-    private string CharacterDirectory => Path.Combine(_dataDirectory, "characters");
 
     public MainWindow() : this(new PryBackendClient(new HttpClient { BaseAddress = new Uri("http://127.0.0.1:5078/"), Timeout = Timeout.InfiniteTimeSpan })) { }
 
     public MainWindow(PryBackendClient api)
     {
         _api = api;
+        _mediaCache = new BackendMediaCache(api);
         InitializeComponent();
         MessagesPanel.Children.Add(_chatBottomAnchor);
         MessagesPanel.LayoutUpdated += (_, _) =>
@@ -128,20 +129,17 @@ public sealed partial class MainWindow : Window
         _waveInput?.StopRecording(); _waveWriter?.Dispose(); _waveInput?.Dispose();
         foreach (var bitmap in _backgroundRenderCache.Values) bitmap.Dispose();
         _backgroundRenderCache.Clear();
+        _mediaCache.Dispose();
     }
 
     private async Task InitializeRuntimeAsync()
     {
         try
         {
-            Directory.CreateDirectory(_dataDirectory);
-            var resources = Path.Combine(_appDirectory, "Resources");
-            _settings = await JsonConfiguration.LoadAsync<AppSettings>(Path.Combine(resources, "appsettings.json"));
-            if (File.Exists(PreferencesPath)) _preferences = await JsonConfiguration.LoadAsync<UserPreferences>(PreferencesPath);
-            if (!string.IsNullOrWhiteSpace(_preferences.ActiveConversationId)) _conversationId = _preferences.ActiveConversationId;
-            await LoadCharactersAsync(Path.Combine(resources, "character.json"));
-            ApplyTheme();
             if (!await _api.IsHealthyAsync()) throw new InvalidOperationException("本地后端未就绪。");
+            await LoadBackendProjectionAsync();
+            if (!string.IsNullOrWhiteSpace(_preferences.ActiveConversationId)) _conversationId = _preferences.ActiveConversationId;
+            ApplyTheme();
             try { _ = await _api.GetConversationAsync(_conversationId); }
             catch (PryBackendException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
@@ -149,8 +147,6 @@ public sealed partial class MainWindow : Window
                 _preferences = _preferences with { ActiveConversationId = _conversationId };
                 await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(null, _conversationId, null, null, null, null, null));
             }
-            _stickerCatalog = new StickerCatalog(Path.Combine(resources, "Stickers", "manifest.json"), Path.Combine(_dataDirectory, "stickers")); await _stickerCatalog.LoadAsync();
-            var profiles = BuildProfiles(_preferences); _profiles = profiles;
             var activeId = GetActiveModelId();
             var visionId = GetVisionModelId();
             CreateTurnManager(); RefreshCharacterSelector(); CharacterName.Text = _character!.Name; await RefreshConversationRoomsAsync();
@@ -161,28 +157,86 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) { RuntimeStatus.Text = $"初始化失败：{ex.Message}"; AddTextBubble("系统", ex.Message, false); }
     }
 
-    private async Task LoadCharactersAsync(string bundledPath)
+    private async Task LoadBackendProjectionAsync()
     {
-        Directory.CreateDirectory(CharacterDirectory); _characters.Clear();
-        async Task AddOrReplaceAsync(string path)
+        var preferences = await _api.GetPreferencesAsync();
+        var backgroundPath = await _mediaCache.GetPathAsync(preferences.BackgroundUrl);
+        var userAvatarPath = await _mediaCache.GetPathAsync(preferences.UserAvatarUrl);
+        var theme = new ThemePreferences
         {
-            var loaded = await JsonConfiguration.LoadAsync<CharacterDefinition>(path); JsonConfiguration.Validate(loaded);
-            var card = NormalizeCharacterNaming(loaded);
-            _characters.RemoveAll(x => x.Id == card.Id); _characters.Add(card);
+            BackgroundImagePath = backgroundPath, BackgroundHistory = backgroundPath is null ? [] : [backgroundPath],
+            UserAvatarPath = userAvatarPath, UserAvatarHistory = userAvatarPath is null ? [] : [userAvatarPath],
+            ThemeMode = preferences.Theme.ThemeMode, AccentColor = preferences.Theme.AccentColor,
+            UseGlassEffects = preferences.Theme.UseGlassEffects, LiveSidebarResize = preferences.Theme.LiveSidebarResize,
+            BackgroundDimOpacity = preferences.Theme.BackgroundDimOpacity,
+            BackgroundImageOpacity = preferences.Theme.BackgroundImageOpacity,
+            BackgroundBlurMode = preferences.Theme.BackgroundBlurMode,
+            BackgroundBlurRadius = preferences.Theme.BackgroundBlurRadius, AvatarSize = preferences.Theme.AvatarSize,
+            BubbleFontSize = preferences.Theme.BubbleFontSize, BubbleMaxWidth = preferences.Theme.BubbleMaxWidth,
+            BubbleSpacing = preferences.Theme.BubbleSpacing
+        };
+        var modelResponses = await _api.GetModelsAsync();
+        static ModelProfile ToModel(ModelProfileResponse x) => new()
+        {
+            Id = x.Id, DisplayName = x.DisplayName, Provider = x.Provider, ModelName = x.ModelName, BaseUrl = "",
+            Capabilities = x.Capabilities, ContextSize = x.ContextSize, MaxOutputTokens = x.MaxOutputTokens,
+            Temperature = x.Temperature, GpuLayers = x.GpuLayers, ComputeDevice = x.ComputeDevice,
+            EnableThinking = x.EnableThinking
+        };
+        _profiles = modelResponses.Select(ToModel).ToArray();
+        _builtInProfiles = modelResponses.Where(x => !x.Custom).Select(ToModel).ToArray();
+        var customModels = modelResponses.Where(x => x.Custom).Select(ToModel).ToArray();
+        var speechResponses = await _api.GetSpeechModelsAsync();
+        static SpeechModelProfile ToSpeech(SpeechModelResponse x) => new()
+        {
+            Id = x.Id, DisplayName = x.DisplayName, Provider = x.Provider, ModelName = x.ModelName,
+            Language = x.Language, SampleRate = x.SampleRate
+        };
+        _speechProfiles = speechResponses.Select(ToSpeech).ToArray();
+        _builtInSpeechProfiles = speechResponses.Where(x => !x.Custom).Select(ToSpeech).ToArray();
+        var customSpeech = speechResponses.Where(x => x.Custom).Select(ToSpeech).ToArray();
+        _preferences = new UserPreferences
+        {
+            SelectedCharacterId = preferences.SelectedCharacterId, ActiveConversationId = preferences.ActiveConversationId,
+            ActiveModelId = preferences.ActiveModelId, ActiveVisionModelId = preferences.ActiveVisionModelId,
+            ActiveSpeechModelId = preferences.ActiveSpeechModelId, UserProfile = preferences.UserProfile,
+            DesktopPet = preferences.DesktopPet, Shortcuts = preferences.Shortcuts,
+            TurnTakingOverride = preferences.TurnTaking, Theme = theme, CustomModels = customModels,
+            CustomSpeechModels = customSpeech
+        };
+        _characters.Clear();
+        foreach (var summary in await _api.GetCharactersAsync())
+        {
+            var value = await _api.GetCharacterAsync(summary.Id);
+            _characters.Add(new CharacterDefinition
+            {
+                SchemaVersion = value.SchemaVersion, Id = value.Id, Name = value.Name, CardName = value.CardName,
+                UserName = value.UserName, Identity = value.Identity, Personality = value.Personality,
+                SpeechStyle = value.SpeechStyle, BehavioralRules = value.BehavioralRules, WorldFacts = value.WorldFacts,
+                InitialState = value.InitialState, Greeting = value.Greeting, PromptMode = value.PromptMode,
+                LegacySystemPrompt = value.LegacySystemPrompt,
+                AvatarPath = await _mediaCache.GetPathAsync(value.AvatarUrl), AvatarDisplay = value.AvatarDisplay
+            });
         }
-        await AddOrReplaceAsync(bundledPath);
-        if (File.Exists(CharacterPath)) await AddOrReplaceAsync(CharacterPath);
-        foreach (var path in Directory.EnumerateFiles(CharacterDirectory, "*.json")) await AddOrReplaceAsync(path);
+        await ReloadStickerProjectionAsync();
         _character = _characters.FirstOrDefault(x => x.Id == _preferences.SelectedCharacterId) ?? _characters[0];
     }
 
-    private static CharacterDefinition NormalizeCharacterNaming(CharacterDefinition card)
+    private async Task ReloadStickerProjectionAsync()
     {
-        if (!string.IsNullOrWhiteSpace(card.CardName)) return card;
-        var separator = card.Name.IndexOf('-');
-        return separator > 0
-            ? card with { CardName = card.Name, Name = card.Name[..separator].Trim() }
-            : card with { CardName = $"{card.Name}-正式-v1" };
+        _stickers.Clear();
+        foreach (var value in await _api.GetStickersAsync())
+        {
+            var path = await _mediaCache.GetPathAsync(value.ContentUrl);
+            if (path is null) continue;
+            _stickers.Add(new StickerDefinition
+            {
+                Id = value.Id, Name = value.Name, FilePath = path, Source = value.Source,
+                Emotions = value.Emotions, Situations = value.Situations, AvoidWhen = value.AvoidWhen,
+                Intensity = value.Intensity, Enabled = value.Enabled, InteractionRole = value.InteractionRole,
+                LikelyBackchannel = value.LikelyBackchannel
+            });
+        }
     }
 
     private void RefreshCharacterSelector()
@@ -214,7 +268,7 @@ public sealed partial class MainWindow : Window
 
     private void CreateTurnManager()
     {
-        if (_character is null || _settings is null || _stickerCatalog is null) return;
+        if (_character is null) return;
         if (_turnManager is not null) _ = _turnManager.DisposeAsync();
         _turnManager = new RemoteConversationTurnManager(_api, _conversationId);
         _turnManager.AgentMessageDelivered += message => Dispatcher.UIThread.InvokeAsync(() => AddAgentMessage(message)).GetTask();
@@ -223,29 +277,19 @@ public sealed partial class MainWindow : Window
         _turnManager.Warning += warning => Dispatcher.UIThread.Post(() => RuntimeStatus.Text = warning);
     }
 
-    private ModelProfile ResolveProfile(ModelProfile profile)
-    {
-        string? Resolve(string? value) => string.IsNullOrWhiteSpace(value) || Path.IsPathRooted(value) ? value : ResolveBundledPath(value) ?? Path.GetFullPath(Path.Combine(_appDirectory, value));
-        return profile with { ModelPath = Resolve(profile.ModelPath), MmprojPath = Resolve(profile.MmprojPath), ApiKey = Environment.GetEnvironmentVariable($"PRY_API_KEY_{profile.Id.Replace('-', '_').ToUpperInvariant()}") };
-    }
-
     private string GetActiveModelId(UserPreferences? preferences = null)
     {
         var value = preferences ?? _preferences;
-        return value.ActiveModelId ?? value.ModelTuning.ActiveModelId ?? _settings?.ActiveModelId ?? "qwen3-1.7b-local";
+        return value.ActiveModelId ?? value.ModelTuning.ActiveModelId ?? _profiles.FirstOrDefault()?.Id ?? "qwen3-1.7b-local";
     }
 
-    private string? GetVisionModelId(UserPreferences? preferences = null) => (preferences ?? _preferences).ActiveVisionModelId ?? _settings?.VisionModelId;
-    private string? GetSpeechModelId(UserPreferences? preferences = null) => (preferences ?? _preferences).ActiveSpeechModelId ?? _settings?.ActiveSpeechModelId;
+    private string? GetVisionModelId(UserPreferences? preferences = null) => (preferences ?? _preferences).ActiveVisionModelId;
+    private string? GetSpeechModelId(UserPreferences? preferences = null) => (preferences ?? _preferences).ActiveSpeechModelId ?? _speechProfiles.FirstOrDefault()?.Id;
 
     private SpeechModelProfile? GetSpeechProfile()
     {
         var id = GetSpeechModelId();
-        var profile = _settings?.SpeechModels.Concat(_preferences.CustomSpeechModels).FirstOrDefault(x => x.Id == id);
-        if (profile is null) return null;
-        var path = string.IsNullOrWhiteSpace(profile.ModelPath) || Path.IsPathRooted(profile.ModelPath)
-            ? profile.ModelPath : ResolveBundledPath(profile.ModelPath) ?? Path.GetFullPath(Path.Combine(_appDirectory, profile.ModelPath));
-        return profile with { ModelPath = path, ApiKey = Environment.GetEnvironmentVariable($"PRY_SPEECH_API_KEY_{profile.Id.Replace('-', '_').ToUpperInvariant()}") };
+        return _builtInSpeechProfiles.Concat(_preferences.CustomSpeechModels).FirstOrDefault(x => x.Id == id);
     }
 
     private ModelTuningPreferences? GetModelTuning(string id, UserPreferences? preferences = null)
@@ -255,23 +299,7 @@ public sealed partial class MainWindow : Window
         return id == GetActiveModelId(value) ? value.ModelTuning with { EnableThinking = value.ModelTuning.EnableThinking ?? value.EnableThinking } : null;
     }
 
-    private static ModelProfile ApplyTuning(ModelProfile profile, ModelTuningPreferences? tuning) => tuning is null ? profile : profile with
-    {
-        EnableThinking = tuning.EnableThinking ?? profile.EnableThinking,
-        Temperature = tuning.Temperature ?? profile.Temperature,
-        MaxOutputTokens = tuning.MaxOutputTokens ?? profile.MaxOutputTokens,
-        ContextSize = tuning.ContextSize ?? profile.ContextSize,
-        GpuLayers = tuning.GpuLayers ?? profile.GpuLayers,
-        ComputeDevice = tuning.ComputeDevice ?? profile.ComputeDevice
-    };
-
-    private ModelProfile[] BuildProfiles(UserPreferences preferences) => _settings!.Models
-        .Concat(preferences.CustomModels)
-        .Select(ResolveProfile)
-        .Select(x => ApplyTuning(x, GetModelTuning(x.Id, preferences)))
-        .ToArray();
-
-    private TurnTakingSettings EffectiveTurnSettings() => _preferences.TurnTakingOverride ?? _settings!.TurnTaking;
+    private TurnTakingSettings EffectiveTurnSettings() => _preferences.TurnTakingOverride ?? new TurnTakingSettings();
 
     private IReadOnlyList<string> LoadTips()
     {
@@ -532,13 +560,6 @@ public sealed partial class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(message.Content)) AddTextBubble(author, message.Content, isUser, message.CreatedAt, message.Id);
         }
         ScrollChatToEnd();
-    }
-
-    private string? ResolveBundledPath(string relativePath)
-    {
-        var directory = new DirectoryInfo(_appDirectory);
-        for (var i = 0; i < 8 && directory is not null; i++, directory = directory.Parent) { var candidate = Path.GetFullPath(Path.Combine(directory.FullName, relativePath)); if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate; }
-        return null;
     }
 
     private void ApplyTheme()
@@ -940,7 +961,7 @@ public sealed partial class MainWindow : Window
     }
     private void AddStickerBubble(string author, string stickerId, bool isUser, DateTimeOffset? timestamp = null, long? messageId = null)
     {
-        var sticker = _stickerCatalog?.Find(stickerId); if (sticker is null) { AddTextBubble(author, "[表情]", isUser); return; }
+        var sticker = _stickers.FirstOrDefault(x => x.Id == stickerId && x.Enabled); if (sticker is null) { AddTextBubble(author, "[表情]", isUser); return; }
         try { AddBubble(author, new Border { CornerRadius = new CornerRadius(14), Child = new Image { Source = new Bitmap(sticker.FilePath), MaxWidth = 220, MaxHeight = 220, Stretch = Stretch.Uniform } }, isUser, timestamp, messageId, ""); }
         catch { AddTextBubble(author, $"[表情：{sticker.Name}]", isUser); }
     }
@@ -1338,10 +1359,9 @@ public sealed partial class MainWindow : Window
     private void StickerButton_Click(object? sender, RoutedEventArgs e) => ToggleStickerPopup();
     private void ToggleStickerPopup()
     {
-        if (_stickerCatalog is null) return;
         if (StickerPopup.IsOpen) { StickerPopup.IsOpen = false; return; }
         StickerGrid.Children.Clear();
-        foreach (var sticker in _stickerCatalog.Enabled)
+        foreach (var sticker in _stickers.Where(x => x.Enabled && File.Exists(x.FilePath)))
         {
             var preview = new Image { Source = new Bitmap(sticker.FilePath), Width = 72, Height = 72, Stretch = Stretch.Uniform };
             var button = new Button { Width = 82, Height = 96, Padding = new Thickness(4), Content = new StackPanel { Spacing = 3, Children = { preview, new TextBlock { Text = sticker.Name, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Center, MaxWidth = 72 } } } };
@@ -1683,7 +1703,6 @@ public sealed partial class MainWindow : Window
 
     private async void Settings_Click(object? sender, RoutedEventArgs e)
     {
-        if (_settings is null) return;
         var settingsOriginalPreferences = _preferences; var themeCommitted = false;
         var detectedDevices = await _api.GetComputeDevicesAsync();
         var computeChoices = new List<ComputeChoice>
@@ -1696,20 +1715,20 @@ public sealed partial class MainWindow : Window
         NumericUpDown Number(decimal value, decimal min, decimal max, decimal step = 1) => new() { Value = value, Minimum = min, Maximum = max, Increment = step };
         var turn = EffectiveTurnSettings();
         var themePreferences = _preferences.Theme ?? new ThemePreferences();
-        var allModels = _settings.Models.Concat(_preferences.CustomModels).ToArray();
+        var allModels = _builtInProfiles.Concat(_preferences.CustomModels).ToArray();
         var textChoices = allModels.Where(x => x.Capabilities.Text).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
         var visionChoices = allModels.Where(x => x.Capabilities.Vision).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
         var parameterChoices = allModels.Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
         var activeModel = new ComboBox { ItemsSource = textChoices, SelectedItem = textChoices.FirstOrDefault(x => x.Id == GetActiveModelId()) };
         var visionModel = new ComboBox { ItemsSource = visionChoices, SelectedItem = visionChoices.FirstOrDefault(x => x.Id == GetVisionModelId()) };
         var parameterModel = new ComboBox { ItemsSource = parameterChoices };
-        var speechChoices = _settings.SpeechModels.Concat(_preferences.CustomSpeechModels).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
+        var speechChoices = _builtInSpeechProfiles.Concat(_preferences.CustomSpeechModels).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
         var speechModel = new ComboBox { ItemsSource = speechChoices, SelectedItem = speechChoices.FirstOrDefault(x => x.Id == GetSpeechModelId()) };
         var thinking = new CheckBox { Content = "启用思考模式" };
         var temperature = Number(.8m, 0, 2, .05m); var outputTokens = Number(512, 32, 8192, 32); var contextSize = Number(4096, 512, 131072, 512); var gpuLayers = Number(0, 0, 999, 1);
         var computeDevice = new ComboBox { ItemsSource = computeChoices };
         var tuningDrafts = _preferences.ModelTunings.ToDictionary(x => x.Key, x => x.Value); string currentModelId = GetActiveModelId(); bool loadingModel = false;
-        ModelProfile? ConfiguredModel(string id) => _settings.Models.Concat(_preferences.CustomModels).FirstOrDefault(x => x.Id == id);
+        ModelProfile? ConfiguredModel(string id) => _builtInProfiles.Concat(_preferences.CustomModels).FirstOrDefault(x => x.Id == id);
         void StoreModelFields()
         {
             if (loadingModel || string.IsNullOrWhiteSpace(currentModelId)) return;
@@ -2009,7 +2028,7 @@ public sealed partial class MainWindow : Window
             var selectedVisionId = (visionModel.SelectedItem as ModelChoice)?.Id ?? GetVisionModelId();
             var selectedParameterId = (parameterModel.SelectedItem as ModelChoice)?.Id ?? currentModelId;
             await ManageCustomModelsAsync(window);
-            allModels = _settings.Models.Concat(_preferences.CustomModels).ToArray();
+            allModels = _builtInProfiles.Concat(_preferences.CustomModels).ToArray();
             textChoices = allModels.Where(x => x.Capabilities.Text).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
             visionChoices = allModels.Where(x => x.Capabilities.Vision).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
             parameterChoices = allModels.Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
@@ -2020,7 +2039,7 @@ public sealed partial class MainWindow : Window
             parameterModel.ItemsSource = parameterChoices;
             parameterModel.SelectedItem = parameterChoices.FirstOrDefault(x => x.Id == selectedParameterId) ?? parameterChoices.FirstOrDefault();
         };
-        manageSpeech.Click += async (_, _) => { await ManageSpeechModelsAsync(window); speechChoices = _settings.SpeechModels.Concat(_preferences.CustomSpeechModels).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray(); speechModel.ItemsSource = speechChoices; speechModel.SelectedItem = speechChoices.FirstOrDefault(x => x.Id == GetSpeechModelId()) ?? speechChoices.FirstOrDefault(); };
+        manageSpeech.Click += async (_, _) => { await ManageSpeechModelsAsync(window); speechChoices = _builtInSpeechProfiles.Concat(_preferences.CustomSpeechModels).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray(); speechModel.ItemsSource = speechChoices; speechModel.SelectedItem = speechChoices.FirstOrDefault(x => x.Id == GetSpeechModelId()) ?? speechChoices.FirstOrDefault(); };
         save.Click += async (_, _) =>
         {
             var minCount = (int)(minReplies.Value ?? 1); var maxCount = (int)(maxReplies.Value ?? 4);
@@ -2058,7 +2077,7 @@ public sealed partial class MainWindow : Window
                 var backendModels = await _api.UpdateModelSelectionAsync(new UpdateModelSelectionRequest(
                     selectedModelId, selectedVisionId, selectedSpeechId, candidate.ModelTunings));
                 _preferences = candidate;
-                _profiles = BuildProfiles(candidate);
+                _profiles = _builtInProfiles.Concat(candidate.CustomModels).ToArray();
                 ApplyTheme(); await ReloadActiveConversationAsync();
                 RuntimeStatus.Text = $"后端模型配置已保存 · {backendModels.First(x => x.SelectedForText).DisplayName}";
                 themeCommitted = true; window.Close();
@@ -2122,13 +2141,12 @@ public sealed partial class MainWindow : Window
 
     private async Task OpenStickerManagerAsync(Window? owner = null)
     {
-        if (_stickerCatalog is null) return;
         var window = new Window { Title = "管理表情包", Width = 760, Height = 570, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner }; var grid = new WrapPanel { Orientation = Orientation.Horizontal, ItemWidth = 112, ItemHeight = 132 }; StickerDefinition? selected = null;
         var import = new Button { Content = "导入" }; var edit = new Button { Content = "编辑" }; var remove = new Button { Content = "删除" }; var close = new Button { Content = "完成" };
         void Refresh()
         {
             grid.Children.Clear();
-            foreach (var sticker in _stickerCatalog.All)
+            foreach (var sticker in _stickers)
             {
                 Control preview; try { preview = new Image { Source = new Bitmap(sticker.FilePath), Width = 88, Height = 88, Stretch = Stretch.Uniform }; } catch { preview = new TextBlock { Text = "无法预览", Width = 88, Height = 88 }; }
                 var button = new Button { Width = 104, Height = 124, Padding = new Thickness(5), BorderBrush = sticker.Id == selected?.Id ? ThemeAccentBrush() : Brush.Parse("#344452"), BorderThickness = new Thickness(sticker.Id == selected?.Id ? 2 : 1), Content = new StackPanel { Spacing = 4, Children = { preview, new TextBlock { Text = sticker.Name, MaxWidth = 92, TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Center }, new TextBlock { Text = sticker.Source == StickerSource.BuiltIn ? "内置" : sticker.InteractionRole, FontSize = 10, Foreground = Brush.Parse("#7F91A4"), HorizontalAlignment = HorizontalAlignment.Center } } } };
@@ -2146,10 +2164,10 @@ public sealed partial class MainWindow : Window
                 var media = await _api.UploadAsync(content, Path.GetFileName(path), ImageContentType(path));
                 await _api.ImportStickerAsync(media.Id, Path.GetFileNameWithoutExtension(path), []);
             }
-            await _stickerCatalog.LoadAsync(); Refresh();
+            await ReloadStickerProjectionAsync(); Refresh();
         };
-        remove.Click += async (_, _) => { if (selected is { Source: StickerSource.User } && await ConfirmAsync(window, "删除表情", $"确定删除“{selected.Name}”吗？这会同时删除应用数据目录里的副本。")) { await _api.DeleteStickerAsync(selected.Id); await _stickerCatalog.LoadAsync(); selected = null; Refresh(); } };
-        edit.Click += async (_, _) => { if (selected is { Source: StickerSource.User }) { await EditStickerAsync(window, selected); selected = _stickerCatalog.Find(selected.Id); Refresh(); } }; close.Click += (_, _) => window.Close();
+        remove.Click += async (_, _) => { if (selected is { Source: StickerSource.User } && await ConfirmAsync(window, "删除表情", $"确定删除“{selected.Name}”吗？这会同时删除应用数据目录里的副本。")) { await _api.DeleteStickerAsync(selected.Id); await ReloadStickerProjectionAsync(); selected = null; Refresh(); } };
+        edit.Click += async (_, _) => { if (selected is { Source: StickerSource.User }) { await EditStickerAsync(window, selected); selected = _stickers.FirstOrDefault(x => x.Id == selected.Id); Refresh(); } }; close.Click += (_, _) => window.Close();
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 9, HorizontalAlignment = HorizontalAlignment.Right, Children = { import, edit, remove, close } };
         var scroll = new ScrollViewer { Content = grid, Background = Brushes.Transparent };
         var stickerCard = CreateCompactDialogTextCard(scroll); stickerCard.Padding = new Thickness(12);
@@ -2198,7 +2216,7 @@ public sealed partial class MainWindow : Window
     {
         var name = new TextBox { Text = sticker.Name }; var tags = new TextBox { Text = string.Join("，", sticker.Emotions) }; var role = new ComboBox { ItemsSource = new[] { "reaction", "backchannel", "topic" }, SelectedItem = sticker.InteractionRole }; var backchannel = new CheckBox { Content = "这个表情通常表示“我在听”", IsChecked = sticker.LikelyBackchannel }; var save = new Button { Content = "保存", HorizontalAlignment = HorizontalAlignment.Right };
         var editor = new Window { Title = "编辑表情", Width = 480, Height = 430, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        save.Click += async (_, _) => { var values = (tags.Text ?? "").Split(['，', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); await _api.UpdateStickerAsync(sticker.Id, new UpdateStickerRequest(name.Text ?? sticker.Name, values, role.SelectedItem?.ToString() ?? "reaction", backchannel.IsChecked == true)); await _stickerCatalog!.LoadAsync(); editor.Close(); };
+        save.Click += async (_, _) => { var values = (tags.Text ?? "").Split(['，', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); await _api.UpdateStickerAsync(sticker.Id, new UpdateStickerRequest(name.Text ?? sticker.Name, values, role.SelectedItem?.ToString() ?? "reaction", backchannel.IsChecked == true)); await ReloadStickerProjectionAsync(); editor.Close(); };
         var form = new StackPanel { Spacing = 10, Children = { new TextBlock { Text = "名称" }, name, new TextBlock { Text = "情绪标签" }, tags, new TextBlock { Text = "互动作用" }, role, backchannel } };
         editor.Content = CreateThemedDialogSurface(CreateCompactDialogLayout(CreateCompactDialogTextCard(form), save)); await editor.ShowDialog(owner);
     }

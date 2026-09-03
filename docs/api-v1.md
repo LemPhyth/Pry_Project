@@ -251,7 +251,7 @@
 
 ## 语音识别
 
-- `GET /api/v1/speech/models`：语音模型列表、选中和可用状态。
+- `GET /api/v1/speech/models`：语音模型列表、选中和可用状态；`custom` 区分内置配置与用户配置，客户端据此决定是否显示编辑/删除入口。
 - `POST /api/v1/speech/models/custom`：创建自定义语音模型。
 - `PUT /api/v1/speech/models/custom/{id}`：更新自定义语音模型。
 - `DELETE /api/v1/speech/models/custom/{id}`：删除未被选中的自定义语音模型；当前选中模型返回 `409 resource_conflict`。
