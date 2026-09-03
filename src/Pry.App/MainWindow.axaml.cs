@@ -899,39 +899,14 @@ public sealed partial class MainWindow : Window
         if (view.ThemedBubble is not null) _messageBubbleControls.Add((view.ThemedBubble, isUser));
         if (view.Text is not null) _bubbleTextControls.Add((view.Text, isUser));
     }
-    private Control CreateMessageAvatar(bool isUser)
-    {
-        var theme = _preferences.Theme ?? new ThemePreferences();
-        var path = isUser ? theme.UserAvatarPath : _character?.AvatarPath ?? theme.CharacterAvatarPath;
-        Control child;
-        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
-        {
-            try
-            {
-                var image = new Image { Source = new Bitmap(path), Stretch = Stretch.UniformToFill };
-                var display = isUser && theme.UserAvatarDisplays.TryGetValue(path, out var userDisplay) ? userDisplay : _character?.AvatarDisplay ?? new ImageDisplayPreferences();
-                ApplyImageDisplay(image, display); child = image;
-            }
-            catch { child = new TextBlock { Text = isUser ? "你" : (_character?.Name.FirstOrDefault().ToString() ?? "P"), FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }; }
-        }
-        else child = new TextBlock { Text = isUser ? "你" : (_character?.Name.FirstOrDefault().ToString() ?? "P"), FontWeight = FontWeight.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        var size = Math.Clamp(theme.AvatarSize, 28, 76);
-        var result = new Border { Width = size, Height = size, CornerRadius = new CornerRadius(size / 2), Background = isUser ? Brush.Parse("#536C82") : ThemeAccentBrush(), ClipToBounds = true, Child = child, VerticalAlignment = VerticalAlignment.Bottom };
-        _messageAvatarControls.Add((result, isUser)); return result;
-    }
-
     private void AddBubble(string author, Control content, bool isUser, DateTimeOffset? timestamp = null, long? messageId = null, string messageText = "")
     {
-        var panel = new StackPanel { Spacing = 3, HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left };
-        var meta = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left };
-        meta.Children.Add(new TextBlock { Text = author, FontSize = 11, Foreground = Brush.Parse("#7F91A4") }); meta.Children.Add(new TextBlock { Text = (timestamp ?? DateTimeOffset.Now).LocalDateTime.ToString("HH:mm"), FontSize = 10, Foreground = Brush.Parse("#586B7D") });
-        if (messageId is long storedId) panel.ContextMenu = CreateMessageContextMenu(storedId, isUser, messageText);
-        panel.Children.Add(meta); panel.Children.Add(content);
-        var row = new Grid { ColumnDefinitions = isUser ? new ColumnDefinitions("*,Auto") : new ColumnDefinitions("Auto,*"), ColumnSpacing = 8 };
-        var avatar = CreateMessageAvatar(isUser);
-        if (isUser) { Grid.SetColumn(panel, 0); Grid.SetColumn(avatar, 1); } else { Grid.SetColumn(avatar, 0); Grid.SetColumn(panel, 1); }
-        row.Children.Add(panel); row.Children.Add(avatar); if (panel.ContextMenu is not null) row.ContextMenu = panel.ContextMenu;
-        MessagesPanel.Children.Insert(Math.Max(0, MessagesPanel.Children.Count - 1), row); ScrollChatToEnd();
+        var menu = messageId is long storedId ? CreateMessageContextMenu(storedId, isUser, messageText) : null;
+        var view = MessageRowFactory.Create(author, content, isUser, timestamp ?? DateTimeOffset.Now,
+            menu, _preferences.Theme ?? new ThemePreferences(), _character, ThemeAccentBrush());
+        _messageAvatarControls.Add((view.Avatar, isUser));
+        MessagesPanel.Children.Insert(Math.Max(0, MessagesPanel.Children.Count - 1), view.Row);
+        ScrollChatToEnd();
     }
 
     private ContextMenu CreateMessageContextMenu(long messageId, bool isUser, string messageText)
