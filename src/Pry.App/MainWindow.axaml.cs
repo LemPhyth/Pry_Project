@@ -35,9 +35,7 @@ public sealed partial class MainWindow : Window
     private readonly string _dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion");
     private string _conversationId = Guid.NewGuid().ToString("N");
     private readonly AttachmentDraftService _attachmentDraft = new();
-    private readonly List<(Border Control, bool IsUser)> _messageAvatarControls = [];
-    private readonly List<(Border Control, bool IsUser)> _messageBubbleControls = [];
-    private readonly List<(TextBlock Control, bool IsUser)> _bubbleTextControls = [];
+    private readonly MessageThemeTracker _messageTheme = new();
     private readonly BackgroundImageCache _backgroundImages = new();
     private string? _currentBackgroundRenderKey;
     private readonly Border _chatBottomAnchor = new() { Height = 64, IsHitTestVisible = false };
@@ -778,13 +776,9 @@ public sealed partial class MainWindow : Window
         var avatar = Math.Clamp(theme.AvatarSize, 28, 76);
         var header = avatar * 1.25; HeaderAvatarBorder.Width = header; HeaderAvatarBorder.Height = header; HeaderAvatarBorder.CornerRadius = new CornerRadius(header / 2);
         var sidebar = avatar * 1.15; SidebarAvatar.Width = sidebar; SidebarAvatar.Height = sidebar; SidebarAvatar.CornerRadius = new CornerRadius(sidebar / 2);
-        foreach (var item in _messageAvatarControls)
-        {
-            item.Control.Width = avatar; item.Control.Height = avatar; item.Control.CornerRadius = new CornerRadius(avatar / 2);
-            item.Control.Background = item.IsUser ? Brush.Parse(lightTheme() ? "#91A4B5" : "#536C82") : ThemeAccentBrush();
-        }
-        foreach (var item in _messageBubbleControls) item.Control.Background = item.IsUser ? ThemeAccentBrush() : AssistantBubbleBrush();
-        foreach (var item in _bubbleTextControls) { item.Control.FontSize = Math.Clamp(theme.BubbleFontSize, 11, 24); item.Control.MaxWidth = Math.Clamp(theme.BubbleMaxWidth, 280, 900); item.Control.Foreground = item.IsUser ? AccentTextBrush() : Brush.Parse(lightTheme() ? "#17212B" : "#F2F6FA"); }
+        _messageTheme.Apply(theme, Brush.Parse(lightTheme() ? "#91A4B5" : "#536C82"),
+            ThemeAccentBrush(), AssistantBubbleBrush(), AccentTextBrush(),
+            Brush.Parse(lightTheme() ? "#17212B" : "#F2F6FA"));
         MessagesPanel.Spacing = Math.Clamp(theme.BubbleSpacing, 2, 36);
         bool lightTheme() => theme.ThemeMode.Equals("light", StringComparison.OrdinalIgnoreCase) || (theme.ThemeMode.Equals("system", StringComparison.OrdinalIgnoreCase) && Application.Current?.ActualThemeVariant == ThemeVariant.Light);
     }
@@ -895,16 +889,13 @@ public sealed partial class MainWindow : Window
     }
 
     private void TrackMessageContent(MessageContentView view, bool isUser)
-    {
-        if (view.ThemedBubble is not null) _messageBubbleControls.Add((view.ThemedBubble, isUser));
-        if (view.Text is not null) _bubbleTextControls.Add((view.Text, isUser));
-    }
+        => _messageTheme.Track(view, isUser);
     private void AddBubble(string author, Control content, bool isUser, DateTimeOffset? timestamp = null, long? messageId = null, string messageText = "")
     {
         var menu = messageId is long storedId ? CreateMessageContextMenu(storedId, isUser, messageText) : null;
         var view = MessageRowFactory.Create(author, content, isUser, timestamp ?? DateTimeOffset.Now,
             menu, _preferences.Theme ?? new ThemePreferences(), _character, ThemeAccentBrush());
-        _messageAvatarControls.Add((view.Avatar, isUser));
+        _messageTheme.TrackAvatar(view.Avatar, isUser);
         MessagesPanel.Children.Insert(Math.Max(0, MessagesPanel.Children.Count - 1), view.Row);
         ScrollChatToEnd();
     }
@@ -1015,7 +1006,7 @@ public sealed partial class MainWindow : Window
 
     private void ResetMessagesPanel()
     {
-        MessagesPanel.Children.Clear(); _messageAvatarControls.Clear(); _messageBubbleControls.Clear(); _bubbleTextControls.Clear();
+        MessagesPanel.Children.Clear(); _messageTheme.Clear();
         MessagesPanel.Children.Add(_chatBottomAnchor);
     }
 
