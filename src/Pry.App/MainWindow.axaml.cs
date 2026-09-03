@@ -30,7 +30,7 @@ namespace Pry.App;
 public sealed partial class MainWindow : Window
 {
     private readonly PryBackendClient _api;
-    private readonly BackendMediaCache _mediaCache;
+    private readonly BackendProjectionService _projectionService;
     private readonly string _appDirectory = AppContext.BaseDirectory;
     private readonly string _dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion");
     private string _conversationId = Guid.NewGuid().ToString("N");
@@ -82,7 +82,7 @@ public sealed partial class MainWindow : Window
     public MainWindow(PryBackendClient api)
     {
         _api = api;
-        _mediaCache = new BackendMediaCache(api);
+        _projectionService = new BackendProjectionService(api);
         InitializeComponent();
         MessagesPanel.Children.Add(_chatBottomAnchor);
         MessagesPanel.LayoutUpdated += (_, _) =>
@@ -129,7 +129,7 @@ public sealed partial class MainWindow : Window
         _waveInput?.StopRecording(); _waveWriter?.Dispose(); _waveInput?.Dispose();
         foreach (var bitmap in _backgroundRenderCache.Values) bitmap.Dispose();
         _backgroundRenderCache.Clear();
-        _mediaCache.Dispose();
+        _projectionService.Dispose();
     }
 
     private async Task InitializeRuntimeAsync()
@@ -159,84 +159,21 @@ public sealed partial class MainWindow : Window
 
     private async Task LoadBackendProjectionAsync()
     {
-        var preferences = await _api.GetPreferencesAsync();
-        var backgroundPath = await _mediaCache.GetPathAsync(preferences.BackgroundUrl);
-        var userAvatarPath = await _mediaCache.GetPathAsync(preferences.UserAvatarUrl);
-        var theme = new ThemePreferences
-        {
-            BackgroundImagePath = backgroundPath, BackgroundHistory = backgroundPath is null ? [] : [backgroundPath],
-            UserAvatarPath = userAvatarPath, UserAvatarHistory = userAvatarPath is null ? [] : [userAvatarPath],
-            ThemeMode = preferences.Theme.ThemeMode, AccentColor = preferences.Theme.AccentColor,
-            UseGlassEffects = preferences.Theme.UseGlassEffects, LiveSidebarResize = preferences.Theme.LiveSidebarResize,
-            BackgroundDimOpacity = preferences.Theme.BackgroundDimOpacity,
-            BackgroundImageOpacity = preferences.Theme.BackgroundImageOpacity,
-            BackgroundBlurMode = preferences.Theme.BackgroundBlurMode,
-            BackgroundBlurRadius = preferences.Theme.BackgroundBlurRadius, AvatarSize = preferences.Theme.AvatarSize,
-            BubbleFontSize = preferences.Theme.BubbleFontSize, BubbleMaxWidth = preferences.Theme.BubbleMaxWidth,
-            BubbleSpacing = preferences.Theme.BubbleSpacing
-        };
-        var modelResponses = await _api.GetModelsAsync();
-        static ModelProfile ToModel(ModelProfileResponse x) => new()
-        {
-            Id = x.Id, DisplayName = x.DisplayName, Provider = x.Provider, ModelName = x.ModelName, BaseUrl = "",
-            Capabilities = x.Capabilities, ContextSize = x.ContextSize, MaxOutputTokens = x.MaxOutputTokens,
-            Temperature = x.Temperature, GpuLayers = x.GpuLayers, ComputeDevice = x.ComputeDevice,
-            EnableThinking = x.EnableThinking
-        };
-        _profiles = modelResponses.Select(ToModel).ToArray();
-        _builtInProfiles = modelResponses.Where(x => !x.Custom).Select(ToModel).ToArray();
-        var customModels = modelResponses.Where(x => x.Custom).Select(ToModel).ToArray();
-        var speechResponses = await _api.GetSpeechModelsAsync();
-        static SpeechModelProfile ToSpeech(SpeechModelResponse x) => new()
-        {
-            Id = x.Id, DisplayName = x.DisplayName, Provider = x.Provider, ModelName = x.ModelName,
-            Language = x.Language, SampleRate = x.SampleRate
-        };
-        _speechProfiles = speechResponses.Select(ToSpeech).ToArray();
-        _builtInSpeechProfiles = speechResponses.Where(x => !x.Custom).Select(ToSpeech).ToArray();
-        var customSpeech = speechResponses.Where(x => x.Custom).Select(ToSpeech).ToArray();
-        _preferences = new UserPreferences
-        {
-            SelectedCharacterId = preferences.SelectedCharacterId, ActiveConversationId = preferences.ActiveConversationId,
-            ActiveModelId = preferences.ActiveModelId, ActiveVisionModelId = preferences.ActiveVisionModelId,
-            ActiveSpeechModelId = preferences.ActiveSpeechModelId, UserProfile = preferences.UserProfile,
-            DesktopPet = preferences.DesktopPet, Shortcuts = preferences.Shortcuts,
-            TurnTakingOverride = preferences.TurnTaking, Theme = theme, CustomModels = customModels,
-            CustomSpeechModels = customSpeech
-        };
-        _characters.Clear();
-        foreach (var summary in await _api.GetCharactersAsync())
-        {
-            var value = await _api.GetCharacterAsync(summary.Id);
-            _characters.Add(new CharacterDefinition
-            {
-                SchemaVersion = value.SchemaVersion, Id = value.Id, Name = value.Name, CardName = value.CardName,
-                UserName = value.UserName, Identity = value.Identity, Personality = value.Personality,
-                SpeechStyle = value.SpeechStyle, BehavioralRules = value.BehavioralRules, WorldFacts = value.WorldFacts,
-                InitialState = value.InitialState, Greeting = value.Greeting, PromptMode = value.PromptMode,
-                LegacySystemPrompt = value.LegacySystemPrompt,
-                AvatarPath = await _mediaCache.GetPathAsync(value.AvatarUrl), AvatarDisplay = value.AvatarDisplay
-            });
-        }
-        await ReloadStickerProjectionAsync();
+        var projection = await _projectionService.LoadAsync();
+        _preferences = projection.Preferences;
+        _profiles = projection.Models;
+        _builtInProfiles = projection.BuiltInModels;
+        _speechProfiles = projection.SpeechModels;
+        _builtInSpeechProfiles = projection.BuiltInSpeechModels;
+        _characters.Clear(); _characters.AddRange(projection.Characters);
+        _stickers.Clear(); _stickers.AddRange(projection.Stickers);
         _character = _characters.FirstOrDefault(x => x.Id == _preferences.SelectedCharacterId) ?? _characters[0];
     }
 
     private async Task ReloadStickerProjectionAsync()
     {
         _stickers.Clear();
-        foreach (var value in await _api.GetStickersAsync())
-        {
-            var path = await _mediaCache.GetPathAsync(value.ContentUrl);
-            if (path is null) continue;
-            _stickers.Add(new StickerDefinition
-            {
-                Id = value.Id, Name = value.Name, FilePath = path, Source = value.Source,
-                Emotions = value.Emotions, Situations = value.Situations, AvoidWhen = value.AvoidWhen,
-                Intensity = value.Intensity, Enabled = value.Enabled, InteractionRole = value.InteractionRole,
-                LikelyBackchannel = value.LikelyBackchannel
-            });
-        }
+        _stickers.AddRange(await _projectionService.LoadStickersAsync());
     }
 
     private void RefreshCharacterSelector()
