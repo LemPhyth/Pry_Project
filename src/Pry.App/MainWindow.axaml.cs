@@ -1523,7 +1523,6 @@ public sealed partial class MainWindow : Window
         };
         computeChoices.AddRange(detectedDevices.Select(x => new ComputeDeviceChoice(x.Id, $"{x.Name}（{x.IsIntegrated switch { true => "核显", false => "独显/加速卡" }}）")));
         var settingsUi = new SettingsUiFactory();
-        TextBox Box(string value, int height = 34) => settingsUi.CreateTextBox(value, height);
         NumericUpDown Number(decimal value, decimal min, decimal max, decimal step = 1) => settingsUi.CreateNumber(value, min, max, step);
         var turn = EffectiveTurnSettings();
         var themePreferences = _preferences.Theme ?? new ThemePreferences();
@@ -1540,10 +1539,10 @@ public sealed partial class MainWindow : Window
         var conversationEditor = new ConversationSettingsEditor(turn, settingsUi);
         var shortcutEditor = new ShortcutSettingsEditor(_preferences.Shortcuts, settingsUi);
         var desktopPetEditor = new DesktopPetSettingsEditor(_preferences.DesktopPet, settingsUi);
+        var appearanceEditor = new ThemeAppearanceEditor(themePreferences, settingsUi);
         var settingCards = settingsUi.Cards;
-        var modelPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var conversationPanel = conversationEditor.Panel; var shortcutPanel = shortcutEditor.Panel; var desktopPanel = desktopPetEditor.Panel; var themePanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
+        var modelPanel = new StackPanel { Margin = new Thickness(28), Spacing = 14 }; var conversationPanel = conversationEditor.Panel; var shortcutPanel = shortcutEditor.Panel; var desktopPanel = desktopPetEditor.Panel; var themePanel = appearanceEditor.Panel;
         void Header(Panel target, string value) => settingsUi.AddHeader(target, value);
-        void Field(Panel target, string label, Control control) => settingsUi.AddField(target, label, control);
         Border Card(string title, params Control[] controls) => settingsUi.CreateCard(title, controls);
         Header(modelPanel, "模型与语音");
         modelPanel.Children.Add(Card("对话模型分工", modelSelection.TextFields));
@@ -1559,23 +1558,6 @@ public sealed partial class MainWindow : Window
         var userAvatarPreview = new Image { Width = 120, Height = 120, Stretch = Stretch.UniformToFill };
         var browseBackground = new Button { Content = "导入背景…" }; var clearBackground = new Button { Content = "不使用背景" }; var deleteBackground = new Button { Content = "删除所选" };
         var browseUserAvatar = new Button { Content = "导入用户头像…" }; var clearUserAvatar = new Button { Content = "使用默认头像" }; var deleteUserAvatar = new Button { Content = "删除所选" };
-        var themeMode = new ComboBox { ItemsSource = new[] { "跟随系统", "深色", "浅色" }, SelectedIndex = themePreferences.ThemeMode.ToLowerInvariant() switch { "dark" => 1, "light" => 2, _ => 0 } };
-        var accentColor = Box(string.IsNullOrWhiteSpace(themePreferences.AccentColor) ? "#B148C6" : themePreferences.AccentColor);
-        var accentPalette = new WrapPanel { Orientation = Orientation.Horizontal };
-        foreach (var color in new[] { "#B148C6", "#7C5CFC", "#3B82F6", "#06A6A6", "#16A36A", "#84A322", "#E29A24", "#D95D39", "#E05278", "#6B7A90" })
-        {
-            var swatch = new Button { Width = 34, Height = 34, Padding = new Thickness(0), Margin = new Thickness(0, 0, 7, 7), Background = Brush.Parse(color), BorderBrush = Brushes.White, BorderThickness = new Thickness(1) };
-            ToolTip.SetTip(swatch, color); swatch.Click += (_, _) => accentColor.Text = color; accentPalette.Children.Add(swatch);
-        }
-        var glassEffects = new CheckBox { Content = "侧边栏、顶部标题栏和底部输入区透出软件背景", IsChecked = themePreferences.UseGlassEffects };
-        var liveSidebarResize = new CheckBox { Content = "拖动时实时调整侧边栏宽度", IsChecked = themePreferences.LiveSidebarResize };
-        var backgroundDim = Number((decimal)themePreferences.BackgroundDimOpacity, 0, .85m, .05m);
-        var backgroundOpacity = Number((decimal)themePreferences.BackgroundImageOpacity, 0, 1, .05m);
-        var backgroundBlur = Number((decimal)themePreferences.BackgroundBlurRadius, 0, 32, 1);
-        var avatarSize = Number((decimal)themePreferences.AvatarSize, 28, 76, 1);
-        var bubbleFontSize = Number((decimal)themePreferences.BubbleFontSize, 11, 24, .5m);
-        var bubbleMaxWidth = Number((decimal)themePreferences.BubbleMaxWidth, 280, 900, 20);
-        var bubbleSpacing = Number((decimal)themePreferences.BubbleSpacing, 2, 36, 1);
         var backgroundFocusX = Number(.5m, 0, 1, .05m); var backgroundFocusY = Number(.5m, 0, 1, .05m); var backgroundZoom = Number(1, 1, 3, .05m);
         var avatarFocusX = Number(.5m, 0, 1, .05m); var avatarFocusY = Number(.5m, 0, 1, .05m); var avatarZoom = Number(1, 1, 3, .05m);
         var loadingImageControls = false;
@@ -1593,25 +1575,16 @@ public sealed partial class MainWindow : Window
         void RefreshBackgroundGallery() => RefreshImageGallery(backgroundGallery, backgroundDraft.History, backgroundDraft.SelectedPath, path => { backgroundDraft.Select(path, ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); LoadDisplay(path, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); RefreshBackgroundGallery(); previewTheme(); }, false);
         void RefreshUserAvatarGallery() => RefreshImageGallery(userAvatarGallery, avatarDraft.History, avatarDraft.SelectedPath, path => { avatarDraft.Select(path, ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); LoadDisplay(path, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview); RefreshUserAvatarGallery(); previewTheme(); }, true);
         RefreshBackgroundGallery(); RefreshUserAvatarGallery(); LoadDisplay(backgroundDraft.SelectedPath, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); LoadDisplay(avatarDraft.SelectedPath, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview);
-        Header(themePanel, "外观与主题");
-        var appearanceFields = new StackPanel { Spacing = 7 }; Field(appearanceFields, "主题模式", themeMode); Field(appearanceFields, "强调色调色板", accentPalette); Field(appearanceFields, "自定义十六进制颜色", accentColor);
-        themePanel.Children.Add(Card("颜色主题", appearanceFields, new TextBlock { Text = "可跟随系统切换深浅色，也可以指定软件强调色。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") }));
         var backgroundCropEditor = CreateVisualCropEditor(backgroundPreview, backgroundFocusX, backgroundFocusY, backgroundZoom, 500, 280, false);
-        var openBackgroundSettings = new Button { Content = "聊天背景、透明度与模糊…", HorizontalAlignment = HorizontalAlignment.Left };
-        var openAvatarSettings = new Button { Content = "用户头像与取景…", HorizontalAlignment = HorizontalAlignment.Left };
-        themePanel.Children.Add(Card("图片素材", new TextBlock { Text = "背景与头像取景使用独立页面，避免大预览区占满外观设置并影响滚动。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") }, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { openBackgroundSettings, openAvatarSettings } }));
-        themePanel.Children.Add(Card("界面材质", glassEffects));
         var avatarCropEditor = CreateVisualCropEditor(userAvatarPreview, avatarFocusX, avatarFocusY, avatarZoom, 180, 180, true);
         var backgroundPage = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
         var backgroundBack = new Button { Content = "← 返回外观与主题", HorizontalAlignment = HorizontalAlignment.Left };
         Header(backgroundPage, "聊天背景"); backgroundPage.Children.Add(backgroundBack);
-        backgroundPage.Children.Add(Card("背景图片与取景", new TextBlock { Text = "在预览中拖动取景，滚轮缩放。透明度会透出桌面；模糊程度同时作用于背景图，并在系统支持时启用桌面背景模糊。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#B8CCE0") }, backgroundCropEditor, backgroundGallery, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { browseBackground, clearBackground, deleteBackground } }, new TextBlock { Text = "背景透明度（透出桌面）", Foreground = Brush.Parse("#B8CCE0") }, backgroundOpacity, new TextBlock { Text = "背景模糊程度", Foreground = Brush.Parse("#B8CCE0") }, backgroundBlur, new TextBlock { Text = "背景遮罩浓度", Foreground = Brush.Parse("#B8CCE0") }, backgroundDim));
+        backgroundPage.Children.Add(Card("背景图片与取景", new TextBlock { Text = "在预览中拖动取景，滚轮缩放。透明度会透出桌面；模糊程度同时作用于背景图，并在系统支持时启用桌面背景模糊。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#B8CCE0") }, backgroundCropEditor, backgroundGallery, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { browseBackground, clearBackground, deleteBackground } }, new TextBlock { Text = "背景透明度（透出桌面）", Foreground = Brush.Parse("#B8CCE0") }, appearanceEditor.BackgroundOpacity, new TextBlock { Text = "背景模糊程度", Foreground = Brush.Parse("#B8CCE0") }, appearanceEditor.BackgroundBlur, new TextBlock { Text = "背景遮罩浓度", Foreground = Brush.Parse("#B8CCE0") }, appearanceEditor.BackgroundDim));
         var avatarPage = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
         var avatarBack = new Button { Content = "← 返回外观与主题", HorizontalAlignment = HorizontalAlignment.Left };
         Header(avatarPage, "用户头像"); avatarPage.Children.Add(avatarBack);
         avatarPage.Children.Add(Card("头像图片与取景", new TextBlock { Text = "头像与背景采用相同的可视化操作：拖动取景、滚轮缩放；始终从原始素材直接解码，不压缩、不生成缩略副本。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#B8CCE0") }, avatarCropEditor, userAvatarGallery, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { browseUserAvatar, clearUserAvatar, deleteUserAvatar } }));
-        var uiSizeFields = new StackPanel { Spacing = 7 }; Field(uiSizeFields, "头像尺寸", avatarSize); Field(uiSizeFields, "聊天文字大小", bubbleFontSize); Field(uiSizeFields, "气泡最大宽度", bubbleMaxWidth); Field(uiSizeFields, "气泡纵向间距", bubbleSpacing);
-        themePanel.Children.Add(Card("界面尺寸（实时预览）", liveSidebarResize, new TextBlock { Text = "关闭时拖动只显示位置指示线，松手后调整宽度；开启时侧边栏会跟随指针实时变化。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") }, uiSizeFields, new TextBlock { Text = "调整后主聊天窗口会立即呈现效果；关闭设置而不保存会恢复原值。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") }));
         var characterManagerButton = new Button { Content = "打开角色卡管理…", HorizontalAlignment = HorizontalAlignment.Left };
         var stickerManagerButton = new Button { Content = "打开表情包管理…", HorizontalAlignment = HorizontalAlignment.Left };
         var memoryManagerButton = new Button { Content = "打开长期记忆管理…", HorizontalAlignment = HorizontalAlignment.Left };
@@ -1624,11 +1597,11 @@ public sealed partial class MainWindow : Window
                 new("快捷键", shortcutPanel), new("桌宠与托盘", desktopPanel),
                 new("外观与主题", themePanel), new("角色卡", characterManagerPanel),
                 new("表情包", stickerManagerPanel), new("长期记忆", memoryManagerPanel)
-            ], tipText, ThemeAccentBrush(), () => liveSidebarResize.IsChecked == true);
+            ], tipText, ThemeAccentBrush(), () => appearanceEditor.LiveSidebarResize);
         var layout = settingsShell.Layout;
         var save = settingsShell.SaveButton;
-        openBackgroundSettings.Click += (_, _) => settingsShell.ShowPage(backgroundPage);
-        openAvatarSettings.Click += (_, _) => settingsShell.ShowPage(avatarPage);
+        appearanceEditor.OpenBackground.Click += (_, _) => settingsShell.ShowPage(backgroundPage);
+        appearanceEditor.OpenAvatar.Click += (_, _) => settingsShell.ShowPage(avatarPage);
         backgroundBack.Click += (_, _) => settingsShell.ShowPage(themePanel);
         avatarBack.Click += (_, _) => settingsShell.ShowPage(themePanel);
         Image? settingsBackgroundImage = null; Border? settingsBackgroundDim = null;
@@ -1643,16 +1616,7 @@ public sealed partial class MainWindow : Window
         ThemePreferences BuildThemeDraft()
         {
             StoreCurrentImageDisplays();
-            return SettingsDraftService.BuildTheme(themePreferences, new ThemeSettingsDraft
-            {
-                BackgroundImagePath = backgroundDraft.SelectedPath, BackgroundHistory = backgroundDraft.History, BackgroundDisplays = backgroundDraft.Displays,
-                UserAvatarPath = avatarDraft.SelectedPath, UserAvatarHistory = avatarDraft.History, UserAvatarDisplays = avatarDraft.Displays,
-                ThemeModeIndex = themeMode.SelectedIndex, AccentColor = accentColor.Text?.Trim() ?? "#B148C6",
-                UseGlassEffects = glassEffects.IsChecked == true, LiveSidebarResize = liveSidebarResize.IsChecked == true,
-                BackgroundImageOpacity = (double)(backgroundOpacity.Value ?? 1m), BackgroundDimOpacity = (double)(backgroundDim.Value ?? .34m),
-                BackgroundBlurRadius = (double)(backgroundBlur.Value ?? 0),
-                AvatarSize = (double)(avatarSize.Value ?? 48), BubbleFontSize = (double)(bubbleFontSize.Value ?? 14), BubbleMaxWidth = (double)(bubbleMaxWidth.Value ?? 620), BubbleSpacing = (double)(bubbleSpacing.Value ?? 10)
-            });
+            return appearanceEditor.BuildTheme(themePreferences, backgroundDraft, avatarDraft);
         }
         void UpdateSettingsSurface(ThemePreferences draft)
         {
@@ -1704,15 +1668,14 @@ public sealed partial class MainWindow : Window
             settingsShell.ApplyColors(panel, card, border, ThemeAccentBrush());
         }
         using var themePreview = new ThemePreviewController(
-            () => Color.TryParse(accentColor.Text, out _) ? BuildThemeDraft() : null,
+            () => Color.TryParse(appearanceEditor.AccentColorText, out _) ? BuildThemeDraft() : null,
             draft => { _preferences = _preferences with { Theme = draft }; ApplyTheme(); UpdateSettingsSurface(draft); },
             () => { _preferences = _preferences with { Theme = settingsOriginalTheme }; ApplyTheme(); });
         void PreviewTheme() => themePreview.Request();
         previewTheme = PreviewTheme;
         void PreviewValueChanged(object? _, NumericUpDownValueChangedEventArgs __) { if (!loadingImageControls) PreviewTheme(); }
-        themeMode.SelectionChanged += (_, _) => PreviewTheme(); accentColor.TextChanged += (_, _) => PreviewTheme(); glassEffects.IsCheckedChanged += (_, _) => PreviewTheme();
-        liveSidebarResize.IsCheckedChanged += (_, _) => PreviewTheme();
-        foreach (var number in new[] { backgroundOpacity, backgroundBlur, backgroundDim, avatarSize, bubbleFontSize, bubbleMaxWidth, bubbleSpacing, backgroundFocusX, backgroundFocusY, backgroundZoom, avatarFocusX, avatarFocusY, avatarZoom }) number.ValueChanged += PreviewValueChanged;
+        appearanceEditor.Changed += PreviewTheme;
+        foreach (var number in new[] { backgroundFocusX, backgroundFocusY, backgroundZoom, avatarFocusX, avatarFocusY, avatarZoom }) number.ValueChanged += PreviewValueChanged;
         window.Closed += (_, _) => themePreview.Dispose();
         UpdateSettingsSurface(themePreferences);
         async Task<string?> PickThemeImageAsync(string title, string category)
@@ -1759,7 +1722,7 @@ public sealed partial class MainWindow : Window
             var shortcutDraft = shortcutEditor.BuildDraft();
             var validationError = SettingsDraftService.Validate(turnOverride.MinReplyMessages,
                 turnOverride.MaxReplyMessages, turnOverride.TypingStyle.MinDelayMs,
-                turnOverride.TypingStyle.MaxDelayMs, accentColor.Text)
+                turnOverride.TypingStyle.MaxDelayMs, appearanceEditor.AccentColorText)
                 ?? SettingsDraftService.ValidateShortcuts(shortcutDraft);
             if (validationError is not null) { await ShowNoticeAsync(validationError.Title, validationError.Message); return; }
             var tuningDrafts = tuningEditor.BuildDrafts(); var selectedModelId = modelSelection.TextModelId ?? GetActiveModelId(); var selectedVisionId = modelSelection.VisionModelId; var selectedSpeechId = modelSelection.SpeechModelId; var modelTuning = tuningDrafts.TryGetValue(selectedModelId, out var selectedTuning) ? selectedTuning with { ActiveModelId = selectedModelId } : new ModelTuningPreferences { ActiveModelId = selectedModelId };
