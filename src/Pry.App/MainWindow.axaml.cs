@@ -1551,6 +1551,7 @@ public sealed partial class MainWindow : Window
         modelPanel.Children.Add(Card("语音识别", modelSelection.SpeechFields));
         var tips = LoadTips();
         var tipText = tips.Count == 0 ? "暂无使用提示。" : tips[Random.Shared.Next(tips.Count)];
+        using var themeImages = new ThemeImageResources();
         var backgroundDraft = new ThemeImageDraft(themePreferences.BackgroundImagePath, themePreferences.BackgroundHistory, themePreferences.BackgroundDisplays);
         var avatarDraft = new ThemeImageDraft(themePreferences.UserAvatarPath, themePreferences.UserAvatarHistory, themePreferences.UserAvatarDisplays);
         var backgroundGallery = new WrapPanel { Orientation = Orientation.Horizontal }; var userAvatarGallery = new WrapPanel { Orientation = Orientation.Horizontal };
@@ -1582,26 +1583,12 @@ public sealed partial class MainWindow : Window
         void LoadDisplay(string? path, IReadOnlyDictionary<string, ImageDisplayPreferences> values, NumericUpDown x, NumericUpDown y, NumericUpDown zoom, Image preview)
         {
             loadingImageControls = true; var display = path is not null && values.TryGetValue(path, out var saved) ? saved : new ImageDisplayPreferences();
-            x.Value = (decimal)display.FocusX; y.Value = (decimal)display.FocusY; zoom.Value = (decimal)display.Zoom; preview.Source = null;
-            if (path is not null && File.Exists(path)) try { preview.Source = new Bitmap(path); ApplyImageDisplay(preview, display); } catch { }
+            x.Value = (decimal)display.FocusX; y.Value = (decimal)display.FocusY; zoom.Value = (decimal)display.Zoom;
+            if (themeImages.Load(preview, path)) ApplyImageDisplay(preview, display);
             loadingImageControls = false;
         }
         void RefreshImageGallery(WrapPanel gallery, IReadOnlyList<string> paths, string? selected, Action<string> select, bool square)
-        {
-            gallery.Children.Clear();
-            foreach (var path in paths)
-            {
-                try
-                {
-                    var preview = new Image { Source = new Bitmap(path), Width = square ? 68 : 112, Height = square ? 68 : 72, Stretch = Stretch.UniformToFill };
-                    var button = new Button { Width = square ? 82 : 126, Height = square ? 82 : 86, Margin = new Thickness(0, 0, 8, 8), Padding = new Thickness(5), BorderThickness = new Thickness(string.Equals(path, selected, StringComparison.OrdinalIgnoreCase) ? 3 : 1), BorderBrush = string.Equals(path, selected, StringComparison.OrdinalIgnoreCase) ? ThemeAccentBrush() : Brush.Parse("#40505F"), Content = preview };
-                    ToolTip.SetTip(button, Path.GetFileName(path));
-                    button.Click += (_, _) => select(path); gallery.Children.Add(button);
-                }
-                catch { }
-            }
-            if (gallery.Children.Count == 0) gallery.Children.Add(new TextBlock { Text = "尚未导入图片", Foreground = Brush.Parse("#7F91A4"), Margin = new Thickness(0, 8) });
-        }
+            => ThemeImageGallery.Refresh(gallery, paths, selected, select, square, ThemeAccentBrush(), themeImages);
         Action previewTheme = () => { };
         void RefreshBackgroundGallery() => RefreshImageGallery(backgroundGallery, backgroundDraft.History, backgroundDraft.SelectedPath, path => { backgroundDraft.Select(path, ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); LoadDisplay(path, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); RefreshBackgroundGallery(); previewTheme(); }, false);
         void RefreshUserAvatarGallery() => RefreshImageGallery(userAvatarGallery, avatarDraft.History, avatarDraft.SelectedPath, path => { avatarDraft.Select(path, ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); LoadDisplay(path, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview); RefreshUserAvatarGallery(); previewTheme(); }, true);
@@ -1768,20 +1755,20 @@ public sealed partial class MainWindow : Window
             var path = files.FirstOrDefault()?.TryGetLocalPath(); return string.IsNullOrWhiteSpace(path) ? null : path;
         }
         browseBackground.Click += async (_, _) => { var path = await PickThemeImageAsync("导入聊天背景", "backgrounds"); if (path is null) return; backgroundDraft.Select(path, ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); LoadDisplay(path, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); RefreshBackgroundGallery(); PreviewTheme(); };
-        clearBackground.Click += (_, _) => { backgroundDraft.ClearSelection(ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); backgroundPreview.Source = null; RefreshBackgroundGallery(); PreviewTheme(); };
+        clearBackground.Click += (_, _) => { backgroundDraft.ClearSelection(ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); themeImages.Clear(backgroundPreview); RefreshBackgroundGallery(); PreviewTheme(); };
         deleteBackground.Click += async (_, _) =>
         {
             if (backgroundDraft.SelectedPath is null || !await ConfirmAsync(window, "删除背景", "确定从当前背景列表移除此图片吗？原始文件不会被删除，保存后生效。")) return;
             backgroundDraft.RemoveSelected();
-            backgroundPreview.Source = null; RefreshBackgroundGallery(); PreviewTheme();
+            themeImages.Clear(backgroundPreview); RefreshBackgroundGallery(); PreviewTheme();
         };
         browseUserAvatar.Click += async (_, _) => { var path = await PickThemeImageAsync("导入用户头像", "user-avatars"); if (path is null) return; avatarDraft.Select(path, ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); LoadDisplay(path, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview); RefreshUserAvatarGallery(); PreviewTheme(); };
-        clearUserAvatar.Click += (_, _) => { avatarDraft.ClearSelection(ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); userAvatarPreview.Source = null; RefreshUserAvatarGallery(); PreviewTheme(); };
+        clearUserAvatar.Click += (_, _) => { avatarDraft.ClearSelection(ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); themeImages.Clear(userAvatarPreview); RefreshUserAvatarGallery(); PreviewTheme(); };
         deleteUserAvatar.Click += async (_, _) =>
         {
             if (avatarDraft.SelectedPath is null || !await ConfirmAsync(window, "删除用户头像", "确定从当前头像列表移除此图片吗？原始文件不会被删除，保存后生效。")) return;
             avatarDraft.RemoveSelected();
-            userAvatarPreview.Source = null; RefreshUserAvatarGallery(); PreviewTheme();
+            themeImages.Clear(userAvatarPreview); RefreshUserAvatarGallery(); PreviewTheme();
         };
         characterManagerButton.Click += async (_, _) => await OpenCharacterEditorAsync(window);
         stickerManagerButton.Click += async (_, _) => await OpenStickerManagerAsync(window);
