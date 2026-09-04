@@ -1622,10 +1622,8 @@ public sealed partial class MainWindow : Window
         {
             var light = draft.ThemeMode == "light" || (draft.ThemeMode == "system" && Application.Current?.ActualThemeVariant == ThemeVariant.Light);
             var hasThemeBackground = !string.IsNullOrWhiteSpace(draft.BackgroundImagePath) && File.Exists(draft.BackgroundImagePath);
-            var canvas = Brush.Parse(light ? "#EEF3F7" : "#0E1621");
-            var panel = Brush.Parse(hasThemeBackground ? (light ? "#B8E3EBF1" : "#A817212B") : (light ? "#E3EBF1" : "#17212B"));
-            var card = Brush.Parse(hasThemeBackground ? (light ? "#B8F8FAFC" : "#B0182533") : (light ? "#F8FAFC" : "#182533"));
-            var border = Brush.Parse(light ? "#BDCBD6" : "#263746");
+            var palette = new SettingsSurfaceTheme(light, hasThemeBackground);
+            var canvas = palette.Canvas;
             window.Background = Brushes.Transparent;
             window.TransparencyLevelHint = draft.BackgroundBlurRadius > .5
                 ? [WindowTransparencyLevel.Blur, WindowTransparencyLevel.Transparent]
@@ -1652,20 +1650,10 @@ public sealed partial class MainWindow : Window
                 settingsBackgroundDim.Background = canvas;
                 settingsBackgroundDim.Opacity = Math.Clamp(draft.BackgroundDimOpacity, 0, .85);
             }
-            foreach (var item in settingCards)
-            {
-                item.Background = card; item.BorderBrush = border;
-            }
-            var textBrush = Brush.Parse(light ? "#17212B" : "#F2F6FA"); var mutedBrush = Brush.Parse(light ? "#526678" : "#8EA2B5");
-            IEnumerable<Control> Walk(Control root)
-            {
-                yield return root;
-                if (root is Panel panelRoot) foreach (var child in panelRoot.Children) foreach (var nested in Walk(child)) yield return nested;
-                else if (root is Decorator decorator && decorator.Child is Control decoratedChild) foreach (var nested in Walk(decoratedChild)) yield return nested;
-                else if (root is ContentControl content && content.Content is Control contentChild) foreach (var nested in Walk(contentChild)) yield return nested;
-            }
-            foreach (var text in Walk(layout).OfType<TextBlock>()) text.Foreground = text.FontSize >= 15 || text.FontWeight == FontWeight.SemiBold ? textBrush : mutedBrush;
-            settingsShell.ApplyColors(panel, card, border, ThemeAccentBrush());
+            palette.Apply(settingCards, [layout, modelPanel, conversationPanel, shortcutPanel,
+                desktopPanel, themePanel, characterManagerPanel, stickerManagerPanel,
+                memoryManagerPanel, backgroundPage, avatarPage]);
+            settingsShell.ApplyColors(palette.Panel, palette.Card, palette.Border, ThemeAccentBrush());
         }
         using var themePreview = new ThemePreviewController(
             () => Color.TryParse(appearanceEditor.AccentColorText, out _) ? BuildThemeDraft() : null,
