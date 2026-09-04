@@ -1618,49 +1618,19 @@ public sealed partial class MainWindow : Window
         var characterManagerPanel = settingsUi.CreateManagerPanel("角色卡", $"当前角色：{_character?.Name ?? "未加载"}。可编辑、切换或新建角色卡。", characterManagerButton);
         var stickerManagerPanel = settingsUi.CreateManagerPanel("表情包", "管理预装与用户导入的表情，设置情绪标签和互动作用。", stickerManagerButton);
         var memoryManagerPanel = settingsUi.CreateManagerPanel("长期记忆", "查看、检索和编辑当前角色的长期记忆库。", memoryManagerButton);
-        var categories = new ListBox { Padding = new Thickness(10, 18), Background = Brushes.Transparent, ItemsSource = new[] { "模型与语音", "对话与节奏", "快捷键", "桌宠与托盘", "外观与主题", "角色卡", "表情包", "长期记忆" }, SelectedIndex = 0 };
-        var tipValue = new TextBlock { Text = tipText, TextWrapping = TextWrapping.Wrap, Foreground = ThemeAccentBrush(), FontSize = 12 };
-        var tipPanel = new StackPanel { Spacing = 6, Children = { new TextBlock { Text = "Tips", FontWeight = FontWeight.SemiBold }, tipValue } };
-        var tipCard = new Border { Margin = new Thickness(12), Padding = new Thickness(12), Background = Brush.Parse("#202B36"), BorderBrush = Brush.Parse("#34495E"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Child = tipPanel };
-        var sidebarBody = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), Background = Brushes.Transparent, Children = { categories, tipCard } }; Grid.SetRow(tipCard, 1);
-        var sidebar = new Border { MinWidth = 150, MaxWidth = 340, Background = Brush.Parse("#17212B"), BorderBrush = Brush.Parse("#263746"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), ClipToBounds = true, Child = sidebarBody };
-        var contentHost = new ScrollViewer { Content = modelPanel }; contentHost.Classes.Add("pry-settings-scroll");
-        void ShowSettingsPage(Control page) { contentHost.Content = page; contentHost.Offset = new Vector(0, 0); }
-        categories.SelectionChanged += (_, _) => ShowSettingsPage(categories.SelectedIndex switch { 1 => conversationPanel, 2 => shortcutPanel, 3 => desktopPanel, 4 => themePanel, 5 => characterManagerPanel, 6 => stickerManagerPanel, 7 => memoryManagerPanel, _ => modelPanel });
-        openBackgroundSettings.Click += (_, _) => ShowSettingsPage(backgroundPage);
-        openAvatarSettings.Click += (_, _) => ShowSettingsPage(avatarPage);
-        backgroundBack.Click += (_, _) => ShowSettingsPage(themePanel);
-        avatarBack.Click += (_, _) => ShowSettingsPage(themePanel);
-        var save = new Button { Content = "保存并应用", Classes = { "primary" }, HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(24, 10) };
-        var topBarContent = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { new TextBlock { Text = "设置", FontSize = 22, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, save } }; Grid.SetColumn(save, 1);
-        var topBar = new Border { Background = Brush.Parse("#17212B"), BorderBrush = Brush.Parse("#263746"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Padding = new Thickness(24, 14, 18, 10), Child = topBarContent };
-        var splitter = new Border { Width = 12, Margin = new Thickness(0, 0, -6, 0), HorizontalAlignment = HorizontalAlignment.Right, Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.SizeWestEast), ZIndex = 20 };
-        var layout = new Grid { Margin = new Thickness(10), ColumnDefinitions = new ColumnDefinitions("210,*"), RowDefinitions = new RowDefinitions("Auto,*"), ColumnSpacing = 10, RowSpacing = 10, Background = Brushes.Transparent, Children = { sidebar, splitter, topBar, contentHost } };
-        Grid.SetRowSpan(sidebar, 2); Grid.SetColumn(splitter, 0); Grid.SetRowSpan(splitter, 2); Grid.SetColumn(topBar, 1); Grid.SetColumn(contentHost, 1); Grid.SetRow(contentHost, 1);
-        var settingsResizeGuide = new Border { Width = 2, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Stretch, Background = ThemeAccentBrush(), IsHitTestVisible = false, IsVisible = false, ZIndex = 30 };
-        Grid.SetRowSpan(settingsResizeGuide, 2); Grid.SetColumnSpan(settingsResizeGuide, 2); layout.Children.Add(settingsResizeGuide);
-        var resizingSidebar = false; var resizeStartX = 0d; var resizeStartWidth = 210d; var pendingWidth = 210d;
-        splitter.PointerPressed += (_, args) =>
-        {
-            resizingSidebar = true; resizeStartX = args.GetPosition(layout).X; resizeStartWidth = layout.ColumnDefinitions[0].ActualWidth; pendingWidth = resizeStartWidth;
-            settingsResizeGuide.RenderTransform = new TranslateTransform(pendingWidth, 0); settingsResizeGuide.IsVisible = liveSidebarResize.IsChecked != true;
-            args.Pointer.Capture(splitter); args.Handled = true;
-        };
-        splitter.PointerMoved += (_, args) =>
-        {
-            if (!resizingSidebar) return;
-            pendingWidth = Math.Clamp(resizeStartWidth + args.GetPosition(layout).X - resizeStartX, 150, 340);
-            if (liveSidebarResize.IsChecked == true) layout.ColumnDefinitions[0].Width = new GridLength(pendingWidth);
-            else settingsResizeGuide.RenderTransform = new TranslateTransform(pendingWidth, 0);
-            args.Handled = true;
-        };
-        splitter.PointerReleased += (_, args) =>
-        {
-            if (!resizingSidebar) return;
-            resizingSidebar = false; settingsResizeGuide.IsVisible = false;
-            if (liveSidebarResize.IsChecked != true) layout.ColumnDefinitions[0].Width = new GridLength(pendingWidth);
-            args.Pointer.Capture(null); args.Handled = true;
-        };
+        var settingsShell = new SettingsShell(
+            [
+                new("模型与语音", modelPanel), new("对话与节奏", conversationPanel),
+                new("快捷键", shortcutPanel), new("桌宠与托盘", desktopPanel),
+                new("外观与主题", themePanel), new("角色卡", characterManagerPanel),
+                new("表情包", stickerManagerPanel), new("长期记忆", memoryManagerPanel)
+            ], tipText, ThemeAccentBrush(), () => liveSidebarResize.IsChecked == true);
+        var layout = settingsShell.Layout;
+        var save = settingsShell.SaveButton;
+        openBackgroundSettings.Click += (_, _) => settingsShell.ShowPage(backgroundPage);
+        openAvatarSettings.Click += (_, _) => settingsShell.ShowPage(avatarPage);
+        backgroundBack.Click += (_, _) => settingsShell.ShowPage(themePanel);
+        avatarBack.Click += (_, _) => settingsShell.ShowPage(themePanel);
         Image? settingsBackgroundImage = null; Border? settingsBackgroundDim = null;
         var settingsSurface = CreateThemedDialogSurface(layout, transparentContent: true, (image, dim) => { settingsBackgroundImage = image; settingsBackgroundDim = dim; });
         var window = new Window { Title = "设置", Width = 900, Height = 740, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = settingsSurface };
@@ -1718,7 +1688,6 @@ public sealed partial class MainWindow : Window
                 settingsBackgroundDim.Background = canvas;
                 settingsBackgroundDim.Opacity = Math.Clamp(draft.BackgroundDimOpacity, 0, .85);
             }
-            layout.Background = Brushes.Transparent; sidebar.Background = panel; sidebar.BorderBrush = border; categories.Background = Brushes.Transparent; topBar.Background = panel; topBar.BorderBrush = border; tipCard.Background = card; tipCard.BorderBrush = border; splitter.Background = Brushes.Transparent;
             foreach (var item in settingCards)
             {
                 item.Background = card; item.BorderBrush = border;
@@ -1732,7 +1701,7 @@ public sealed partial class MainWindow : Window
                 else if (root is ContentControl content && content.Content is Control contentChild) foreach (var nested in Walk(contentChild)) yield return nested;
             }
             foreach (var text in Walk(layout).OfType<TextBlock>()) text.Foreground = text.FontSize >= 15 || text.FontWeight == FontWeight.SemiBold ? textBrush : mutedBrush;
-            tipValue.Foreground = ThemeAccentBrush();
+            settingsShell.ApplyColors(panel, card, border, ThemeAccentBrush());
         }
         using var themePreview = new ThemePreviewController(
             () => Color.TryParse(accentColor.Text, out _) ? BuildThemeDraft() : null,
