@@ -1768,30 +1768,8 @@ public sealed partial class MainWindow : Window
             try
             {
                 RuntimeStatus.Text = "正在由后端切换模型…";
-                await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(
-                    candidate.SelectedCharacterId, _conversationId, candidate.UserProfile, candidate.DesktopPet,
-                    candidate.Shortcuts, turnOverride, new ClientThemePreferences(candidate.Theme.ThemeMode,
-                        candidate.Theme.AccentColor, candidate.Theme.UseGlassEffects, candidate.Theme.LiveSidebarResize,
-                        candidate.Theme.BackgroundDimOpacity, candidate.Theme.BackgroundImageOpacity,
-                        candidate.Theme.BackgroundBlurMode, candidate.Theme.BackgroundBlurRadius,
-                        candidate.Theme.AvatarSize, candidate.Theme.BubbleFontSize, candidate.Theme.BubbleMaxWidth,
-                        candidate.Theme.BubbleSpacing)));
-                async Task<string?> UploadAppearanceAsync(string? path)
-                {
-                    if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
-                    await using var content = File.OpenRead(path);
-                    var uploaded = await _api.UploadAsync(content, Path.GetFileName(path), ImageContentType(path));
-                    foreach (var warning in uploaded.Warnings) RuntimeStatus.Text = warning;
-                    return uploaded.Id;
-                }
-                var backgroundMediaId = await UploadAppearanceAsync(backgroundDraft.SelectedPath);
-                var userAvatarMediaId = await UploadAppearanceAsync(avatarDraft.SelectedPath);
-                await _api.UpdateAppearanceAsync(new UpdateAppearanceMediaRequest(backgroundMediaId,
-                    backgroundDraft.SelectedPath is null, userAvatarMediaId, avatarDraft.SelectedPath is null,
-                    backgroundDraft.SelectedPath is null ? null : ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom),
-                    avatarDraft.SelectedPath is null ? null : ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)));
-                var backendModels = await _api.UpdateModelSelectionAsync(new UpdateModelSelectionRequest(
-                    selectedModelId, selectedVisionId, selectedSpeechId, candidate.ModelTunings));
+                var backendModels = await new SettingsSaveService(_api, ImageContentType)
+                    .SaveAsync(candidate, _conversationId, warning => RuntimeStatus.Text = warning);
                 _preferences = candidate;
                 _profiles = _builtInProfiles.Concat(candidate.CustomModels).ToArray();
                 ApplyTheme(); await ReloadActiveConversationAsync();
@@ -1800,7 +1778,8 @@ public sealed partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                save.IsEnabled = true; RuntimeStatus.Text = "后端拒绝了模型配置"; await ShowNoticeAsync("模型切换失败", ex.Message);
+                save.IsEnabled = true; RuntimeStatus.Text = "设置未全部保存";
+                await ShowNoticeAsync("设置保存失败", $"{ex.Message}\n部分设置可能已保存，请检查后重试。");
             }
         };
         await window.ShowDialog(this);
