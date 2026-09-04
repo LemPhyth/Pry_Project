@@ -1551,12 +1551,8 @@ public sealed partial class MainWindow : Window
         modelPanel.Children.Add(Card("语音识别", modelSelection.SpeechFields));
         var tips = LoadTips();
         var tipText = tips.Count == 0 ? "暂无使用提示。" : tips[Random.Shared.Next(tips.Count)];
-        string? selectedBackground = themePreferences.BackgroundImagePath;
-        string? selectedUserAvatar = themePreferences.UserAvatarPath;
-        var backgroundDisplays = themePreferences.BackgroundDisplays.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
-        var userAvatarDisplays = themePreferences.UserAvatarDisplays.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
-        var backgroundHistory = themePreferences.BackgroundHistory.Append(themePreferences.BackgroundImagePath).Where(x => !string.IsNullOrWhiteSpace(x) && File.Exists(x)).Cast<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var userAvatarHistory = themePreferences.UserAvatarHistory.Append(themePreferences.UserAvatarPath).Where(x => !string.IsNullOrWhiteSpace(x) && File.Exists(x)).Cast<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var backgroundDraft = new ThemeImageDraft(themePreferences.BackgroundImagePath, themePreferences.BackgroundHistory, themePreferences.BackgroundDisplays);
+        var avatarDraft = new ThemeImageDraft(themePreferences.UserAvatarPath, themePreferences.UserAvatarHistory, themePreferences.UserAvatarDisplays);
         var backgroundGallery = new WrapPanel { Orientation = Orientation.Horizontal }; var userAvatarGallery = new WrapPanel { Orientation = Orientation.Horizontal };
         var backgroundPreview = new Image { Width = 500, Height = 280, Stretch = Stretch.UniformToFill };
         var userAvatarPreview = new Image { Width = 120, Height = 120, Stretch = Stretch.UniformToFill };
@@ -1583,7 +1579,7 @@ public sealed partial class MainWindow : Window
         var avatarFocusX = Number(.5m, 0, 1, .05m); var avatarFocusY = Number(.5m, 0, 1, .05m); var avatarZoom = Number(1, 1, 3, .05m);
         var loadingImageControls = false;
         ImageDisplayPreferences ReadDisplay(NumericUpDown x, NumericUpDown y, NumericUpDown zoom) => new() { FocusX = (double)(x.Value ?? .5m), FocusY = (double)(y.Value ?? .5m), Zoom = (double)(zoom.Value ?? 1) };
-        void LoadDisplay(string? path, Dictionary<string, ImageDisplayPreferences> values, NumericUpDown x, NumericUpDown y, NumericUpDown zoom, Image preview)
+        void LoadDisplay(string? path, IReadOnlyDictionary<string, ImageDisplayPreferences> values, NumericUpDown x, NumericUpDown y, NumericUpDown zoom, Image preview)
         {
             loadingImageControls = true; var display = path is not null && values.TryGetValue(path, out var saved) ? saved : new ImageDisplayPreferences();
             x.Value = (decimal)display.FocusX; y.Value = (decimal)display.FocusY; zoom.Value = (decimal)display.Zoom; preview.Source = null;
@@ -1607,9 +1603,9 @@ public sealed partial class MainWindow : Window
             if (gallery.Children.Count == 0) gallery.Children.Add(new TextBlock { Text = "尚未导入图片", Foreground = Brush.Parse("#7F91A4"), Margin = new Thickness(0, 8) });
         }
         Action previewTheme = () => { };
-        void RefreshBackgroundGallery() => RefreshImageGallery(backgroundGallery, backgroundHistory, selectedBackground, path => { selectedBackground = path; LoadDisplay(path, backgroundDisplays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); RefreshBackgroundGallery(); previewTheme(); }, false);
-        void RefreshUserAvatarGallery() => RefreshImageGallery(userAvatarGallery, userAvatarHistory, selectedUserAvatar, path => { selectedUserAvatar = path; LoadDisplay(path, userAvatarDisplays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview); RefreshUserAvatarGallery(); previewTheme(); }, true);
-        RefreshBackgroundGallery(); RefreshUserAvatarGallery(); LoadDisplay(selectedBackground, backgroundDisplays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); LoadDisplay(selectedUserAvatar, userAvatarDisplays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview);
+        void RefreshBackgroundGallery() => RefreshImageGallery(backgroundGallery, backgroundDraft.History, backgroundDraft.SelectedPath, path => { backgroundDraft.Select(path, ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); LoadDisplay(path, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); RefreshBackgroundGallery(); previewTheme(); }, false);
+        void RefreshUserAvatarGallery() => RefreshImageGallery(userAvatarGallery, avatarDraft.History, avatarDraft.SelectedPath, path => { avatarDraft.Select(path, ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); LoadDisplay(path, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview); RefreshUserAvatarGallery(); previewTheme(); }, true);
+        RefreshBackgroundGallery(); RefreshUserAvatarGallery(); LoadDisplay(backgroundDraft.SelectedPath, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); LoadDisplay(avatarDraft.SelectedPath, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview);
         Header(themePanel, "外观与主题");
         var appearanceFields = new StackPanel { Spacing = 7 }; Field(appearanceFields, "主题模式", themeMode); Field(appearanceFields, "强调色调色板", accentPalette); Field(appearanceFields, "自定义十六进制颜色", accentColor);
         themePanel.Children.Add(Card("颜色主题", appearanceFields, new TextBlock { Text = "可跟随系统切换深浅色，也可以指定软件强调色。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") }));
@@ -1684,16 +1680,16 @@ public sealed partial class MainWindow : Window
         void StoreCurrentImageDisplays()
         {
             if (loadingImageControls) return;
-            if (selectedBackground is not null) { var display = ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom); backgroundDisplays[selectedBackground] = display; ApplyImageDisplay(backgroundPreview, display); }
-            if (selectedUserAvatar is not null) { var display = ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom); userAvatarDisplays[selectedUserAvatar] = display; ApplyImageDisplay(userAvatarPreview, display); }
+            if (backgroundDraft.SelectedPath is not null) { var display = ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom); backgroundDraft.StoreDisplay(display); ApplyImageDisplay(backgroundPreview, display); }
+            if (avatarDraft.SelectedPath is not null) { var display = ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom); avatarDraft.StoreDisplay(display); ApplyImageDisplay(userAvatarPreview, display); }
         }
         ThemePreferences BuildThemeDraft()
         {
             StoreCurrentImageDisplays();
             return SettingsDraftService.BuildTheme(themePreferences, new ThemeSettingsDraft
             {
-                BackgroundImagePath = selectedBackground, BackgroundHistory = backgroundHistory, BackgroundDisplays = backgroundDisplays,
-                UserAvatarPath = selectedUserAvatar, UserAvatarHistory = userAvatarHistory, UserAvatarDisplays = userAvatarDisplays,
+                BackgroundImagePath = backgroundDraft.SelectedPath, BackgroundHistory = backgroundDraft.History, BackgroundDisplays = backgroundDraft.Displays,
+                UserAvatarPath = avatarDraft.SelectedPath, UserAvatarHistory = avatarDraft.History, UserAvatarDisplays = avatarDraft.Displays,
                 ThemeModeIndex = themeMode.SelectedIndex, AccentColor = accentColor.Text?.Trim() ?? "#B148C6",
                 UseGlassEffects = glassEffects.IsChecked == true, LiveSidebarResize = liveSidebarResize.IsChecked == true,
                 BackgroundImageOpacity = (double)(backgroundOpacity.Value ?? 1m), BackgroundDimOpacity = (double)(backgroundDim.Value ?? .34m),
@@ -1771,20 +1767,20 @@ public sealed partial class MainWindow : Window
             var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = title, AllowMultiple = false, FileTypeFilter = [new FilePickerFileType("图片") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"] }] });
             var path = files.FirstOrDefault()?.TryGetLocalPath(); return string.IsNullOrWhiteSpace(path) ? null : path;
         }
-        browseBackground.Click += async (_, _) => { var path = await PickThemeImageAsync("导入聊天背景", "backgrounds"); if (path is null) return; backgroundHistory.Add(path); selectedBackground = path; LoadDisplay(path, backgroundDisplays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); RefreshBackgroundGallery(); PreviewTheme(); };
-        clearBackground.Click += (_, _) => { selectedBackground = null; backgroundPreview.Source = null; RefreshBackgroundGallery(); PreviewTheme(); };
+        browseBackground.Click += async (_, _) => { var path = await PickThemeImageAsync("导入聊天背景", "backgrounds"); if (path is null) return; backgroundDraft.Select(path, ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); LoadDisplay(path, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); RefreshBackgroundGallery(); PreviewTheme(); };
+        clearBackground.Click += (_, _) => { backgroundDraft.ClearSelection(ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); backgroundPreview.Source = null; RefreshBackgroundGallery(); PreviewTheme(); };
         deleteBackground.Click += async (_, _) =>
         {
-            if (selectedBackground is null || !await ConfirmAsync(window, "删除背景", "确定从 Pry 素材库永久删除当前背景吗？")) return;
-            var path = selectedBackground; backgroundHistory.RemoveAll(x => string.Equals(x, path, StringComparison.OrdinalIgnoreCase)); selectedBackground = null;
+            if (backgroundDraft.SelectedPath is null || !await ConfirmAsync(window, "删除背景", "确定从当前背景列表移除此图片吗？原始文件不会被删除，保存后生效。")) return;
+            backgroundDraft.RemoveSelected();
             backgroundPreview.Source = null; RefreshBackgroundGallery(); PreviewTheme();
         };
-        browseUserAvatar.Click += async (_, _) => { var path = await PickThemeImageAsync("导入用户头像", "user-avatars"); if (path is null) return; userAvatarHistory.Add(path); selectedUserAvatar = path; LoadDisplay(path, userAvatarDisplays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview); RefreshUserAvatarGallery(); PreviewTheme(); };
-        clearUserAvatar.Click += (_, _) => { selectedUserAvatar = null; userAvatarPreview.Source = null; RefreshUserAvatarGallery(); PreviewTheme(); };
+        browseUserAvatar.Click += async (_, _) => { var path = await PickThemeImageAsync("导入用户头像", "user-avatars"); if (path is null) return; avatarDraft.Select(path, ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); LoadDisplay(path, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview); RefreshUserAvatarGallery(); PreviewTheme(); };
+        clearUserAvatar.Click += (_, _) => { avatarDraft.ClearSelection(ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); userAvatarPreview.Source = null; RefreshUserAvatarGallery(); PreviewTheme(); };
         deleteUserAvatar.Click += async (_, _) =>
         {
-            if (selectedUserAvatar is null || !await ConfirmAsync(window, "删除用户头像", "确定从 Pry 素材库永久删除当前头像吗？")) return;
-            var path = selectedUserAvatar; userAvatarHistory.RemoveAll(x => string.Equals(x, path, StringComparison.OrdinalIgnoreCase)); selectedUserAvatar = null;
+            if (avatarDraft.SelectedPath is null || !await ConfirmAsync(window, "删除用户头像", "确定从当前头像列表移除此图片吗？原始文件不会被删除，保存后生效。")) return;
+            avatarDraft.RemoveSelected();
             userAvatarPreview.Source = null; RefreshUserAvatarGallery(); PreviewTheme();
         };
         characterManagerButton.Click += async (_, _) => await OpenCharacterEditorAsync(window);
@@ -1835,12 +1831,12 @@ public sealed partial class MainWindow : Window
                     foreach (var warning in uploaded.Warnings) RuntimeStatus.Text = warning;
                     return uploaded.Id;
                 }
-                var backgroundMediaId = await UploadAppearanceAsync(selectedBackground);
-                var userAvatarMediaId = await UploadAppearanceAsync(selectedUserAvatar);
+                var backgroundMediaId = await UploadAppearanceAsync(backgroundDraft.SelectedPath);
+                var userAvatarMediaId = await UploadAppearanceAsync(avatarDraft.SelectedPath);
                 await _api.UpdateAppearanceAsync(new UpdateAppearanceMediaRequest(backgroundMediaId,
-                    selectedBackground is null, userAvatarMediaId, selectedUserAvatar is null,
-                    selectedBackground is null ? null : ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom),
-                    selectedUserAvatar is null ? null : ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)));
+                    backgroundDraft.SelectedPath is null, userAvatarMediaId, avatarDraft.SelectedPath is null,
+                    backgroundDraft.SelectedPath is null ? null : ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom),
+                    avatarDraft.SelectedPath is null ? null : ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)));
                 var backendModels = await _api.UpdateModelSelectionAsync(new UpdateModelSelectionRequest(
                     selectedModelId, selectedVisionId, selectedSpeechId, candidate.ModelTunings));
                 _preferences = candidate;
