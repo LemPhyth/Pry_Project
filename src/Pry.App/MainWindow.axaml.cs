@@ -1514,7 +1514,7 @@ public sealed partial class MainWindow : Window
 
     private async void Settings_Click(object? sender, RoutedEventArgs e)
     {
-        var settingsOriginalPreferences = _preferences; var themeCommitted = false;
+        var settingsOriginalTheme = _preferences.Theme;
         var detectedDevices = await _api.GetComputeDevicesAsync();
         var computeChoices = new List<ComputeDeviceChoice>
         {
@@ -1734,20 +1734,17 @@ public sealed partial class MainWindow : Window
             foreach (var text in Walk(layout).OfType<TextBlock>()) text.Foreground = text.FontSize >= 15 || text.FontWeight == FontWeight.SemiBold ? textBrush : mutedBrush;
             tipValue.Foreground = ThemeAccentBrush();
         }
-        var previewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(55) };
-        previewTimer.Tick += (_, _) =>
-        {
-            previewTimer.Stop();
-            if (!Color.TryParse(accentColor.Text, out _)) return;
-            var draft = BuildThemeDraft(); _preferences = _preferences with { Theme = draft }; ApplyTheme(); UpdateSettingsSurface(draft);
-        };
-        void PreviewTheme() { previewTimer.Stop(); previewTimer.Start(); }
+        using var themePreview = new ThemePreviewController(
+            () => Color.TryParse(accentColor.Text, out _) ? BuildThemeDraft() : null,
+            draft => { _preferences = _preferences with { Theme = draft }; ApplyTheme(); UpdateSettingsSurface(draft); },
+            () => { _preferences = _preferences with { Theme = settingsOriginalTheme }; ApplyTheme(); });
+        void PreviewTheme() => themePreview.Request();
         previewTheme = PreviewTheme;
         void PreviewValueChanged(object? _, NumericUpDownValueChangedEventArgs __) { if (!loadingImageControls) PreviewTheme(); }
         themeMode.SelectionChanged += (_, _) => PreviewTheme(); accentColor.TextChanged += (_, _) => PreviewTheme(); glassEffects.IsCheckedChanged += (_, _) => PreviewTheme();
         liveSidebarResize.IsCheckedChanged += (_, _) => PreviewTheme();
         foreach (var number in new[] { backgroundOpacity, backgroundBlur, backgroundDim, avatarSize, bubbleFontSize, bubbleMaxWidth, bubbleSpacing, backgroundFocusX, backgroundFocusY, backgroundZoom, avatarFocusX, avatarFocusY, avatarZoom }) number.ValueChanged += PreviewValueChanged;
-        window.Closed += (_, _) => { previewTimer.Stop(); if (themeCommitted) return; _preferences = settingsOriginalPreferences; ApplyTheme(); };
+        window.Closed += (_, _) => themePreview.Dispose();
         UpdateSettingsSurface(themePreferences);
         async Task<string?> PickThemeImageAsync(string title, string category)
         {
@@ -1830,7 +1827,7 @@ public sealed partial class MainWindow : Window
                 _profiles = _builtInProfiles.Concat(candidate.CustomModels).ToArray();
                 ApplyTheme(); await ReloadActiveConversationAsync();
                 RuntimeStatus.Text = $"后端模型配置已保存 · {backendModels.First(x => x.SelectedForText).DisplayName}";
-                themeCommitted = true; window.Close();
+                themePreview.Commit(); window.Close();
             }
             catch (Exception ex)
             {
