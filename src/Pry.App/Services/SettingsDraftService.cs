@@ -29,7 +29,7 @@ public static partial class SettingsDraftService
         var invalid = entries.FirstOrDefault(entry => !ShortcutGestureMatcher.IsValid(entry.Item2));
         if (invalid != default)
             return new SettingsValidationError("快捷键无效", $"“{invalid.Item1}”的快捷键格式无法识别。");
-        var conflict = entries.GroupBy(entry => entry.Item2.Trim(), StringComparer.OrdinalIgnoreCase)
+        var conflict = entries.GroupBy(entry => ShortcutGestureMatcher.Normalize(entry.Item2), StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
         return conflict is null
             ? null
