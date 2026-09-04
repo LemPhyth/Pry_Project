@@ -1528,12 +1528,9 @@ public sealed partial class MainWindow : Window
         var turn = EffectiveTurnSettings();
         var themePreferences = _preferences.Theme ?? new ThemePreferences();
         var allModels = _builtInProfiles.Concat(_preferences.CustomModels).ToArray();
-        var textChoices = allModels.Where(x => x.Capabilities.Text).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
-        var visionChoices = allModels.Where(x => x.Capabilities.Vision).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
-        var activeModel = new ComboBox { ItemsSource = textChoices, SelectedItem = textChoices.FirstOrDefault(x => x.Id == GetActiveModelId()) };
-        var visionModel = new ComboBox { ItemsSource = visionChoices, SelectedItem = visionChoices.FirstOrDefault(x => x.Id == GetVisionModelId()) };
-        var speechChoices = _builtInSpeechProfiles.Concat(_preferences.CustomSpeechModels).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
-        var speechModel = new ComboBox { ItemsSource = speechChoices, SelectedItem = speechChoices.FirstOrDefault(x => x.Id == GetSpeechModelId()) };
+        var modelSelection = new ModelSelectionEditor(allModels,
+            _builtInSpeechProfiles.Concat(_preferences.CustomSpeechModels).ToArray(),
+            GetActiveModelId(), GetVisionModelId(), GetSpeechModelId(), settingsUi);
         var initialTunings = _preferences.ModelTunings.ToDictionary(x => x.Key, x => x.Value);
         var activeTuningId = GetActiveModelId();
         if (!initialTunings.ContainsKey(activeTuningId) && GetModelTuning(activeTuningId) is { } legacyTuning)
@@ -1549,10 +1546,9 @@ public sealed partial class MainWindow : Window
         void Field(Panel target, string label, Control control) => settingsUi.AddField(target, label, control);
         Border Card(string title, params Control[] controls) => settingsUi.CreateCard(title, controls);
         Header(modelPanel, "模型与语音");
-        var textFields = new StackPanel { Spacing = 7 }; Field(textFields, "文字聊天模型", activeModel); Field(textFields, "图片理解模型", visionModel); textFields.Children.Add(new TextBlock { Text = "原生多模态模型会同时出现在两个列表；选择不同模型时，图片先转为内部描述再交给文字模型。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") });
-        var manageModels = new Button { Content = "管理自定义对话模型…", HorizontalAlignment = HorizontalAlignment.Left }; textFields.Children.Add(manageModels); modelPanel.Children.Add(Card("对话模型分工", textFields));
+        modelPanel.Children.Add(Card("对话模型分工", modelSelection.TextFields));
         modelPanel.Children.Add(Card("每模型独立参数", tuningEditor.Panel));
-        var speechFields = new StackPanel { Spacing = 7 }; Field(speechFields, "语音识别模型", speechModel); var manageSpeech = new Button { Content = "管理自定义语音模型…", HorizontalAlignment = HorizontalAlignment.Left }; speechFields.Children.Add(manageSpeech); speechFields.Children.Add(new TextBlock { Text = "点击聊天输入框旁的麦克风开始录音，再点一次结束；本地 SenseVoice 会直接转写到输入框。API 配置会按你的选择上传录音。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") }); modelPanel.Children.Add(Card("语音识别", speechFields));
+        modelPanel.Children.Add(Card("语音识别", modelSelection.SpeechFields));
         var tips = LoadTips();
         var tipText = tips.Count == 0 ? "暂无使用提示。" : tips[Random.Shared.Next(tips.Count)];
         string? selectedBackground = themePreferences.BackgroundImagePath;
@@ -1794,23 +1790,20 @@ public sealed partial class MainWindow : Window
         characterManagerButton.Click += async (_, _) => await OpenCharacterEditorAsync(window);
         stickerManagerButton.Click += async (_, _) => await OpenStickerManagerAsync(window);
         memoryManagerButton.Click += async (_, _) => await OpenMemoryManagerAsync(window);
-        manageModels.Click += async (_, _) =>
+        modelSelection.ManageModels.Click += async (_, _) =>
         {
             tuningEditor.SaveCurrent();
-            var selectedTextId = (activeModel.SelectedItem as ModelChoice)?.Id ?? GetActiveModelId();
-            var selectedVisionId = (visionModel.SelectedItem as ModelChoice)?.Id ?? GetVisionModelId();
             var selectedParameterId = tuningEditor.CurrentModelId;
             await ManageCustomModelsAsync(window);
             allModels = _builtInProfiles.Concat(_preferences.CustomModels).ToArray();
-            textChoices = allModels.Where(x => x.Capabilities.Text).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
-            visionChoices = allModels.Where(x => x.Capabilities.Vision).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray();
-            activeModel.ItemsSource = textChoices;
-            activeModel.SelectedItem = textChoices.FirstOrDefault(x => x.Id == selectedTextId) ?? textChoices.FirstOrDefault();
-            visionModel.ItemsSource = visionChoices;
-            visionModel.SelectedItem = visionChoices.FirstOrDefault(x => x.Id == selectedVisionId) ?? visionChoices.FirstOrDefault();
+            modelSelection.RefreshModels(allModels);
             tuningEditor.UpdateProfiles(allModels, selectedParameterId);
         };
-        manageSpeech.Click += async (_, _) => { await ManageSpeechModelsAsync(window); speechChoices = _builtInSpeechProfiles.Concat(_preferences.CustomSpeechModels).Select(x => new ModelChoice(x.Id, x.DisplayName)).ToArray(); speechModel.ItemsSource = speechChoices; speechModel.SelectedItem = speechChoices.FirstOrDefault(x => x.Id == GetSpeechModelId()) ?? speechChoices.FirstOrDefault(); };
+        modelSelection.ManageSpeech.Click += async (_, _) =>
+        {
+            await ManageSpeechModelsAsync(window);
+            modelSelection.RefreshSpeech(_builtInSpeechProfiles.Concat(_preferences.CustomSpeechModels).ToArray(), GetSpeechModelId());
+        };
         save.Click += async (_, _) =>
         {
             var turnOverride = conversationEditor.BuildDraft();
@@ -1820,7 +1813,7 @@ public sealed partial class MainWindow : Window
                 turnOverride.TypingStyle.MaxDelayMs, accentColor.Text)
                 ?? SettingsDraftService.ValidateShortcuts(shortcutDraft);
             if (validationError is not null) { await ShowNoticeAsync(validationError.Title, validationError.Message); return; }
-            var tuningDrafts = tuningEditor.BuildDrafts(); var selectedModelId = (activeModel.SelectedItem as ModelChoice)?.Id ?? GetActiveModelId(); var selectedVisionId = (visionModel.SelectedItem as ModelChoice)?.Id; var selectedSpeechId = (speechModel.SelectedItem as ModelChoice)?.Id; var modelTuning = tuningDrafts.TryGetValue(selectedModelId, out var selectedTuning) ? selectedTuning with { ActiveModelId = selectedModelId } : new ModelTuningPreferences { ActiveModelId = selectedModelId };
+            var tuningDrafts = tuningEditor.BuildDrafts(); var selectedModelId = modelSelection.TextModelId ?? GetActiveModelId(); var selectedVisionId = modelSelection.VisionModelId; var selectedSpeechId = modelSelection.SpeechModelId; var modelTuning = tuningDrafts.TryGetValue(selectedModelId, out var selectedTuning) ? selectedTuning with { ActiveModelId = selectedModelId } : new ModelTuningPreferences { ActiveModelId = selectedModelId };
             var candidate = _preferences with { ActiveModelId = selectedModelId, ActiveVisionModelId = selectedVisionId, ActiveSpeechModelId = selectedSpeechId, ModelTunings = new Dictionary<string, ModelTuningPreferences>(tuningDrafts), EnableThinking = modelTuning.EnableThinking == true, ModelTuning = modelTuning, TurnTakingOverride = turnOverride, SelectedCharacterId = _character?.Id, DesktopPet = desktopPetEditor.BuildDraft(), Theme = BuildThemeDraft(), Shortcuts = shortcutDraft };
             save.IsEnabled = false; _turnManager?.CancelAgentReply();
             try
