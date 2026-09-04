@@ -612,48 +612,6 @@ public sealed partial class MainWindow : Window
         image.RenderTransform = new ScaleTransform(Math.Clamp(display.Zoom, 1, 3), Math.Clamp(display.Zoom, 1, 3));
     }
 
-    private static Border CreateVisualCropEditor(Image image, NumericUpDown focusX, NumericUpDown focusY, NumericUpDown zoom, double width, double height, bool circular)
-    {
-        image.Width = width; image.Height = height; image.Stretch = Stretch.UniformToFill;
-        var viewport = new Border
-        {
-            Width = width, Height = height, CornerRadius = circular ? new CornerRadius(width / 2) : new CornerRadius(12),
-            ClipToBounds = true, BorderBrush = Brush.Parse("#6B7F92"), BorderThickness = new Thickness(1),
-            Background = Brush.Parse("#121C26"), Cursor = new Cursor(StandardCursorType.SizeAll), Child = image
-        };
-        var hint = new Border
-        {
-            Background = Brush.Parse("#AA0E1621"), CornerRadius = new CornerRadius(8), Padding = new Thickness(9, 5),
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(8),
-            IsHitTestVisible = false,
-            Child = new TextBlock { Text = "拖动取景 · 滚轮缩放", Foreground = Brushes.White, FontSize = 11 }
-        };
-        var grid = new Grid { Width = width, Height = height, Children = { viewport, hint } };
-        var dragging = false; Point dragOrigin = default; decimal originX = .5m; decimal originY = .5m;
-        viewport.PointerPressed += (_, args) =>
-        {
-            if (!args.GetCurrentPoint(viewport).Properties.IsLeftButtonPressed) return;
-            dragging = true; dragOrigin = args.GetPosition(viewport); originX = focusX.Value ?? .5m; originY = focusY.Value ?? .5m;
-            args.Pointer.Capture(viewport); args.Handled = true;
-        };
-        viewport.PointerMoved += (_, args) =>
-        {
-            if (!dragging) return;
-            var position = args.GetPosition(viewport); var currentZoom = Math.Max(1, (double)(zoom.Value ?? 1));
-            focusX.Value = (decimal)Math.Clamp((double)originX - (position.X - dragOrigin.X) / Math.Max(1, viewport.Bounds.Width) / currentZoom, 0, 1);
-            focusY.Value = (decimal)Math.Clamp((double)originY - (position.Y - dragOrigin.Y) / Math.Max(1, viewport.Bounds.Height) / currentZoom, 0, 1);
-            args.Handled = true;
-        };
-        viewport.PointerReleased += (_, args) =>
-        {
-            if (!dragging) return; dragging = false; args.Pointer.Capture(null); args.Handled = true;
-        };
-        viewport.PointerWheelChanged += (_, args) =>
-        {
-            zoom.Value = (decimal)Math.Clamp((double)(zoom.Value ?? 1) + args.Delta.Y * .08, 1, 3); args.Handled = true;
-        };
-        return new Border { HorizontalAlignment = HorizontalAlignment.Left, Child = grid };
-    }
 
     internal Control CreateThemedDialogSurface(Control content, bool transparentContent = false, Action<Image?, Border?>? captureBackground = null)
     {
@@ -1302,7 +1260,7 @@ public sealed partial class MainWindow : Window
         var panel = new StackPanel { Margin = new Thickness(26), Spacing = 10 };
         panel.Children.Add(new TextBlock { Text = "用户资料", FontSize = 22, FontWeight = FontWeight.SemiBold });
         panel.Children.Add(new TextBlock { Text = "头像读取原始素材，不生成压缩副本。拖动调整取景，滚轮缩放。", Foreground = Brush.Parse("#8EA2B5"), TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(CreateVisualCropEditor(preview, focusX, focusY, zoom, 200, 200, true));
+        panel.Children.Add(VisualCropEditor.Create(preview, focusX, focusY, zoom, 200, 200, true));
         panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { choose, clear } });
         panel.Children.Add(new TextBlock { Text = "用户名" }); panel.Children.Add(displayName);
         panel.Children.Add(new TextBlock { Text = "个性签名" }); panel.Children.Add(signature); panel.Children.Add(save);
@@ -1371,7 +1329,7 @@ public sealed partial class MainWindow : Window
         Field(form, "角色卡名称（显示名-用途-版本）", cardName); Field(form, "聊天显示名", name);
         form.Children.Add(new TextBlock { Text = "角色头像", FontWeight = FontWeight.SemiBold });
         form.Children.Add(new TextBlock { Text = "从原始图片直接解码；拖动调整取景，滚轮缩放，不会压缩或改写原图。", Foreground = Brush.Parse("#8EA2B5"), TextWrapping = TextWrapping.Wrap });
-        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Children = { CreateVisualCropEditor(avatarPreview, avatarFocusX, avatarFocusY, avatarZoom, 180, 180, true), new StackPanel { Spacing = 7, VerticalAlignment = VerticalAlignment.Center, Children = { chooseAvatar, clearAvatar } } } });
+        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Children = { VisualCropEditor.Create(avatarPreview, avatarFocusX, avatarFocusY, avatarZoom, 180, 180, true), new StackPanel { Spacing = 7, VerticalAlignment = VerticalAlignment.Center, Children = { chooseAvatar, clearAvatar } } } });
         form.Children.Add(currentHint); form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { structuredButton, legacyButton } }); form.Children.Add(structuredPanel); form.Children.Add(legacyPanel); Field(form, "开场白", greeting);
         var removeCard = new Button { Content = "删除角色卡" };
         var save = new Button { Content = "保存", Classes = { "primary" } }; var saveAndSwitch = new Button { Content = "保存并切换到此角色" }; form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Margin = new Thickness(0, 10, 0, 0), Children = { removeCard, saveAndSwitch, save } });
@@ -1575,8 +1533,8 @@ public sealed partial class MainWindow : Window
         void RefreshBackgroundGallery() => RefreshImageGallery(backgroundGallery, backgroundDraft.History, backgroundDraft.SelectedPath, path => { backgroundDraft.Select(path, ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); LoadDisplay(path, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); RefreshBackgroundGallery(); previewTheme(); }, false);
         void RefreshUserAvatarGallery() => RefreshImageGallery(userAvatarGallery, avatarDraft.History, avatarDraft.SelectedPath, path => { avatarDraft.Select(path, ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); LoadDisplay(path, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview); RefreshUserAvatarGallery(); previewTheme(); }, true);
         RefreshBackgroundGallery(); RefreshUserAvatarGallery(); LoadDisplay(backgroundDraft.SelectedPath, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); LoadDisplay(avatarDraft.SelectedPath, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview);
-        var backgroundCropEditor = CreateVisualCropEditor(backgroundPreview, backgroundFocusX, backgroundFocusY, backgroundZoom, 500, 280, false);
-        var avatarCropEditor = CreateVisualCropEditor(userAvatarPreview, avatarFocusX, avatarFocusY, avatarZoom, 180, 180, true);
+        var backgroundCropEditor = VisualCropEditor.Create(backgroundPreview, backgroundFocusX, backgroundFocusY, backgroundZoom, 500, 280, false);
+        var avatarCropEditor = VisualCropEditor.Create(userAvatarPreview, avatarFocusX, avatarFocusY, avatarZoom, 180, 180, true);
         var backgroundPage = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
         var backgroundBack = new Button { Content = "← 返回外观与主题", HorizontalAlignment = HorizontalAlignment.Left };
         Header(backgroundPage, "聊天背景"); backgroundPage.Children.Add(backgroundBack);
