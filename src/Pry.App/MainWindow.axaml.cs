@@ -37,6 +37,7 @@ public sealed partial class MainWindow : Window
     private readonly AttachmentDraftService _attachmentDraft = new();
     private readonly MessageThemeTracker _messageTheme = new();
     private readonly ConversationViewController _conversationView;
+    private readonly ConversationViewSynchronizer _conversationViewSynchronizer;
     private readonly BackgroundImageCache _backgroundImages = new();
     private string? _currentBackgroundRenderKey;
     private readonly Border _chatBottomAnchor = new() { Height = 64, IsHitTestVisible = false };
@@ -89,6 +90,10 @@ public sealed partial class MainWindow : Window
             () => _preferences.Theme ?? new ThemePreferences(), () => _character, () => _stickers,
             CreateMessageContextMenu, ThemeAccentBrush, AssistantBubbleBrush, AccentTextBrush,
             ThemeTextBrush, ScrollChatToEnd);
+        _conversationViewSynchronizer = new ConversationViewSynchronizer(() => _conversationId,
+            () => _character, id => _api.GetMessagesAsync(id, 200), RenderConversationMessages,
+            ResetMessagesPanel, (author, greeting) => AddTextBubble(author, greeting, false),
+            CreateTurnManager, RefreshConversationRoomsAsync);
         MessagesPanel.Children.Add(_chatBottomAnchor);
         MessagesPanel.LayoutUpdated += (_, _) =>
         {
@@ -849,10 +854,7 @@ public sealed partial class MainWindow : Window
 
     private async Task ReloadActiveConversationAsync()
     {
-        var messages = await _api.GetMessagesAsync(_conversationId, 200);
-        if (messages.Count == 0) { ResetMessagesPanel(); if (_character is not null) AddTextBubble(_character.Name, _character.Greeting, false); }
-        else RenderConversationMessages(messages);
-        CreateTurnManager(); await RefreshConversationRoomsAsync();
+        await _conversationViewSynchronizer.ReloadCurrentAsync();
     }
 
     private void ScrollChatToEnd()
