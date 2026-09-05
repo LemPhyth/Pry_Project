@@ -1610,12 +1610,12 @@ public sealed partial class MainWindow : Window
             try
             {
                 RuntimeStatus.Text = "正在由后端切换模型…";
-                var backendModels = await new SettingsSaveService(_api, ImageContentType)
+                var saved = await new SettingsSaveService(_api, ImageContentType)
                     .SaveAsync(candidate, _conversationId, warning => RuntimeStatus.Text = warning);
-                _preferences = candidate;
-                _profiles = _builtInProfiles.Concat(candidate.CustomModels).ToArray();
+                _preferences = saved.Preferences;
+                _profiles = _builtInProfiles.Concat(saved.Preferences.CustomModels).ToArray();
                 ApplyTheme(); await ReloadActiveConversationAsync();
-                var selectedName = SettingsSaveService.SelectedModelName(backendModels, candidate.ActiveModelId);
+                var selectedName = SettingsSaveService.SelectedModelName(saved.Models, saved.Preferences.ActiveModelId);
                 RuntimeStatus.Text = selectedName is null
                     ? "后端模型配置已保存"
                     : $"后端模型配置已保存 · {selectedName}";
@@ -1624,7 +1624,7 @@ public sealed partial class MainWindow : Window
             catch (Exception ex)
             {
                 save.IsEnabled = true; RuntimeStatus.Text = "设置未全部保存";
-                await ShowNoticeAsync("设置保存失败", $"{ex.Message}\n部分设置可能已保存，请检查后重试。");
+                await ShowNoticeAsync("设置保存失败", $"{ex.Message}\n设置未应用，请检查后重试。");
             }
         };
         await window.ShowDialog(this);

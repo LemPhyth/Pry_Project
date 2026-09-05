@@ -8,6 +8,14 @@ namespace Pry.App.Tests;
 public sealed class AttachmentDraftServiceTests
 {
     [Fact]
+    public void Unconfigured_policy_blocks_attachment_selection()
+    {
+        var result = new AttachmentDraftService().AddPaths([]);
+
+        Assert.Contains("策略尚未加载", Assert.Single(result.Rejected));
+    }
+
+    [Fact]
     public void Add_paths_classifies_supported_files_and_reports_rejections_and_warnings()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"pry-attachments-{Guid.NewGuid():N}");

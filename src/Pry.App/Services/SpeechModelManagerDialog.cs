@@ -106,7 +106,8 @@ public sealed class SpeechModelManagerDialog(
     }
 
     public static SaveSpeechModelRequest ToRequest(SpeechModelProfile value) => new(
-        value.DisplayName, value.Provider, value.ModelName, value.ModelPath,
+        value.DisplayName, value.Provider, value.ModelName,
+        string.IsNullOrWhiteSpace(value.ModelPath) ? null : value.ModelPath,
         value.BaseUrl, value.Language, value.SampleRate);
 
     private async Task<SpeechModelProfile?> EditAsync(Window owner, SpeechModelProfile? source)

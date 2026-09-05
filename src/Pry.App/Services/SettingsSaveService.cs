@@ -10,7 +10,7 @@ public sealed class SettingsSaveService(PryBackendClient api, Func<string, strin
         models.FirstOrDefault(model => model.SelectedForText)?.DisplayName ??
         models.FirstOrDefault(model => string.Equals(model.Id, modelId, StringComparison.Ordinal))?.DisplayName;
 
-    public async Task<IReadOnlyList<ModelProfileResponse>> SaveAsync(UserPreferences candidate,
+    public async Task<SettingsSaveResult> SaveAsync(UserPreferences candidate,
         string conversationId, Action<string> warning, CancellationToken token = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(candidate.ActiveModelId);
@@ -32,7 +32,40 @@ public sealed class SettingsSaveService(PryBackendClient api, Func<string, strin
         var models = new UpdateModelSelectionRequest(
             candidate.ActiveModelId, candidate.ActiveVisionModelId, candidate.ActiveSpeechModelId,
             candidate.ModelTunings);
-        return (await api.SaveSettingsAsync(new SaveSettingsRequest(preferences, appearance, models), token)).Models;
+        var response = await api.SaveSettingsAsync(new SaveSettingsRequest(preferences, appearance, models), token);
+        return new SettingsSaveResult(ApplyServerProjection(candidate, response.Preferences), response.Models);
+    }
+
+    public static UserPreferences ApplyServerProjection(UserPreferences candidate, ClientPreferencesResponse response)
+    {
+        var serverTheme = response.Theme;
+        return candidate with
+        {
+            SelectedCharacterId = response.SelectedCharacterId,
+            ActiveConversationId = response.ActiveConversationId,
+            ActiveModelId = response.ActiveModelId,
+            ActiveVisionModelId = response.ActiveVisionModelId,
+            ActiveSpeechModelId = response.ActiveSpeechModelId,
+            UserProfile = response.UserProfile,
+            DesktopPet = response.DesktopPet,
+            Shortcuts = response.Shortcuts,
+            TurnTakingOverride = response.TurnTaking,
+            Theme = candidate.Theme with
+            {
+                ThemeMode = serverTheme.ThemeMode,
+                AccentColor = serverTheme.AccentColor,
+                UseGlassEffects = serverTheme.UseGlassEffects,
+                LiveSidebarResize = serverTheme.LiveSidebarResize,
+                BackgroundDimOpacity = serverTheme.BackgroundDimOpacity,
+                BackgroundImageOpacity = serverTheme.BackgroundImageOpacity,
+                BackgroundBlurMode = serverTheme.BackgroundBlurMode,
+                BackgroundBlurRadius = serverTheme.BackgroundBlurRadius,
+                AvatarSize = serverTheme.AvatarSize,
+                BubbleFontSize = serverTheme.BubbleFontSize,
+                BubbleMaxWidth = serverTheme.BubbleMaxWidth,
+                BubbleSpacing = serverTheme.BubbleSpacing
+            }
+        };
     }
 
     private async Task<string?> UploadAsync(string? path, Action<string> warning, CancellationToken token)
@@ -49,3 +82,5 @@ public sealed class SettingsSaveService(PryBackendClient api, Func<string, strin
         ? null
         : displays.GetValueOrDefault(path) ?? new ImageDisplayPreferences();
 }
+
+public sealed record SettingsSaveResult(UserPreferences Preferences, IReadOnlyList<ModelProfileResponse> Models);

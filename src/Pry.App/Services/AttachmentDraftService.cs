@@ -3,11 +3,19 @@ using Pry.Core.Models;
 
 namespace Pry.App.Services;
 
-public sealed class AttachmentDraftService(int maximumCount = 6, long warningBytes = 10 * 1024 * 1024)
+public sealed class AttachmentDraftService
 {
     private readonly List<ChatAttachment> _items = [];
-    private int _maximumCount = Math.Max(1, maximumCount);
-    private long _warningBytes = Math.Max(1, warningBytes);
+    private int? _maximumCount;
+    private long? _warningBytes;
+
+    public AttachmentDraftService() { }
+
+    public AttachmentDraftService(int maximumCount, long warningBytes = long.MaxValue)
+    {
+        _maximumCount = Math.Max(1, maximumCount);
+        _warningBytes = Math.Max(1, warningBytes);
+    }
 
     public IReadOnlyList<ChatAttachment> Items => _items;
 
@@ -22,6 +30,8 @@ public sealed class AttachmentDraftService(int maximumCount = 6, long warningByt
     {
         var rejected = new List<string>();
         var warnings = new List<string>();
+        if (_maximumCount is null || _warningBytes is null)
+            return new AttachmentDraftResult(["附件策略尚未加载，请稍后重试"], warnings);
         foreach (var sourcePath in paths.Where(File.Exists))
         {
             if (_items.Count >= _maximumCount)
@@ -41,7 +51,7 @@ public sealed class AttachmentDraftService(int maximumCount = 6, long warningByt
             {
                 var file = new FileInfo(sourcePath);
                 using (file.OpenRead()) { }
-                if (file.Length > _warningBytes)
+                if (file.Length > _warningBytes.Value)
                     warnings.Add($"{file.Name} 较大（{file.Length / 1024d / 1024d:F1} MiB），上传和处理可能需要更长时间");
                 _items.Add(new ChatAttachment(file.FullName, kind.Value, file.Name));
             }

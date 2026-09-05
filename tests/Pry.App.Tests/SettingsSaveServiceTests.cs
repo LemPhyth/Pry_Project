@@ -29,7 +29,8 @@ public sealed class SettingsSaveServiceTests
         using var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/") };
         var service = new SettingsSaveService(new PryBackendClient(http), _ => "image/png");
         var result = await service.SaveAsync(new UserPreferences { ActiveModelId = "text" }, "room", _ => { }, TestContext.Current.CancellationToken);
-        Assert.Empty(result);
+        Assert.Empty(result.Models);
+        Assert.Equal("server-model", result.Preferences.ActiveModelId);
         Assert.Equal(new[] { "/api/v1/settings" }, handler.Paths);
         using var body = JsonDocument.Parse(handler.Bodies[0]);
         var appearance = body.RootElement.GetProperty("appearance");
@@ -48,6 +49,33 @@ public sealed class SettingsSaveServiceTests
         Assert.Single(handler.Paths);
     }
 
+    [Fact]
+    public void Server_projection_wins_while_local_media_state_is_preserved()
+    {
+        var candidate = new UserPreferences
+        {
+            ActiveModelId = "candidate-model",
+            Theme = new ThemePreferences
+            {
+                BackgroundImagePath = "cached-background.png",
+                BackgroundHistory = ["cached-background.png"],
+                AccentColor = "#000000"
+            }
+        };
+        var response = new ClientPreferencesResponse(null, "room", "server-model", null, null,
+            new UserProfilePreferences { DisplayName = "服务端用户" }, new DesktopPetPreferences(),
+            new ShortcutSettings(), null, new ClientThemePreferences("light", "#123456", true, false,
+                .3, 1, "none", 0, 48, 14, 620, 10), "/api/v1/appearance/background", null);
+
+        var result = SettingsSaveService.ApplyServerProjection(candidate, response);
+
+        Assert.Equal("server-model", result.ActiveModelId);
+        Assert.Equal("服务端用户", result.UserProfile.DisplayName);
+        Assert.Equal("#123456", result.Theme.AccentColor);
+        Assert.Equal("cached-background.png", result.Theme.BackgroundImagePath);
+        Assert.Equal(["cached-background.png"], result.Theme.BackgroundHistory);
+    }
+
     private sealed class RecordingHandler : HttpMessageHandler
     {
         public string? FailPath { get; init; }
@@ -61,8 +89,12 @@ public sealed class SettingsSaveServiceTests
             var failed = path == FailPath;
             return new HttpResponseMessage(failed ? HttpStatusCode.BadRequest : HttpStatusCode.OK)
             {
-                Content = new StringContent(failed ? "{\"title\":\"rejected\"}" : "{\"preferences\":{},\"models\":[]}", Encoding.UTF8, "application/json")
+                Content = new StringContent(failed ? "{\"title\":\"rejected\"}" : SuccessResponse, Encoding.UTF8, "application/json")
             };
         }
+
+        private const string SuccessResponse = """
+            {"preferences":{"selectedCharacterId":null,"activeConversationId":"room","activeModelId":"server-model","activeVisionModelId":null,"activeSpeechModelId":null,"userProfile":{"displayName":"你","signature":""},"desktopPet":{"enabled":false,"alwaysOnTop":true,"scale":1},"shortcuts":{"send":"Enter","sendImmediately":"Ctrl+Enter","newLine":"Shift+Enter","cancelReply":"Escape","newConversation":"Ctrl+N","openStickers":"Ctrl+E","openCharacterEditor":"Ctrl+Shift+C"},"turnTaking":null,"theme":{"themeMode":"dark","accentColor":"#123456","useGlassEffects":true,"liveSidebarResize":false,"backgroundDimOpacity":0.3,"backgroundImageOpacity":1,"backgroundBlurMode":"none","backgroundBlurRadius":0,"avatarSize":48,"bubbleFontSize":14,"bubbleMaxWidth":620,"bubbleSpacing":10},"backgroundUrl":null,"userAvatarUrl":null},"models":[]}
+            """;
     }
 }

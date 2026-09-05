@@ -57,6 +57,14 @@ public sealed class SpeechModelManagerStateTests
         Assert.Equal(profile.SampleRate, request.SampleRate);
     }
 
+    [Fact]
+    public void Request_omits_hidden_local_directory_when_it_was_not_reselected()
+    {
+        var request = SpeechModelManagerDialog.ToRequest(Profile("speech-id") with { ModelPath = "" });
+
+        Assert.Null(request.LocalModelDirectory);
+    }
+
     private static SpeechModelProfile Profile(string id) => new()
     {
         Id = id,
