@@ -38,6 +38,7 @@ public sealed partial class MainWindow : Window
     private readonly MessageThemeTracker _messageTheme = new();
     private readonly ConversationViewController _conversationView;
     private readonly ConversationViewSynchronizer _conversationViewSynchronizer;
+    private readonly ConversationListSynchronizer _conversationListSynchronizer;
     private readonly BackgroundImageCache _backgroundImages = new();
     private string? _currentBackgroundRenderKey;
     private readonly Border _chatBottomAnchor = new() { Height = 64, IsHitTestVisible = false };
@@ -94,6 +95,8 @@ public sealed partial class MainWindow : Window
             () => _character, id => _api.GetMessagesAsync(id, 200), RenderConversationMessages,
             ResetMessagesPanel, (author, greeting) => AddTextBubble(author, greeting, false),
             CreateTurnManager, RefreshConversationRoomsAsync);
+        _conversationListSynchronizer = new ConversationListSynchronizer(
+            () => _api.GetConversationsAsync(), () => _api.GetFoldersAsync());
         MessagesPanel.Children.Add(_chatBottomAnchor);
         MessagesPanel.LayoutUpdated += (_, _) =>
         {
@@ -297,8 +300,9 @@ public sealed partial class MainWindow : Window
 
     private async Task RefreshConversationRoomsAsync()
     {
-        var rooms = await _api.GetConversationsAsync();
-        var folders = await _api.GetFoldersAsync();
+        var snapshot = await _conversationListSynchronizer.LoadLatestAsync();
+        if (snapshot is null) return;
+        var (rooms, folders) = snapshot;
         _changingConversation = true;
         var items = ConversationListItemFactory.Create(rooms, folders, _collapsedConversationFolders,
             async key =>
