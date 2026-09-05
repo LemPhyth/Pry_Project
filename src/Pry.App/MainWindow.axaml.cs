@@ -1401,49 +1401,9 @@ public sealed partial class MainWindow : Window
     private async Task OpenMemoryManagerAsync(Window? owner = null)
     {
         if (_character is null) return;
-        var window = new Window { Title = "长期记忆管理", Width = 940, Height = 680, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        var search = new TextBox { Watermark = "搜索内容、标签或类型…" }; var searchButton = new Button { Content = "搜索" };
-        var list = new ListBox { Background = Brushes.Transparent };
-        var kind = new ComboBox { ItemsSource = new[] { "user_fact", "preference", "promise", "relationship", "event", "other" }, SelectedItem = "user_fact" };
-        var summary = new TextBox { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 150 };
-        var tags = new TextBox { Watermark = "用逗号分隔" }; var importance = new NumericUpDown { Value = .65m, Minimum = 0, Maximum = 1, Increment = .05m };
-        var metadata = new TextBlock { Foreground = Brush.Parse("#7F91A4"), TextWrapping = TextWrapping.Wrap };
-        var create = new Button { Content = "＋ 新建记忆" }; var save = new Button { Content = "保存", Classes = { "primary" } }; var remove = new Button { Content = "删除" };
-        long? editingId = null;
-        async Task RefreshAsync(long? selectId = null)
-        {
-            var memories = await _api.GetMemoriesAsync(_character.Id, search.Text);
-            var items = memories.Select(x => new MemoryListItem(x)).ToArray(); list.ItemsSource = items;
-            list.SelectedItem = items.FirstOrDefault(x => x.Memory.Id == selectId);
-        }
-        void Load(MemoryRecord memory)
-        {
-            editingId = memory.Id; kind.SelectedItem = memory.Kind; summary.Text = memory.Summary; tags.Text = memory.Tags; importance.Value = (decimal)memory.Importance;
-            metadata.Text = $"创建：{memory.CreatedAt.ToLocalTime():yyyy-MM-dd HH:mm}　更新：{memory.UpdatedAt?.ToLocalTime():yyyy-MM-dd HH:mm}　最近调用：{memory.LastUsedAt?.ToLocalTime():yyyy-MM-dd HH:mm}";
-        }
-        void NewMemory() { editingId = null; kind.SelectedItem = "user_fact"; summary.Text = ""; tags.Text = ""; importance.Value = .65m; metadata.Text = "尚未保存的新记忆"; list.SelectedItem = null; }
-        list.SelectionChanged += (_, _) => { if (list.SelectedItem is MemoryListItem item) Load(item.Memory); };
-        searchButton.Click += async (_, _) => await RefreshAsync(); create.Click += (_, _) => NewMemory();
-        save.Click += async (_, _) =>
-        {
-            if (string.IsNullOrWhiteSpace(summary.Text)) { await ShowNoticeAsync("无法保存", "记忆内容不能为空。"); return; }
-            if (editingId is long id)
-                await _api.UpdateMemoryAsync(id, _character.Id, new UpdateMemoryRequest(kind.SelectedItem?.ToString() ?? "other", summary.Text.Trim(), tags.Text?.Trim() ?? "", (double)(importance.Value ?? .65m)));
-            else
-                editingId = (await _api.CreateMemoryAsync(new CreateMemoryRequest(_character.Id, kind.SelectedItem?.ToString() ?? "other", summary.Text.Trim(), tags.Text?.Trim() ?? "", (double)(importance.Value ?? .65m)))).Id;
-            await RefreshAsync(editingId);
-        };
-        remove.Click += async (_, _) => { if (editingId is not long id || !await ConfirmAsync(window, "删除长期记忆", "确定永久删除这条记忆吗？")) return; await _api.DeleteMemoryAsync(id, _character.Id); NewMemory(); await RefreshAsync(); };
-        var leftHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { search, searchButton } }; Grid.SetColumn(searchButton, 1);
-        var listCard = CreateCompactDialogTextCard(list); listCard.Padding = new Thickness(8); listCard.Margin = new Thickness(0, 10);
-        var left = new Grid { Margin = new Thickness(18), RowDefinitions = new RowDefinitions("Auto,*,Auto"), Children = { leftHeader, listCard, create } }; Grid.SetRow(listCard, 1); Grid.SetRow(create, 2);
-        var form = new StackPanel { Margin = new Thickness(10), Spacing = 9 };
-        void Field(string label, Control control) { form.Children.Add(new TextBlock { Text = label, Foreground = Brush.Parse("#B8CCE0") }); form.Children.Add(control); }
-        form.Children.Add(new TextBlock { Text = $"{_character.Name}的长期记忆", FontSize = 22, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 8) }); Field("类型", kind); Field("内容", summary); Field("标签", tags); Field("重要度", importance); form.Children.Add(metadata); form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { remove, save } });
-        var divider = new Border { BorderBrush = Brush.Parse("#263746"), BorderThickness = new Thickness(0, 0, 1, 0), Child = left };
-        var formCard = CreateCompactDialogTextCard(new ScrollViewer { Content = form }); formCard.Margin = new Thickness(12, 18, 18, 18); formCard.Padding = new Thickness(12);
-        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("350,*"), Children = { divider, formCard } }; Grid.SetColumn(formCard, 1); window.Content = CreateThemedDialogSurface(layout);
-        NewMemory(); await RefreshAsync(); await window.ShowDialog(owner ?? this);
+        await new MemoryManagerDialog(
+            _api, content => CreateThemedDialogSurface(content), CreateCompactDialogTextCard,
+            ConfirmAsync, ShowNoticeAsync).ShowAsync(owner ?? this, _character.Id, _character.Name);
     }
 
     private async void Settings_Click(object? sender, RoutedEventArgs e)
@@ -1664,15 +1624,6 @@ public sealed partial class MainWindow : Window
     private Task ShowNoticeAsync(string title, string message) => _dialogs.ShowNoticeAsync(this, title, message);
     private Task<bool> ConfirmAsync(Window owner, string title, string message) => _dialogs.ConfirmAsync(owner, title, message);
     private sealed record StickerListItem(StickerDefinition Sticker) { public override string ToString() => $"{Sticker.Name} · {(Sticker.Source == StickerSource.BuiltIn ? "内置" : "用户")} · {Sticker.InteractionRole} · {string.Join(" / ", Sticker.Emotions)}"; }
-    private sealed record MemoryListItem(MemoryRecord Memory)
-    {
-        public override string ToString() => $"{MemoryKindLabel(Memory.Kind)} · {Memory.Summary}";
-        private static string MemoryKindLabel(string kind) => kind switch
-        {
-            "user_fact" => "事实", "preference" => "偏好", "promise" => "约定",
-            "relationship" => "关系", "event" => "事件", _ => "其他"
-        };
-    }
     private IBrush ThemeAccentBrush()
     {
         var configured = _preferences.Theme?.AccentColor;
