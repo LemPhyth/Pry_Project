@@ -36,6 +36,7 @@ public sealed partial class MainWindow : Window
     private string _conversationId = Guid.NewGuid().ToString("N");
     private readonly AttachmentDraftService _attachmentDraft = new();
     private readonly MessageThemeTracker _messageTheme = new();
+    private readonly ConversationViewController _conversationView;
     private readonly BackgroundImageCache _backgroundImages = new();
     private string? _currentBackgroundRenderKey;
     private readonly Border _chatBottomAnchor = new() { Height = 64, IsHitTestVisible = false };
@@ -84,6 +85,10 @@ public sealed partial class MainWindow : Window
         _projectionService = new BackendProjectionService(api);
         InitializeComponent();
         _dialogs = new DialogService(content => CreateThemedDialogSurface(content), CreateCompactDialogTextCard);
+        _conversationView = new ConversationViewController(MessagesPanel, _chatBottomAnchor, _messageTheme,
+            () => _preferences.Theme ?? new ThemePreferences(), () => _character, () => _stickers,
+            CreateMessageContextMenu, ThemeAccentBrush, AssistantBubbleBrush, AccentTextBrush,
+            ThemeTextBrush, ScrollChatToEnd);
         MessagesPanel.Children.Add(_chatBottomAnchor);
         MessagesPanel.LayoutUpdated += (_, _) =>
         {
@@ -458,18 +463,7 @@ public sealed partial class MainWindow : Window
     }
 
     private void RenderConversationMessages(IEnumerable<ChatMessage> messages)
-    {
-        ResetMessagesPanel();
-        foreach (var message in messages)
-        {
-            var isUser = message.Role == ChatRole.User;
-            var author = isUser ? "你" : _character?.Name ?? "角色";
-            if (!string.IsNullOrWhiteSpace(message.ImagePath) && File.Exists(message.ImagePath)) AddImageBubble(author, message.ImagePath, isUser, message.CreatedAt, message.Id);
-            if (!string.IsNullOrWhiteSpace(message.StickerId)) AddStickerBubble(author, message.StickerId, isUser, message.CreatedAt, message.Id);
-            if (!string.IsNullOrWhiteSpace(message.Content)) AddTextBubble(author, message.Content, isUser, message.CreatedAt, message.Id);
-        }
-        ScrollChatToEnd();
-    }
+        => _conversationView.Render(messages);
 
     private void ApplyTheme()
     {
@@ -799,47 +793,13 @@ public sealed partial class MainWindow : Window
         _ = RefreshConversationRoomsAsync();
     }
     private void AddTextBubble(string author, string content, bool isUser, DateTimeOffset? timestamp = null, long? messageId = null)
-    {
-        var theme = _preferences.Theme ?? new ThemePreferences();
-        var view = MessageContentFactory.CreateText(content, isUser, theme, ThemeAccentBrush(), AssistantBubbleBrush(), AccentTextBrush(), ThemeTextBrush());
-        TrackMessageContent(view, isUser);
-        AddBubble(author, view.Content, isUser, timestamp, messageId, content);
-    }
+        => _conversationView.AddText(author, content, isUser, timestamp, messageId);
     private void AddStickerBubble(string author, string stickerId, bool isUser, DateTimeOffset? timestamp = null, long? messageId = null)
-    {
-        var sticker = _stickers.FirstOrDefault(x => x.Id == stickerId && x.Enabled); if (sticker is null) { AddTextBubble(author, "[表情]", isUser); return; }
-        try { AddBubble(author, MessageContentFactory.CreateSticker(sticker.FilePath).Content, isUser, timestamp, messageId, ""); }
-        catch { AddTextBubble(author, $"[表情：{sticker.Name}]", isUser); }
-    }
+        => _conversationView.AddSticker(author, stickerId, isUser, timestamp, messageId);
     private void AddImageBubble(string author, string imagePath, bool isUser, DateTimeOffset? timestamp = null, long? messageId = null)
-    {
-        try
-        {
-            var view = MessageContentFactory.CreateImage(imagePath, isUser ? ThemeAccentBrush() : AssistantBubbleBrush());
-            TrackMessageContent(view, isUser);
-            AddBubble(author, view.Content, isUser, timestamp, messageId, "");
-        }
-        catch { AddTextBubble(author, $"[图片无法显示：{Path.GetFileName(imagePath)}]", isUser); }
-    }
+        => _conversationView.AddImage(author, imagePath, isUser, timestamp, messageId);
     private void AddAttachmentBubble(string author, ChatAttachment attachment, bool isUser, long? messageId = null)
-    {
-        if (attachment.IsImage) { AddImageBubble(author, attachment.Path, isUser, messageId: messageId); return; }
-        var view = MessageContentFactory.CreateDocument(attachment, isUser ? ThemeAccentBrush() : AssistantBubbleBrush());
-        TrackMessageContent(view, isUser);
-        AddBubble(author, view.Content, isUser, messageId: messageId, messageText: "");
-    }
-
-    private void TrackMessageContent(MessageContentView view, bool isUser)
-        => _messageTheme.Track(view, isUser);
-    private void AddBubble(string author, Control content, bool isUser, DateTimeOffset? timestamp = null, long? messageId = null, string messageText = "")
-    {
-        var menu = messageId is long storedId ? CreateMessageContextMenu(storedId, isUser, messageText) : null;
-        var view = MessageRowFactory.Create(author, content, isUser, timestamp ?? DateTimeOffset.Now,
-            menu, _preferences.Theme ?? new ThemePreferences(), _character, ThemeAccentBrush());
-        _messageTheme.TrackAvatar(view.Avatar, isUser);
-        MessagesPanel.Children.Insert(Math.Max(0, MessagesPanel.Children.Count - 1), view.Row);
-        ScrollChatToEnd();
-    }
+        => _conversationView.AddAttachment(author, attachment, isUser, messageId);
 
     private ContextMenu CreateMessageContextMenu(long messageId, bool isUser, string messageText)
         => MessageContextMenuFactory.Create(isUser,
@@ -946,10 +906,7 @@ public sealed partial class MainWindow : Window
     }
 
     private void ResetMessagesPanel()
-    {
-        MessagesPanel.Children.Clear(); _messageTheme.Clear();
-        MessagesPanel.Children.Add(_chatBottomAnchor);
-    }
+        => _conversationView.Reset();
 
     private void MainSidebarSplitter_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
