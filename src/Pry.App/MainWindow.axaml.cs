@@ -1481,7 +1481,6 @@ public sealed partial class MainWindow : Window
         };
         computeChoices.AddRange(detectedDevices.Select(x => new ComputeDeviceChoice(x.Id, $"{x.Name}（{x.IsIntegrated switch { true => "核显", false => "独显/加速卡" }}）")));
         var settingsUi = new SettingsUiFactory();
-        NumericUpDown Number(decimal value, decimal min, decimal max, decimal step = 1) => settingsUi.CreateNumber(value, min, max, step);
         var turn = EffectiveTurnSettings();
         var themePreferences = _preferences.Theme ?? new ThemePreferences();
         var allModels = _builtInProfiles.Concat(_preferences.CustomModels).ToArray();
@@ -1511,38 +1510,19 @@ public sealed partial class MainWindow : Window
         using var themeImages = new ThemeImageResources();
         var backgroundDraft = new ThemeImageDraft(themePreferences.BackgroundImagePath, themePreferences.BackgroundHistory, themePreferences.BackgroundDisplays);
         var avatarDraft = new ThemeImageDraft(themePreferences.UserAvatarPath, themePreferences.UserAvatarHistory, themePreferences.UserAvatarDisplays);
-        var backgroundGallery = new WrapPanel { Orientation = Orientation.Horizontal }; var userAvatarGallery = new WrapPanel { Orientation = Orientation.Horizontal };
-        var backgroundPreview = new Image { Width = 500, Height = 280, Stretch = Stretch.UniformToFill };
-        var userAvatarPreview = new Image { Width = 120, Height = 120, Stretch = Stretch.UniformToFill };
-        var browseBackground = new Button { Content = "导入背景…" }; var clearBackground = new Button { Content = "不使用背景" }; var deleteBackground = new Button { Content = "删除所选" };
-        var browseUserAvatar = new Button { Content = "导入用户头像…" }; var clearUserAvatar = new Button { Content = "使用默认头像" }; var deleteUserAvatar = new Button { Content = "删除所选" };
-        var backgroundFocusX = Number(.5m, 0, 1, .05m); var backgroundFocusY = Number(.5m, 0, 1, .05m); var backgroundZoom = Number(1, 1, 3, .05m);
-        var avatarFocusX = Number(.5m, 0, 1, .05m); var avatarFocusY = Number(.5m, 0, 1, .05m); var avatarZoom = Number(1, 1, 3, .05m);
-        var loadingImageControls = false;
-        ImageDisplayPreferences ReadDisplay(NumericUpDown x, NumericUpDown y, NumericUpDown zoom) => new() { FocusX = (double)(x.Value ?? .5m), FocusY = (double)(y.Value ?? .5m), Zoom = (double)(zoom.Value ?? 1) };
-        void LoadDisplay(string? path, IReadOnlyDictionary<string, ImageDisplayPreferences> values, NumericUpDown x, NumericUpDown y, NumericUpDown zoom, Image preview)
-        {
-            loadingImageControls = true; var display = path is not null && values.TryGetValue(path, out var saved) ? saved : new ImageDisplayPreferences();
-            x.Value = (decimal)display.FocusX; y.Value = (decimal)display.FocusY; zoom.Value = (decimal)display.Zoom;
-            if (themeImages.Load(preview, path)) ApplyImageDisplay(preview, display);
-            loadingImageControls = false;
-        }
-        void RefreshImageGallery(WrapPanel gallery, IReadOnlyList<string> paths, string? selected, Action<string> select, bool square)
-            => ThemeImageGallery.Refresh(gallery, paths, selected, select, square, ThemeAccentBrush(), themeImages);
-        Action previewTheme = () => { };
-        void RefreshBackgroundGallery() => RefreshImageGallery(backgroundGallery, backgroundDraft.History, backgroundDraft.SelectedPath, path => { backgroundDraft.Select(path, ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); LoadDisplay(path, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); RefreshBackgroundGallery(); previewTheme(); }, false);
-        void RefreshUserAvatarGallery() => RefreshImageGallery(userAvatarGallery, avatarDraft.History, avatarDraft.SelectedPath, path => { avatarDraft.Select(path, ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); LoadDisplay(path, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview); RefreshUserAvatarGallery(); previewTheme(); }, true);
-        RefreshBackgroundGallery(); RefreshUserAvatarGallery(); LoadDisplay(backgroundDraft.SelectedPath, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); LoadDisplay(avatarDraft.SelectedPath, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview);
-        var backgroundCropEditor = VisualCropEditor.Create(backgroundPreview, backgroundFocusX, backgroundFocusY, backgroundZoom, 500, 280, false);
-        var avatarCropEditor = VisualCropEditor.Create(userAvatarPreview, avatarFocusX, avatarFocusY, avatarZoom, 180, 180, true);
-        var backgroundPage = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
-        var backgroundBack = new Button { Content = "← 返回外观与主题", HorizontalAlignment = HorizontalAlignment.Left };
-        Header(backgroundPage, "聊天背景"); backgroundPage.Children.Add(backgroundBack);
-        backgroundPage.Children.Add(Card("背景图片与取景", new TextBlock { Text = "在预览中拖动取景，滚轮缩放。透明度会透出桌面；模糊程度同时作用于背景图，并在系统支持时启用桌面背景模糊。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#B8CCE0") }, backgroundCropEditor, backgroundGallery, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { browseBackground, clearBackground, deleteBackground } }, new TextBlock { Text = "背景透明度（透出桌面）", Foreground = Brush.Parse("#B8CCE0") }, appearanceEditor.BackgroundOpacity, new TextBlock { Text = "背景模糊程度", Foreground = Brush.Parse("#B8CCE0") }, appearanceEditor.BackgroundBlur, new TextBlock { Text = "背景遮罩浓度", Foreground = Brush.Parse("#B8CCE0") }, appearanceEditor.BackgroundDim));
-        var avatarPage = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
-        var avatarBack = new Button { Content = "← 返回外观与主题", HorizontalAlignment = HorizontalAlignment.Left };
-        Header(avatarPage, "用户头像"); avatarPage.Children.Add(avatarBack);
-        avatarPage.Children.Add(Card("头像图片与取景", new TextBlock { Text = "头像与背景采用相同的可视化操作：拖动取景、滚轮缩放；始终从原始素材直接解码，不压缩、不生成缩略副本。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#B8CCE0") }, avatarCropEditor, userAvatarGallery, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { browseUserAvatar, clearUserAvatar, deleteUserAvatar } }));
+        var backgroundImagesEditor = new ThemeImageSettingsEditor(backgroundDraft, themeImages, settingsUi,
+            ThemeAccentBrush, ApplyImageDisplay, false, "聊天背景", "背景图片与取景",
+            "在预览中拖动取景，滚轮缩放。透明度会透出桌面；模糊程度同时作用于背景图，并在系统支持时启用桌面背景模糊。",
+            "导入背景…", "不使用背景",
+            new TextBlock { Text = "背景透明度（透出桌面）", Foreground = Brush.Parse("#B8CCE0") }, appearanceEditor.BackgroundOpacity,
+            new TextBlock { Text = "背景模糊程度", Foreground = Brush.Parse("#B8CCE0") }, appearanceEditor.BackgroundBlur,
+            new TextBlock { Text = "背景遮罩浓度", Foreground = Brush.Parse("#B8CCE0") }, appearanceEditor.BackgroundDim);
+        var avatarImagesEditor = new ThemeImageSettingsEditor(avatarDraft, themeImages, settingsUi,
+            ThemeAccentBrush, ApplyImageDisplay, true, "用户头像", "头像图片与取景",
+            "头像与背景采用相同的可视化操作：拖动取景、滚轮缩放；始终从原始素材直接解码，不压缩、不生成缩略副本。",
+            "导入用户头像…", "使用默认头像");
+        var backgroundPage = backgroundImagesEditor.Page;
+        var avatarPage = avatarImagesEditor.Page;
         var characterManagerButton = new Button { Content = "打开角色卡管理…", HorizontalAlignment = HorizontalAlignment.Left };
         var stickerManagerButton = new Button { Content = "打开表情包管理…", HorizontalAlignment = HorizontalAlignment.Left };
         var memoryManagerButton = new Button { Content = "打开长期记忆管理…", HorizontalAlignment = HorizontalAlignment.Left };
@@ -1560,16 +1540,15 @@ public sealed partial class MainWindow : Window
         var save = settingsShell.SaveButton;
         appearanceEditor.OpenBackground.Click += (_, _) => settingsShell.ShowPage(backgroundPage);
         appearanceEditor.OpenAvatar.Click += (_, _) => settingsShell.ShowPage(avatarPage);
-        backgroundBack.Click += (_, _) => settingsShell.ShowPage(themePanel);
-        avatarBack.Click += (_, _) => settingsShell.ShowPage(themePanel);
+        backgroundImagesEditor.BackButton.Click += (_, _) => settingsShell.ShowPage(themePanel);
+        avatarImagesEditor.BackButton.Click += (_, _) => settingsShell.ShowPage(themePanel);
         Image? settingsBackgroundImage = null; Border? settingsBackgroundDim = null;
         var settingsSurface = CreateThemedDialogSurface(layout, transparentContent: true, (image, dim) => { settingsBackgroundImage = image; settingsBackgroundDim = dim; });
         var window = new Window { Title = "设置", Width = 900, Height = 740, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = settingsSurface };
         void StoreCurrentImageDisplays()
         {
-            if (loadingImageControls) return;
-            if (backgroundDraft.SelectedPath is not null) { var display = ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom); backgroundDraft.StoreDisplay(display); ApplyImageDisplay(backgroundPreview, display); }
-            if (avatarDraft.SelectedPath is not null) { var display = ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom); avatarDraft.StoreDisplay(display); ApplyImageDisplay(userAvatarPreview, display); }
+            backgroundImagesEditor.StoreCurrent();
+            avatarImagesEditor.StoreCurrent();
         }
         ThemePreferences BuildThemeDraft()
         {
@@ -1618,10 +1597,9 @@ public sealed partial class MainWindow : Window
             draft => { _preferences = _preferences with { Theme = draft }; ApplyTheme(); UpdateSettingsSurface(draft); },
             () => { _preferences = _preferences with { Theme = settingsOriginalTheme }; ApplyTheme(); });
         void PreviewTheme() => themePreview.Request();
-        previewTheme = PreviewTheme;
-        void PreviewValueChanged(object? _, NumericUpDownValueChangedEventArgs __) { if (!loadingImageControls) PreviewTheme(); }
         appearanceEditor.Changed += PreviewTheme;
-        foreach (var number in new[] { backgroundFocusX, backgroundFocusY, backgroundZoom, avatarFocusX, avatarFocusY, avatarZoom }) number.ValueChanged += PreviewValueChanged;
+        backgroundImagesEditor.Changed += PreviewTheme;
+        avatarImagesEditor.Changed += PreviewTheme;
         window.Closed += (_, _) => themePreview.Dispose();
         UpdateSettingsSurface(themePreferences);
         async Task<string?> PickThemeImageAsync(string title, string category)
@@ -1629,21 +1607,27 @@ public sealed partial class MainWindow : Window
             var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = title, AllowMultiple = false, FileTypeFilter = [new FilePickerFileType("图片") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"] }] });
             var path = files.FirstOrDefault()?.TryGetLocalPath(); return string.IsNullOrWhiteSpace(path) ? null : path;
         }
-        browseBackground.Click += async (_, _) => { var path = await PickThemeImageAsync("导入聊天背景", "backgrounds"); if (path is null) return; backgroundDraft.Select(path, ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); LoadDisplay(path, backgroundDraft.Displays, backgroundFocusX, backgroundFocusY, backgroundZoom, backgroundPreview); RefreshBackgroundGallery(); PreviewTheme(); };
-        clearBackground.Click += (_, _) => { backgroundDraft.ClearSelection(ReadDisplay(backgroundFocusX, backgroundFocusY, backgroundZoom)); themeImages.Clear(backgroundPreview); RefreshBackgroundGallery(); PreviewTheme(); };
-        deleteBackground.Click += async (_, _) =>
+        backgroundImagesEditor.ImportButton.Click += async (_, _) =>
         {
-            if (backgroundDraft.SelectedPath is null || !await ConfirmAsync(window, "删除背景", "确定从当前背景列表移除此图片吗？原始文件不会被删除，保存后生效。")) return;
-            backgroundDraft.RemoveSelected();
-            themeImages.Clear(backgroundPreview); RefreshBackgroundGallery(); PreviewTheme();
+            var path = await PickThemeImageAsync("导入聊天背景", "backgrounds");
+            if (path is not null) backgroundImagesEditor.Import(path);
         };
-        browseUserAvatar.Click += async (_, _) => { var path = await PickThemeImageAsync("导入用户头像", "user-avatars"); if (path is null) return; avatarDraft.Select(path, ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); LoadDisplay(path, avatarDraft.Displays, avatarFocusX, avatarFocusY, avatarZoom, userAvatarPreview); RefreshUserAvatarGallery(); PreviewTheme(); };
-        clearUserAvatar.Click += (_, _) => { avatarDraft.ClearSelection(ReadDisplay(avatarFocusX, avatarFocusY, avatarZoom)); themeImages.Clear(userAvatarPreview); RefreshUserAvatarGallery(); PreviewTheme(); };
-        deleteUserAvatar.Click += async (_, _) =>
+        backgroundImagesEditor.DeleteButton.Click += async (_, _) =>
         {
-            if (avatarDraft.SelectedPath is null || !await ConfirmAsync(window, "删除用户头像", "确定从当前头像列表移除此图片吗？原始文件不会被删除，保存后生效。")) return;
-            avatarDraft.RemoveSelected();
-            themeImages.Clear(userAvatarPreview); RefreshUserAvatarGallery(); PreviewTheme();
+            if (backgroundDraft.SelectedPath is not null &&
+                await ConfirmAsync(window, "删除背景", "确定从当前背景列表移除此图片吗？原始文件不会被删除，保存后生效。"))
+                backgroundImagesEditor.RemoveSelected();
+        };
+        avatarImagesEditor.ImportButton.Click += async (_, _) =>
+        {
+            var path = await PickThemeImageAsync("导入用户头像", "user-avatars");
+            if (path is not null) avatarImagesEditor.Import(path);
+        };
+        avatarImagesEditor.DeleteButton.Click += async (_, _) =>
+        {
+            if (avatarDraft.SelectedPath is not null &&
+                await ConfirmAsync(window, "删除用户头像", "确定从当前头像列表移除此图片吗？原始文件不会被删除，保存后生效。"))
+                avatarImagesEditor.RemoveSelected();
         };
         characterManagerButton.Click += async (_, _) => await OpenCharacterEditorAsync(window);
         stickerManagerButton.Click += async (_, _) => await OpenStickerManagerAsync(window);
