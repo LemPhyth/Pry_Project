@@ -132,6 +132,18 @@ public sealed class MemoryDatabase(string databasePath)
         return id;
     }
 
+    public async Task<IReadOnlyList<string>> GetReferencedImagePathsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = new List<string>();
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT DISTINCT image_path FROM messages WHERE image_path IS NOT NULL AND image_path <> ''";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) result.Add(reader.GetString(0));
+        return result;
+    }
+
     public async Task EnsureConversationAsync(string conversationId, string? characterId,
         CancellationToken cancellationToken = default)
     {

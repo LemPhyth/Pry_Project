@@ -144,7 +144,7 @@
 约束：
 
 - 不设置单文件硬上限；超过 10 MiB 时 JSON `warnings` 返回中文提示，响应头 `X-Pry-Upload-Warning` 返回稳定 ASCII 码 `large-file`。客户端应先读取 `GET /api/v1/media/policy`，在开始传输前根据 `warningThresholdBytes` 提醒用户。
-- 每个聊天回合最多引用 6 个附件。
+- 每个聊天回合最多引用 `GET /api/v1/media/policy` 返回的 `maximumAttachmentsPerTurn` 个附件（当前为 6）。客户端不得硬编码不同的数量。
 - 支持 PNG、JPEG、GIF、WebP、UTF-8 TXT/MD/CSV 和有效 DOCX。
 - 后端同时检查扩展名和文件签名；不信任客户端声明的 Content-Type。
 - 原始名称只用于显示与下载，磁盘文件名由服务端随机生成。
@@ -154,6 +154,18 @@
 下载：`GET /api/v1/media/{id}/content`，支持 Range 请求。不存在的资源返回 404。
 
 上传策略：`GET /api/v1/media/policy`，当前 `maximumBytes` 为 `null`，表示没有应用层硬限制。
+
+### 孤立媒体保留与清理
+
+后端在启动后及每 6 小时执行一次孤立媒体清理。默认保留期为 7 天，可通过配置键 `Pry:Media:OrphanRetentionDays`（环境变量形式为 `Pry__Media__OrphanRetentionDays`）调整；有效范围为 1～365 天。
+
+清理前会汇总当前背景、用户头像、角色头像、贴纸和消息图片所引用的规范化磁盘路径。只有同时满足以下条件的托管媒体才会删除其内容文件和 JSON 元数据：
+
+- 上传时间早于保留期截止时间；
+- 当前不在上述引用集合内；
+- 文件仍位于后端托管媒体目录内。
+
+文本、文档和语音上传不会作为长期聊天附件路径保存，处理完成后按同一保留期回收。清理失败只记录不含用户内容的警告日志，不阻止后端启动；成功删除时记录数量、保留天数和释放字节数。前端不得自行扫描或删除后端媒体目录。
 
 ## 消息分支变更
 
@@ -221,10 +233,49 @@
 - `GET /api/v1/preferences`：返回用户资料、快捷键、回合节奏、桌宠偏好和不含路径的主题设置。
 - `PATCH /api/v1/preferences`：局部更新上述偏好。
 - `PUT /api/v1/appearance/media`：用托管媒体 ID 设置或清除背景及用户头像。
+- `PUT /api/v1/settings`：原子应用偏好、外观媒体引用和模型选择，供“保存全部设置”使用。
+- `PUT /api/v1/user-profile`：原子保存用户资料与用户头像，供独立的用户资料窗口使用。
 - `GET /api/v1/appearance/background`
 - `GET /api/v1/appearance/user-avatar`
 
 背景和头像 URL 仅在资源存在时返回。客户端不能通过这些接口设置任意磁盘路径。
+
+`PUT /api/v1/settings` 请求由三个对象组成：
+
+```json
+{
+  "preferences": { "selectedCharacterId": "pry", "activeConversationId": "room-id" },
+  "appearance": {
+    "backgroundMediaId": null,
+    "clearBackground": false,
+    "userAvatarMediaId": null,
+    "clearUserAvatar": false
+  },
+  "models": {
+    "activeModelId": "qwen3-1.7b-local",
+    "activeVisionModelId": null,
+    "activeSpeechModelId": "sensevoice-local",
+    "modelTunings": {}
+  }
+}
+```
+
+后端会先验证三个部分并解析媒体引用，然后只写入一次偏好并重载运行时；任何验证失败都不会应用其中任一配置。成功返回最终 `preferences` 和 `models` 投影。上传媒体是独立操作，未被设置引用的上传资源不会自动绑定到配置。
+
+快捷键格式、快捷键冲突、回复数量关系、打字延迟关系、桌宠缩放及其他数值范围均由后端最终校验。客户端可以重复这些检查以即时提示，但不得将客户端校验视为安全或一致性边界。
+
+独立用户资料窗口应调用 `PUT /api/v1/user-profile`：
+
+```json
+{
+  "profile": { "displayName": "你", "signature": "愿今天也有好心情" },
+  "avatarMediaId": "已上传的媒体ID或null",
+  "clearAvatar": false,
+  "avatarDisplay": { "focusX": 0.5, "focusY": 0.5, "zoom": 1.0 }
+}
+```
+
+后端先校验资料、媒体资源类型和头像显示参数，再单次保存并刷新内容。任一字段或媒体引用无效时，资料和头像均保持原值。清除头像时传 `clearAvatar:true`；不得先调用偏好接口再调用外观接口模拟该操作。
 
 ## 模型配置
 
@@ -259,6 +310,7 @@
 
 录音由客户端完成，然后以 WAV 上传到媒体 API。识别由后端串行执行，返回 `text` 和实际 `modelId`；音频资源不能作为聊天附件。首版保持现有能力，只支持 16-bit PCM WAV，不引入隐式转码。
 本地 `sherpa-onnx` 配置要求绝对模型目录，并验证 `model.int8.onnx` 与 `tokens.txt`；在线转写地址必须使用 HTTPS，回环开发地址可以使用 HTTP。响应不返回目录、服务地址或密钥。
+客户端必须使用语音模型响应的 `available` 字段决定能否开始录音，不得尝试读取后端模型目录。
 
 ## 尚未冻结的接口
 

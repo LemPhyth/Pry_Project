@@ -38,6 +38,35 @@ public sealed class ApplicationServiceTests
     }
 
     [Fact]
+    public async Task Media_cleanup_removes_only_expired_unreferenced_assets()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"pry-media-cleanup-{Guid.NewGuid():N}");
+        try
+        {
+            var configuration = new ConfigurationManager(); configuration["Pry:DataDirectory"] = directory;
+            var store = new MediaAssetStore(configuration);
+            var png = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0, 0, 0, 0, 0 };
+            var retained = await store.SaveAsync(new MemoryStream(png), "retained.png", png.Length,
+                TestContext.Current.CancellationToken);
+            var orphan = await store.SaveAsync(new MemoryStream(png), "orphan.png", png.Length,
+                TestContext.Current.CancellationToken);
+            var retainedAsset = await store.ResolveAsync(retained.Id, TestContext.Current.CancellationToken);
+            var orphanAsset = await store.ResolveAsync(orphan.Id, TestContext.Current.CancellationToken);
+
+            var result = await store.CleanupOrphansAsync([retainedAsset.Path], DateTimeOffset.UtcNow.AddMinutes(1),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.RemovedCount);
+            Assert.Equal(png.Length, result.RemovedBytes);
+            Assert.True(File.Exists(retainedAsset.Path));
+            Assert.False(File.Exists(orphanAsset.Path));
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
+                store.ResolveAsync(orphan.Id, TestContext.Current.CancellationToken));
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task Model_registry_reuses_identical_model_configuration()
     {
         await using var registry = new ModelProcessRegistry(NullLogger<ModelProcessRegistry>.Instance);
@@ -178,6 +207,37 @@ public sealed class ApplicationServiceTests
         Assert.Equal("/api/v1/appearance/background", appearance.BackgroundUrl);
         Assert.Null(appearance.UserAvatarUrl);
         Assert.True(File.Exists(service.GetAppearancePath("background")));
+
+        await Assert.ThrowsAsync<ApiValidationException>(() => service.UpdatePreferencesAsync(
+            new UpdateClientPreferencesRequest(null, null, null, null, new ShortcutSettings
+            {
+                Send = "Enter", SendImmediately = "Enter"
+            }, null, null), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ApiValidationException>(() => service.UpdatePreferencesAsync(
+            new UpdateClientPreferencesRequest(null, null, null, null, null, new TurnTakingSettings
+            {
+                MinReplyMessages = 5, MaxReplyMessages = 2
+            }, null), TestContext.Current.CancellationToken));
+
+        await Assert.ThrowsAsync<ApiValidationException>(() => service.SaveSettingsAsync(new SaveSettingsRequest(
+            new UpdateClientPreferencesRequest(null, null,
+                new UserProfilePreferences { DisplayName = "不应保存", Signature = "" }, null, null, null, null),
+            new UpdateAppearanceMediaRequest(null, false, null, false, null, null),
+            new UpdateModelSelectionRequest("missing-model", null, null, null)),
+            TestContext.Current.CancellationToken));
+        Assert.Equal("测试用户", service.GetPreferences().UserProfile.DisplayName);
+
+        await Assert.ThrowsAsync<ResourceNotFoundException>(() => service.SaveUserProfileAsync(
+            new SaveUserProfileRequest(new UserProfilePreferences { DisplayName = "不应保存", Signature = "" },
+                "00000000000000000000000000000000", false, new ImageDisplayPreferences()),
+            TestContext.Current.CancellationToken));
+        Assert.Equal("测试用户", service.GetPreferences().UserProfile.DisplayName);
+        var savedProfile = await service.SaveUserProfileAsync(new SaveUserProfileRequest(
+            new UserProfilePreferences { DisplayName = "原子用户", Signature = "原子保存" }, background.Id,
+            false, new ImageDisplayPreferences { FocusX = .4, FocusY = .7, Zoom = 1.4 }),
+            TestContext.Current.CancellationToken);
+        Assert.Equal("原子用户", savedProfile.UserProfile.DisplayName);
+        Assert.Equal("/api/v1/appearance/user-avatar", savedProfile.UserAvatarUrl);
     }
 
     [Fact]

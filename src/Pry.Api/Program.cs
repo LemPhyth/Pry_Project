@@ -22,8 +22,10 @@ namespace Pry.Api
                 throw new InvalidOperationException("Pry.Api 在认证实现前只允许监听回环地址。");
             builder.WebHost.UseUrls(listenUrl);
             builder.Services.AddProblemDetails();
-            builder.Services.AddControllers().AddJsonOptions(options =>
-                options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+            builder.Services.AddControllers()
+                .AddApplicationPart(typeof(BackendApplication).Assembly)
+                .AddJsonOptions(options =>
+                    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
             builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(options =>
             {
                 options.InvalidModelStateResponseFactory = context =>
@@ -52,6 +54,7 @@ namespace Pry.Api
             builder.Services.AddSingleton<BackendRuntime>();
             builder.Services.AddSingleton<ConversationSessionService>();
             builder.Services.AddHostedService(sp => sp.GetRequiredService<BackendRuntime>());
+            builder.Services.AddHostedService<MediaCleanupService>();
             builder.Services.AddHealthChecks();
             builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options => options.MultipartBodyLengthLimit = long.MaxValue);
             var app = builder.Build();

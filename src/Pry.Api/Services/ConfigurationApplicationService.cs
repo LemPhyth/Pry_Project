@@ -144,24 +144,7 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         await _gate.WaitAsync(token);
         try
         {
-            var profiles = runtime.ModelProfiles.ToDictionary(x => x.Id, StringComparer.Ordinal);
-            if (!profiles.TryGetValue(request.ActiveModelId, out var text) || !text.Capabilities.Text)
-                throw new ApiValidationException("activeModelId", "文字模型不存在或不支持文字输入");
-            if (request.ActiveVisionModelId is { } visionId && (!profiles.TryGetValue(visionId, out var vision) || !vision.Capabilities.Vision))
-                throw new ApiValidationException("activeVisionModelId", "视觉模型不存在或不支持图片输入");
-            if (request.ActiveSpeechModelId is { } speechId && !runtime.SpeechProfiles.Any(x => x.Id == speechId))
-                throw new ApiValidationException("activeSpeechModelId", "语音模型不存在");
-            var tunings = (request.ModelTunings ?? runtime.Preferences.ModelTunings).ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
-            foreach (var item in tunings)
-            {
-                if (!profiles.ContainsKey(item.Key)) throw new ApiValidationException("modelTunings", $"模型 {item.Key} 不存在");
-                ValidateTuning(item.Value);
-            }
-            var updated = runtime.Preferences with
-            {
-                ActiveModelId = request.ActiveModelId, ActiveVisionModelId = request.ActiveVisionModelId,
-                ActiveSpeechModelId = request.ActiveSpeechModelId, ModelTunings = tunings
-            };
+            var updated = ApplyModelSelection(runtime.Preferences, request);
             await sessions.ReconfigureAsync(async ct =>
             {
                 await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct);
@@ -178,25 +161,10 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         await _gate.WaitAsync(token);
         try
         {
-            var theme = runtime.Preferences.Theme;
-            var backgroundPath = request.ClearBackground ? null : theme.BackgroundImagePath;
-            var avatarPath = request.ClearUserAvatar ? null : theme.UserAvatarPath;
-            if (request.BackgroundMediaId is not null) backgroundPath = await ResolveImagePathAsync(request.BackgroundMediaId, "backgroundMediaId", token);
-            if (request.UserAvatarMediaId is not null) avatarPath = await ResolveImagePathAsync(request.UserAvatarMediaId, "userAvatarMediaId", token);
-            var backgroundDisplays = theme.BackgroundDisplays.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
-            var avatarDisplays = theme.UserAvatarDisplays.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
-            if (backgroundPath is not null && request.BackgroundDisplay is not null) backgroundDisplays[backgroundPath] = ValidateDisplay(request.BackgroundDisplay);
-            if (avatarPath is not null && request.UserAvatarDisplay is not null) avatarDisplays[avatarPath] = ValidateDisplay(request.UserAvatarDisplay);
-            var updatedTheme = theme with
-            {
-                BackgroundImagePath = backgroundPath, UserAvatarPath = avatarPath,
-                BackgroundHistory = theme.BackgroundHistory.Append(backgroundPath).Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                UserAvatarHistory = theme.UserAvatarHistory.Append(avatarPath).Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                BackgroundDisplays = backgroundDisplays, UserAvatarDisplays = avatarDisplays
-            };
+            var updated = await ApplyAppearanceAsync(runtime.Preferences, request, token);
             await sessions.ReconfigureAsync(async ct =>
             {
-                await JsonConfiguration.SaveAsync(PreferencesPath, runtime.Preferences with { Theme = updatedTheme }, ct);
+                await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct);
                 await runtime.RefreshContentAsync(ct);
             }, token);
             return ToResponse(runtime.Preferences);
@@ -217,26 +185,50 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         await _gate.WaitAsync(token);
         try
         {
-            var current = runtime.Preferences;
-            if (request.SelectedCharacterId is not null) _ = FindCharacter(request.SelectedCharacterId);
-            if (request.ActiveConversationId is not null && await database.GetConversationAsync(request.ActiveConversationId, token) is null)
-                throw new ResourceNotFoundException("conversation", request.ActiveConversationId);
-            var profile = request.UserProfile is null ? current.UserProfile : new UserProfilePreferences
+            var updated = await ApplyPreferencesAsync(runtime.Preferences, request, token);
+            await sessions.ReconfigureAsync(async ct =>
             {
-                DisplayName = ContractValidation.Required(request.UserProfile.DisplayName, "userProfile.displayName", 100),
-                Signature = Limit(request.UserProfile.Signature, "userProfile.signature", 500)
-            };
-            var updated = current with
+                await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct);
+                await runtime.RefreshContentAsync(ct);
+            }, token);
+            return ToResponse(runtime.Preferences);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<SaveSettingsResponse> SaveSettingsAsync(SaveSettingsRequest request, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(request.Preferences);
+        ArgumentNullException.ThrowIfNull(request.Appearance);
+        ArgumentNullException.ThrowIfNull(request.Models);
+        await _gate.WaitAsync(token);
+        try
+        {
+            var updated = await ApplyPreferencesAsync(runtime.Preferences, request.Preferences, token);
+            updated = await ApplyAppearanceAsync(updated, request.Appearance, token);
+            updated = ApplyModelSelection(updated, request.Models);
+            await sessions.ReconfigureAsync(async ct =>
             {
-                SelectedCharacterId = request.SelectedCharacterId ?? current.SelectedCharacterId,
-                ActiveConversationId = request.ActiveConversationId ?? current.ActiveConversationId,
-                UserProfile = profile,
-                DesktopPet = request.DesktopPet ?? current.DesktopPet,
-                Shortcuts = request.Shortcuts ?? current.Shortcuts,
-                TurnTakingOverride = request.TurnTaking ?? current.TurnTakingOverride,
-                Theme = request.Theme is null ? current.Theme : ApplyTheme(current.Theme, request.Theme)
-            };
-            ValidatePreferences(updated);
+                await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct);
+                await runtime.ReloadAsync(ct);
+            }, token);
+            return new SaveSettingsResponse(ToResponse(runtime.Preferences), GetModels());
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<ClientPreferencesResponse> SaveUserProfileAsync(SaveUserProfileRequest request,
+        CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(request.Profile);
+        await _gate.WaitAsync(token);
+        try
+        {
+            var updated = await ApplyPreferencesAsync(runtime.Preferences,
+                new UpdateClientPreferencesRequest(null, null, request.Profile, null, null, null, null), token);
+            updated = await ApplyAppearanceAsync(updated,
+                new UpdateAppearanceMediaRequest(null, false, request.AvatarMediaId, request.ClearAvatar,
+                    null, request.AvatarDisplay), token);
             await sessions.ReconfigureAsync(async ct =>
             {
                 await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct);
@@ -329,6 +321,90 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         BubbleFontSize = value.BubbleFontSize, BubbleMaxWidth = value.BubbleMaxWidth, BubbleSpacing = value.BubbleSpacing
     };
 
+    private async Task<UserPreferences> ApplyPreferencesAsync(UserPreferences current,
+        UpdateClientPreferencesRequest request, CancellationToken token)
+    {
+        if (request.SelectedCharacterId is not null) _ = FindCharacter(request.SelectedCharacterId);
+        if (request.ActiveConversationId is not null &&
+            await database.GetConversationAsync(request.ActiveConversationId, token) is null)
+            throw new ResourceNotFoundException("conversation", request.ActiveConversationId);
+        var profile = request.UserProfile is null ? current.UserProfile : new UserProfilePreferences
+        {
+            DisplayName = ContractValidation.Required(request.UserProfile.DisplayName, "userProfile.displayName", 100),
+            Signature = Limit(request.UserProfile.Signature, "userProfile.signature", 500)
+        };
+        var updated = current with
+        {
+            SelectedCharacterId = request.SelectedCharacterId ?? current.SelectedCharacterId,
+            ActiveConversationId = request.ActiveConversationId ?? current.ActiveConversationId,
+            UserProfile = profile, DesktopPet = request.DesktopPet ?? current.DesktopPet,
+            Shortcuts = request.Shortcuts ?? current.Shortcuts,
+            TurnTakingOverride = request.TurnTaking ?? current.TurnTakingOverride,
+            Theme = request.Theme is null ? current.Theme : ApplyTheme(current.Theme, request.Theme)
+        };
+        ValidatePreferences(updated);
+        return updated;
+    }
+
+    private async Task<UserPreferences> ApplyAppearanceAsync(UserPreferences current,
+        UpdateAppearanceMediaRequest request, CancellationToken token)
+    {
+        var theme = current.Theme;
+        var backgroundPath = request.ClearBackground ? null : theme.BackgroundImagePath;
+        var avatarPath = request.ClearUserAvatar ? null : theme.UserAvatarPath;
+        if (request.BackgroundMediaId is not null)
+            backgroundPath = await ResolveImagePathAsync(request.BackgroundMediaId, "backgroundMediaId", token);
+        if (request.UserAvatarMediaId is not null)
+            avatarPath = await ResolveImagePathAsync(request.UserAvatarMediaId, "userAvatarMediaId", token);
+        var backgroundDisplays = theme.BackgroundDisplays.ToDictionary(x => x.Key, x => x.Value,
+            StringComparer.OrdinalIgnoreCase);
+        var avatarDisplays = theme.UserAvatarDisplays.ToDictionary(x => x.Key, x => x.Value,
+            StringComparer.OrdinalIgnoreCase);
+        if (backgroundPath is not null && request.BackgroundDisplay is not null)
+            backgroundDisplays[backgroundPath] = ValidateDisplay(request.BackgroundDisplay);
+        if (avatarPath is not null && request.UserAvatarDisplay is not null)
+            avatarDisplays[avatarPath] = ValidateDisplay(request.UserAvatarDisplay);
+        return current with
+        {
+            Theme = theme with
+            {
+                BackgroundImagePath = backgroundPath, UserAvatarPath = avatarPath,
+                BackgroundHistory = theme.BackgroundHistory.Append(backgroundPath)
+                    .Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>()
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                UserAvatarHistory = theme.UserAvatarHistory.Append(avatarPath)
+                    .Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>()
+                    .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                BackgroundDisplays = backgroundDisplays, UserAvatarDisplays = avatarDisplays
+            }
+        };
+    }
+
+    private UserPreferences ApplyModelSelection(UserPreferences current, UpdateModelSelectionRequest request)
+    {
+        var profiles = runtime.ModelProfiles.ToDictionary(x => x.Id, StringComparer.Ordinal);
+        if (!profiles.TryGetValue(request.ActiveModelId, out var text) || !text.Capabilities.Text)
+            throw new ApiValidationException("activeModelId", "文字模型不存在或不支持文字输入");
+        if (request.ActiveVisionModelId is { } visionId &&
+            (!profiles.TryGetValue(visionId, out var vision) || !vision.Capabilities.Vision))
+            throw new ApiValidationException("activeVisionModelId", "视觉模型不存在或不支持图片输入");
+        if (request.ActiveSpeechModelId is { } speechId && !runtime.SpeechProfiles.Any(x => x.Id == speechId))
+            throw new ApiValidationException("activeSpeechModelId", "语音模型不存在");
+        var tunings = (request.ModelTunings ?? current.ModelTunings)
+            .ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
+        foreach (var item in tunings)
+        {
+            if (!profiles.ContainsKey(item.Key))
+                throw new ApiValidationException("modelTunings", $"模型 {item.Key} 不存在");
+            ValidateTuning(item.Value);
+        }
+        return current with
+        {
+            ActiveModelId = request.ActiveModelId, ActiveVisionModelId = request.ActiveVisionModelId,
+            ActiveSpeechModelId = request.ActiveSpeechModelId, ModelTunings = tunings
+        };
+    }
+
     private static void ValidatePreferences(UserPreferences value)
     {
         var theme = value.Theme;
@@ -338,8 +414,59 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         Range(theme.BackgroundBlurRadius, 0, 100, "theme.backgroundBlurRadius"); Range(theme.AvatarSize, 28, 76, "theme.avatarSize");
         Range(theme.BubbleFontSize, 11, 24, "theme.bubbleFontSize"); Range(theme.BubbleMaxWidth, 280, 900, "theme.bubbleMaxWidth");
         Range(theme.BubbleSpacing, 0, 40, "theme.bubbleSpacing");
-        if (value.TurnTakingOverride is { } turn && (turn.DebounceMs is < 0 or > 30_000 || turn.MaxPendingMs is < 0 or > 60_000))
+        Range(value.DesktopPet.Scale, .25, 4, "desktopPet.scale");
+        ValidateShortcuts(value.Shortcuts);
+        if (value.TurnTakingOverride is { } turn) ValidateTurnTaking(turn);
+    }
+
+    private static void ValidateTurnTaking(TurnTakingSettings value)
+    {
+        if (value.DebounceMs is < 0 or > 30_000 || value.MaxPendingMs is < 200 or > 60_000 ||
+            value.ListeningSignalDelayMs is < 0 or > 60_000)
             throw new ApiValidationException("turnTaking", "回合等待参数超出范围");
+        if (value.MinReplyMessages is < 1 or > 20 || value.MaxReplyMessages is < 1 or > 20 ||
+            value.MaxReplyMessages < value.MinReplyMessages)
+            throw new ApiValidationException("turnTaking.replyMessages", "回复消息数量范围无效");
+        if (value.MaxMessageCharacters is < 20 or > 10_000)
+            throw new ApiValidationException("turnTaking.maxMessageCharacters", "单条消息字符数必须在 20 到 10000 之间");
+        if (value.TypingStyle is null || !double.IsFinite(value.TypingStyle.Speed) ||
+            !double.IsFinite(value.TypingStyle.Burstiness) || value.TypingStyle.Speed is < .1 or > 10 ||
+            value.TypingStyle.Burstiness is < 0 or > 5 ||
+            value.TypingStyle.MinDelayMs is < 0 or > 60_000 || value.TypingStyle.MaxDelayMs is < 0 or > 60_000 ||
+            value.TypingStyle.MaxDelayMs < value.TypingStyle.MinDelayMs)
+            throw new ApiValidationException("turnTaking.typingStyle", "打字节奏参数无效");
+        _ = Limit(value.StyleInstruction, "turnTaking.styleInstruction", 5_000);
+    }
+
+    private static void ValidateShortcuts(ShortcutSettings value)
+    {
+        var gestures = new[] { value.Send, value.SendImmediately, value.NewLine, value.CancelReply,
+            value.NewConversation, value.OpenStickers, value.OpenCharacterEditor };
+        var normalized = gestures.Select(NormalizeShortcut).ToArray();
+        if (normalized.Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalized.Length)
+            throw new ApiValidationException("shortcuts", "快捷键不能重复");
+    }
+
+    private static string NormalizeShortcut(string value)
+    {
+        var gesture = ContractValidation.Required(value, "shortcuts", 100);
+        var parts = gesture.Split('+', StringSplitOptions.TrimEntries);
+        if (parts.Length == 0 || parts.Any(string.IsNullOrWhiteSpace))
+            throw new ApiValidationException("shortcuts", "快捷键格式无法识别");
+        var modifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var part in parts[..^1])
+        {
+            var modifier = part.ToLowerInvariant() switch
+            {
+                "ctrl" or "control" => "Ctrl", "shift" => "Shift", "alt" => "Alt",
+                "meta" or "win" => "Win", _ => throw new ApiValidationException("shortcuts", "快捷键格式无法识别")
+            };
+            if (!modifiers.Add(modifier)) throw new ApiValidationException("shortcuts", "快捷键修饰键不能重复");
+        }
+        if (!Regex.IsMatch(parts[^1], "^[A-Za-z][A-Za-z0-9]*$", RegexOptions.CultureInvariant))
+            throw new ApiValidationException("shortcuts", "快捷键格式无法识别");
+        var ordered = new[] { "Ctrl", "Shift", "Alt", "Win" }.Where(modifiers.Contains).Append(parts[^1]);
+        return string.Join('+', ordered);
     }
 
     private static ModelProfile ApplyTuning(ModelProfile profile, ModelTuningPreferences? value) => value is null ? profile : profile with

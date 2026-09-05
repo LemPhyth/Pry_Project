@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using Microsoft.AspNetCore.Builder;
 using Pry.Api;
 using Pry.Client;
@@ -24,14 +25,81 @@ public sealed partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            var backendUrl = $"http://127.0.0.1:{ReserveLoopbackPort()}";
-            _backend = BackendApplication.BuildAsync(configure: builder => builder.Configuration["Pry:Url"] = backendUrl).GetAwaiter().GetResult();
-            _backend.StartAsync().GetAwaiter().GetResult();
-            _backendHttpClient = new HttpClient { BaseAddress = new Uri(backendUrl + "/"), Timeout = Timeout.InfiniteTimeSpan };
-            _mainWindow = new MainWindow(new PryBackendClient(_backendHttpClient)); desktop.MainWindow = _mainWindow;
-            CreateTrayIcon(desktop);
+            base.OnFrameworkInitializationCompleted();
+            Dispatcher.UIThread.Post(() => _ = InitializeDesktopAsync(desktop));
+            return;
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private async Task InitializeDesktopAsync(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        try
+        {
+            var backendUrl = $"http://127.0.0.1:{ReserveLoopbackPort()}";
+            _backend = await BackendApplication.BuildAsync(
+                configure: builder => builder.Configuration["Pry:Url"] = backendUrl);
+            await _backend.StartAsync();
+            _backendHttpClient = new HttpClient
+            {
+                BaseAddress = new Uri(backendUrl + "/"),
+                Timeout = Timeout.InfiniteTimeSpan
+            };
+            _mainWindow = new MainWindow(new PryBackendClient(_backendHttpClient));
+            desktop.MainWindow = _mainWindow;
+            CreateTrayIcon(desktop);
+            _mainWindow.Show();
+        }
+        catch (Exception ex)
+        {
+            await DisposeBackendAsync();
+            ShowStartupFailure(desktop, ex);
+        }
+    }
+
+    private void ShowStartupFailure(IClassicDesktopStyleApplicationLifetime desktop, Exception exception)
+    {
+        var exit = new Button { Content = "退出", HorizontalAlignment = HorizontalAlignment.Right };
+        var dialog = new Window
+        {
+            Title = "Pry 启动失败",
+            Width = 560,
+            Height = 260,
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Content = new Border
+            {
+                Padding = new Thickness(24),
+                Child = new StackPanel
+                {
+                    Spacing = 16,
+                    Children =
+                    {
+                        new TextBlock { Text = "Pry 无法启动本地后端", FontSize = 18, FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                        new TextBlock { Text = exception.Message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                        new TextBlock { Text = "请检查本地数据目录和程序资源是否完整。", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                        exit
+                    }
+                }
+            }
+        };
+        exit.Click += (_, _) => dialog.Close();
+        dialog.Closed += (_, _) => desktop.Shutdown(1);
+        desktop.MainWindow = dialog;
+        dialog.Show();
+    }
+
+    private async Task DisposeBackendAsync()
+    {
+        if (_backend is not null)
+        {
+            try { await _backend.StopAsync(); }
+            catch { }
+            try { await _backend.DisposeAsync(); }
+            catch { }
+            _backend = null;
+        }
+        _backendHttpClient?.Dispose();
+        _backendHttpClient = null;
     }
 
     private void CreateTrayIcon(IClassicDesktopStyleApplicationLifetime desktop)
@@ -73,8 +141,7 @@ public sealed partial class App : Application
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Children = { cancel, keep, stop } };
         dialog.Content = _mainWindow.CreateThemedDialogSurface(MainWindow.CreateCompactDialogLayout(messageCard, actions));
         await dialog.ShowDialog(_mainWindow); if (choice < 0) return; await _mainWindow.PrepareForExitAsync(choice == 1);
-        if (_backend is not null) { await _backend.StopAsync(); await _backend.DisposeAsync(); _backend = null; }
-        _backendHttpClient?.Dispose(); _backendHttpClient = null;
+        await DisposeBackendAsync();
         _trayIcon!.IsVisible = false; desktop.Shutdown();
     }
 

@@ -9,13 +9,15 @@ dotnet restore Pry.slnx
 dotnet run --project src/Pry.App/Pry.App.csproj
 ```
 
-独立后端（当前提供会话、消息、文件夹和记忆 API）：
+`Pry.App` 是普通使用时唯一需要启动的程序。它会在当前桌面进程中自动启动一个仅监听随机回环端口的内嵌后端，再由 `Pry.Client` 连接；不需要另外启动 `Pry.Api`。
+
+独立后端用于 API 调试或其他客户端接入，本身没有桌面窗口：
 
 ```powershell
 dotnet run --project src/Pry.Api/Pry.Api.csproj
 ```
 
-默认仅监听 `http://127.0.0.1:5078`，复用原有 `%LOCALAPPDATA%/PryCompanion/memory.db`。接口约定见 [API v1](docs/api-v1.md)，拆分边界与迁移顺序见 [后端架构](docs/backend-architecture.md)。
+独立后端默认仅监听 `http://127.0.0.1:5078`，复用原有 `%LOCALAPPDATA%/PryCompanion/memory.db`。不要在桌面程序运行时再启动独立后端并同时操作同一数据目录。接口约定见 [API v1](docs/api-v1.md)，拆分边界与迁移顺序见 [后端架构](docs/backend-architecture.md)。
 
 跨进程 DTO 位于 `Pry.Contracts`，桌面端和未来桌宠共用的 HTTP/SSE 客户端位于 `Pry.Client`。迁移完成前请勿同时使用旧桌面业务路径和 API 修改同一会话。
 
