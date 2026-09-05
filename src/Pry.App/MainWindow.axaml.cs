@@ -192,7 +192,7 @@ public sealed partial class MainWindow : Window
     private void RefreshCharacterSelector()
     {
         _changingCharacter = true;
-        var items = _characters.Select(x => new CharacterChoice(x.Id, CardLabel(x))).ToArray();
+        var items = _characters.Select(x => new CharacterChoice(x.Id, CharacterCardDraftService.Label(x))).ToArray();
         var selected = items.FirstOrDefault(x => x.Id == _character?.Id);
         CharacterSelectorList.ItemsSource = items; CharacterSelectorList.SelectedItem = selected;
         CharacterSelectorText.Text = selected?.Name ?? "请选择角色卡";
@@ -1275,20 +1275,20 @@ public sealed partial class MainWindow : Window
         clearAvatar.Click += (_, _) => { avatarPath = null; RefreshAvatarPreview(); };
         void RefreshList(string? selectId)
         {
-            loading = true; var items = _characters.Select(x => new CharacterChoice(x.Id, CardLabel(x) + (x.Id == _character?.Id ? "  · 当前" : ""))).ToArray(); cardList.ItemsSource = items; cardList.SelectedItem = items.FirstOrDefault(x => x.Id == selectId); loading = false;
+            loading = true; var items = _characters.Select(x => new CharacterChoice(x.Id, CharacterCardDraftService.Label(x) + (x.Id == _character?.Id ? "  · 当前" : ""))).ToArray(); cardList.ItemsSource = items; cardList.SelectedItem = items.FirstOrDefault(x => x.Id == selectId); loading = false;
         }
         void LoadCard(CharacterDefinition card)
         {
-            editingId = card.Id; cardName.Text = CardLabel(card); name.Text = card.Name; avatarPath = card.AvatarPath; avatarDisplay = card.AvatarDisplay; avatarFocusX.Value = (decimal)avatarDisplay.FocusX; avatarFocusY.Value = (decimal)avatarDisplay.FocusY; avatarZoom.Value = (decimal)avatarDisplay.Zoom; RefreshAvatarPreview(); userName.Text = card.UserName; identity.Text = card.Identity; personality.Text = card.Personality; speech.Text = card.SpeechStyle; rules.Text = string.Join(Environment.NewLine, card.BehavioralRules); facts.Text = string.Join(Environment.NewLine, card.WorldFacts); greeting.Text = card.Greeting; legacyPrompt.Text = card.LegacySystemPrompt; currentHint.Text = card.Id == _character?.Id ? "这是当前聊天角色" : "正在编辑其他角色；保存不会自动切换当前聊天"; SetMode(card.PromptMode);
+            editingId = card.Id; cardName.Text = CharacterCardDraftService.Label(card); name.Text = card.Name; avatarPath = card.AvatarPath; avatarDisplay = card.AvatarDisplay; avatarFocusX.Value = (decimal)avatarDisplay.FocusX; avatarFocusY.Value = (decimal)avatarDisplay.FocusY; avatarZoom.Value = (decimal)avatarDisplay.Zoom; RefreshAvatarPreview(); userName.Text = card.UserName; identity.Text = card.Identity; personality.Text = card.Personality; speech.Text = card.SpeechStyle; rules.Text = string.Join(Environment.NewLine, card.BehavioralRules); facts.Text = string.Join(Environment.NewLine, card.WorldFacts); greeting.Text = card.Greeting; legacyPrompt.Text = card.LegacySystemPrompt; currentHint.Text = card.Id == _character?.Id ? "这是当前聊天角色" : "正在编辑其他角色；保存不会自动切换当前聊天"; SetMode(card.PromptMode);
         }
         cardList.SelectionChanged += (_, _) => { if (!loading && cardList.SelectedItem is CharacterChoice choice) { var card = _characters.FirstOrDefault(x => x.Id == choice.Id); if (card is not null) LoadCard(card); } };
         newCard.Click += (_, _) => { editingId = null; cardName.Text = "新角色-正式-v1"; name.Text = "新角色"; avatarPath = null; avatarDisplay = new ImageDisplayPreferences(); avatarFocusX.Value = .5m; avatarFocusY.Value = .5m; avatarZoom.Value = 1; RefreshAvatarPreview(); userName.Text = "你"; identity.Text = ""; personality.Text = ""; speech.Text = ""; rules.Text = ""; facts.Text = ""; greeting.Text = "你好。"; legacyPrompt.Text = ""; currentHint.Text = "尚未保存的新角色卡"; SetMode(CharacterPromptMode.Structured); loading = true; cardList.SelectedItem = null; loading = false; };
         CharacterDefinition? ReadEditedCard()
         {
-            if (string.IsNullOrWhiteSpace(cardName.Text) || string.IsNullOrWhiteSpace(name.Text) || (mode == CharacterPromptMode.Structured && string.IsNullOrWhiteSpace(identity.Text)) || (mode == CharacterPromptMode.Legacy && string.IsNullOrWhiteSpace(legacyPrompt.Text))) return null;
-            static string[] Lines(string? value) => (value ?? "").Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             var original = editingId is null ? _character : _characters.FirstOrDefault(x => x.Id == editingId) ?? _character;
-            return original with { Id = editingId ?? $"character-{Guid.NewGuid():N}", CardName = cardName.Text.Trim(), Name = name.Text.Trim(), AvatarPath = avatarPath, AvatarDisplay = avatarDisplay, PromptMode = mode, LegacySystemPrompt = legacyPrompt.Text?.Trim() ?? "", UserName = userName.Text?.Trim() ?? "你", Identity = identity.Text?.Trim() ?? "", Personality = personality.Text?.Trim() ?? "", SpeechStyle = speech.Text?.Trim() ?? "", BehavioralRules = Lines(rules.Text), WorldFacts = Lines(facts.Text), Greeting = greeting.Text?.Trim() ?? "你好。" };
+            return CharacterCardDraftService.Build(original, new CharacterCardDraft(editingId, cardName.Text,
+                name.Text, avatarPath, avatarDisplay, mode, legacyPrompt.Text, userName.Text, identity.Text,
+                personality.Text, speech.Text, rules.Text, facts.Text, greeting.Text));
         }
         async Task SaveAsync(bool switchToCard)
         {
@@ -1323,7 +1323,7 @@ public sealed partial class MainWindow : Window
             if (editingId is null) { await ShowNoticeAsync("无法删除", "这张角色卡尚未保存。"); return; }
             var deletingId = editingId;
             var deleting = _characters.FirstOrDefault(x => x.Id == deletingId);
-            if (deleting is null || !await ConfirmAsync(window, "删除角色卡", "确定删除“" + CardLabel(deleting) + "”吗？此操作不可撤销。")) return;
+            if (deleting is null || !await ConfirmAsync(window, "删除角色卡", "确定删除“" + CharacterCardDraftService.Label(deleting) + "”吗？此操作不可撤销。")) return;
             try
             {
                 await _api.DeleteCharacterAsync(deletingId);
@@ -1340,8 +1340,6 @@ public sealed partial class MainWindow : Window
         save.Click += async (_, _) => await SaveAsync(false); saveAndSwitch.Click += async (_, _) => await SaveAsync(true);
         RefreshList(_character.Id); LoadCard(_character); await window.ShowDialog(owner ?? this);
     }
-
-    private static string CardLabel(CharacterDefinition card) => string.IsNullOrWhiteSpace(card.CardName) ? $"{card.Name}-正式-v1" : card.CardName;
 
     private static string ImageContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
     {
