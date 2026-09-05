@@ -1630,49 +1630,13 @@ public sealed partial class MainWindow : Window
 
     private async Task ManageSpeechModelsAsync(Window owner)
     {
-        var models = _preferences.CustomSpeechModels.ToList();
-        var window = new Window { Title = "自定义语音识别模型", Width = 760, Height = 560, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        var list = new ListBox { Background = Brush.Parse("#17212B"), Margin = new Thickness(0, 10, 0, 10) };
-        void Refresh() => list.ItemsSource = models.Select(x => new ModelChoice(x.Id, $"{x.DisplayName} · {x.Provider}")).ToArray();
-        Refresh();
-        var add = new Button { Content = "添加" }; var edit = new Button { Content = "编辑" }; var remove = new Button { Content = "删除" }; var done = new Button { Content = "完成", Classes = { "primary" } };
-        async Task<SpeechModelProfile?> EditAsync(SpeechModelProfile? source)
-        {
-            var name = new TextBox { Text = source?.DisplayName ?? "我的语音模型" };
-            var provider = new ComboBox { ItemsSource = new[] { "sherpa-onnx", "openai-compatible" }, SelectedItem = source?.Provider ?? "sherpa-onnx" };
-            var modelName = new TextBox { Text = source?.ModelName ?? "whisper-1" }; var path = new TextBox { Text = source?.ModelPath ?? "" };
-            var baseUrl = new TextBox { Text = source?.BaseUrl ?? "" }; var language = new TextBox { Text = source?.Language ?? "zh" };
-            var sampleRate = new NumericUpDown { Value = source?.SampleRate ?? 16000, Minimum = 8000, Maximum = 192000, Increment = 1000 };
-            var save = new Button { Content = "保存", Classes = { "primary" }, HorizontalAlignment = HorizontalAlignment.Right };
-            var panel = new StackPanel { Margin = new Thickness(26), Spacing = 8 };
-            void Field(string label, Control control) { panel.Children.Add(new TextBlock { Text = label, Foreground = Brush.Parse("#B8CCE0") }); panel.Children.Add(control); }
-            Field("显示名称", name); Field("类型", provider); Field("API model 名称", modelName); Field("本地模型目录", path); Field("转写 API 地址", baseUrl); Field("语言", language); Field("采样率", sampleRate);
-            panel.Children.Add(new TextBlock { Text = "本地模型填写目录；API 模型填写 OpenAI-compatible 地址。密钥通过 PRY_SPEECH_API_KEY_<模型ID> 环境变量提供。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") }); panel.Children.Add(save);
-            var editor = new Window { Title = source is null ? "添加语音模型" : "编辑语音模型", Width = 620, Height = 650, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = CreateThemedDialogSurface(new ScrollViewer { Content = panel }) };
-            SpeechModelProfile? result = null;
-            save.Click += (_, _) => { if (string.IsNullOrWhiteSpace(name.Text)) return; result = new SpeechModelProfile { Id = source?.Id ?? $"speech-{Guid.NewGuid():N}", DisplayName = name.Text.Trim(), Provider = provider.SelectedItem?.ToString() ?? "sherpa-onnx", ModelName = modelName.Text?.Trim() ?? "whisper-1", ModelPath = path.Text?.Trim() ?? "", BaseUrl = baseUrl.Text?.Trim() ?? "", Language = language.Text?.Trim() ?? "zh", SampleRate = (int)(sampleRate.Value ?? 16000) }; editor.Close(); };
-            await editor.ShowDialog(owner); return result;
-        }
-        static SaveSpeechModelRequest SpeechRequest(SpeechModelProfile value) => new(value.DisplayName,
-            value.Provider, value.ModelName, value.ModelPath, value.BaseUrl, value.Language, value.SampleRate);
-        add.Click += async (_, _) =>
-        {
-            var value = await EditAsync(null); if (value is null) return;
-            var saved = await _api.CreateSpeechModelAsync(SpeechRequest(value));
-            models.Add(value with { Id = saved.Id }); Refresh();
-        };
-        edit.Click += async (_, _) =>
-        {
-            if (list.SelectedItem is not ModelChoice choice) return;
-            var index = models.FindIndex(x => x.Id == choice.Id); if (index < 0) return;
-            var value = await EditAsync(models[index]); if (value is null) return;
-            await _api.UpdateSpeechModelAsync(choice.Id, SpeechRequest(value)); models[index] = value; Refresh();
-        };
-        remove.Click += async (_, _) => { if (list.SelectedItem is not ModelChoice choice || !await ConfirmAsync(window, "删除语音模型配置", $"确定删除“{choice.Name}”吗？本地模型文件不会被删除。")) return; await _api.DeleteSpeechModelAsync(choice.Id); models.RemoveAll(x => x.Id == choice.Id); Refresh(); };
-        done.Click += (_, _) => { _preferences = _preferences with { CustomSpeechModels = models.ToArray() }; window.Close(); };
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { add, edit, remove, done } };
-        var speechLayout = new Grid { Margin = new Thickness(22), RowDefinitions = new RowDefinitions("Auto,*,Auto"), Children = { new TextBlock { Text = "保留多个本地或 API 语音识别配置，在主设置页选择当前使用项。", TextWrapping = TextWrapping.Wrap }, list, buttons } }; Grid.SetRow(list, 1); Grid.SetRow(buttons, 2); window.Content = CreateThemedDialogSurface(speechLayout);
-        await window.ShowDialog(owner);
+        var manager = new SpeechModelManagerDialog(
+            _api,
+            content => CreateThemedDialogSurface(content),
+            ConfirmAsync);
+        var updated = await manager.ShowAsync(owner, _preferences.CustomSpeechModels);
+        if (updated is not null)
+            _preferences = _preferences with { CustomSpeechModels = updated.ToArray() };
     }
 
     private async void ManageStickers_Click(object? sender, RoutedEventArgs e) => await OpenStickerManagerAsync();
