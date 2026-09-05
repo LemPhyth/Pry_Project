@@ -56,10 +56,7 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _listeningSignalCancellation;
     private bool _listeningSignalSent;
     private DateTimeOffset _lastListeningSignalAt = DateTimeOffset.MinValue;
-    private bool _resizingMainSidebar;
-    private double _mainSidebarResizeStartX;
-    private double _mainSidebarResizeStartWidth;
-    private double _pendingSidebarWidth;
+    private readonly SidebarResizeState _sidebarResize = new();
     private bool _suppressInputActivity;
     private CharacterDefinition? _character;
     private readonly List<CharacterDefinition> _characters = [];
@@ -926,35 +923,33 @@ public sealed partial class MainWindow : Window
 
     private void MainSidebarSplitter_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        _resizingMainSidebar = true; _mainSidebarResizeStartX = e.GetPosition(MainLayout).X;
-        _mainSidebarResizeStartWidth = MainLayout.ColumnDefinitions[0].ActualWidth;
-        _pendingSidebarWidth = _mainSidebarResizeStartWidth;
+        _sidebarResize.Begin(e.GetPosition(MainLayout).X, MainLayout.ColumnDefinitions[0].ActualWidth);
         var liveResize = (_preferences.Theme ?? new ThemePreferences()).LiveSidebarResize;
-        SidebarResizeGuide.RenderTransform = new TranslateTransform(_pendingSidebarWidth, 0);
+        SidebarResizeGuide.RenderTransform = new TranslateTransform(_sidebarResize.PendingWidth, 0);
         SidebarResizeGuide.IsVisible = !liveResize;
         e.Pointer.Capture(MainSidebarSplitter); e.Handled = true;
     }
 
     private void MainSidebarSplitter_PointerMoved(object? sender, PointerEventArgs e)
     {
-        if (!_resizingMainSidebar) return;
-        _pendingSidebarWidth = Math.Clamp(_mainSidebarResizeStartWidth + e.GetPosition(MainLayout).X - _mainSidebarResizeStartX, 220, 420);
+        if (!_sidebarResize.Active) return;
+        var width = _sidebarResize.Move(e.GetPosition(MainLayout).X);
         if ((_preferences.Theme ?? new ThemePreferences()).LiveSidebarResize)
         {
-            MainLayout.ColumnDefinitions[0].Width = new GridLength(_pendingSidebarWidth);
-            _expandedSidebarWidth = _pendingSidebarWidth;
+            MainLayout.ColumnDefinitions[0].Width = new GridLength(width);
+            _expandedSidebarWidth = width;
         }
-        else SidebarResizeGuide.RenderTransform = new TranslateTransform(_pendingSidebarWidth, 0);
+        else SidebarResizeGuide.RenderTransform = new TranslateTransform(width, 0);
         e.Handled = true;
     }
 
     private void MainSidebarSplitter_PointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (!_resizingMainSidebar) return;
-        _resizingMainSidebar = false; SidebarResizeGuide.IsVisible = false;
+        if (!_sidebarResize.Active) return;
+        var width = _sidebarResize.Complete(); SidebarResizeGuide.IsVisible = false;
         if (!(_preferences.Theme ?? new ThemePreferences()).LiveSidebarResize)
-            MainLayout.ColumnDefinitions[0].Width = new GridLength(_pendingSidebarWidth);
-        _expandedSidebarWidth = _pendingSidebarWidth; e.Pointer.Capture(null); e.Handled = true;
+            MainLayout.ColumnDefinitions[0].Width = new GridLength(width);
+        _expandedSidebarWidth = width; e.Pointer.Capture(null); e.Handled = true;
     }
 
     private void WindowChrome_PointerPressed(object? sender, PointerPressedEventArgs e)
