@@ -1189,8 +1189,6 @@ public sealed partial class MainWindow : Window
             content => CreateThemedDialogSurface(content), ApplyImageDisplay, ShowNoticeAsync)
             .ShowAsync(this, profile, theme);
         if (edited is null) return;
-        await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(null, null, edited.Profile,
-                null, null, null, null));
         string? avatarMediaId = null;
         var avatarPath = edited.Theme.UserAvatarPath;
         if (!string.IsNullOrWhiteSpace(avatarPath) && File.Exists(avatarPath))
@@ -1198,8 +1196,8 @@ public sealed partial class MainWindow : Window
             await using var content = File.OpenRead(avatarPath);
             avatarMediaId = (await _api.UploadAsync(content, Path.GetFileName(avatarPath), ImageContentType(avatarPath))).Id;
         }
-        await _api.UpdateAppearanceAsync(new UpdateAppearanceMediaRequest(null, false, avatarMediaId,
-            avatarPath is null, null, avatarPath is null ? null : edited.Theme.UserAvatarDisplays[avatarPath]));
+        await _api.SaveUserProfileAsync(new SaveUserProfileRequest(edited.Profile, avatarMediaId,
+            avatarPath is null, avatarPath is null ? null : edited.Theme.UserAvatarDisplays[avatarPath]));
         _preferences = _preferences with { UserProfile = edited.Profile, Theme = edited.Theme };
         ApplyTheme();
     }

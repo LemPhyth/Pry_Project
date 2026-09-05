@@ -226,6 +226,18 @@ public sealed class ApplicationServiceTests
             new UpdateModelSelectionRequest("missing-model", null, null, null)),
             TestContext.Current.CancellationToken));
         Assert.Equal("测试用户", service.GetPreferences().UserProfile.DisplayName);
+
+        await Assert.ThrowsAsync<ResourceNotFoundException>(() => service.SaveUserProfileAsync(
+            new SaveUserProfileRequest(new UserProfilePreferences { DisplayName = "不应保存", Signature = "" },
+                "00000000000000000000000000000000", false, new ImageDisplayPreferences()),
+            TestContext.Current.CancellationToken));
+        Assert.Equal("测试用户", service.GetPreferences().UserProfile.DisplayName);
+        var savedProfile = await service.SaveUserProfileAsync(new SaveUserProfileRequest(
+            new UserProfilePreferences { DisplayName = "原子用户", Signature = "原子保存" }, background.Id,
+            false, new ImageDisplayPreferences { FocusX = .4, FocusY = .7, Zoom = 1.4 }),
+            TestContext.Current.CancellationToken);
+        Assert.Equal("原子用户", savedProfile.UserProfile.DisplayName);
+        Assert.Equal("/api/v1/appearance/user-avatar", savedProfile.UserAvatarUrl);
     }
 
     [Fact]

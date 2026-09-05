@@ -37,6 +37,7 @@ public sealed class ConfigurationController(ConfigurationApplicationService serv
     [HttpDelete("models/custom/{id}")] public async Task<IActionResult> DeleteCustomModel(string id, CancellationToken token) { await service.DeleteCustomModelAsync(id, token); return NoContent(); }
     [HttpPut("appearance/media")] public Task<ClientPreferencesResponse> UpdateAppearance(UpdateAppearanceMediaRequest request, CancellationToken token) => service.UpdateAppearanceMediaAsync(request, token);
     [HttpPut("settings")] public Task<SaveSettingsResponse> SaveSettings(SaveSettingsRequest request, CancellationToken token) => service.SaveSettingsAsync(request, token);
+    [HttpPut("user-profile")] public Task<ClientPreferencesResponse> SaveUserProfile(SaveUserProfileRequest request, CancellationToken token) => service.SaveUserProfileAsync(request, token);
     [HttpGet("appearance/{kind}")]
     public IActionResult Appearance(string kind)
     {

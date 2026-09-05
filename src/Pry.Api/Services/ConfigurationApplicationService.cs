@@ -217,6 +217,28 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         finally { _gate.Release(); }
     }
 
+    public async Task<ClientPreferencesResponse> SaveUserProfileAsync(SaveUserProfileRequest request,
+        CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(request.Profile);
+        await _gate.WaitAsync(token);
+        try
+        {
+            var updated = await ApplyPreferencesAsync(runtime.Preferences,
+                new UpdateClientPreferencesRequest(null, null, request.Profile, null, null, null, null), token);
+            updated = await ApplyAppearanceAsync(updated,
+                new UpdateAppearanceMediaRequest(null, false, request.AvatarMediaId, request.ClearAvatar,
+                    null, request.AvatarDisplay), token);
+            await sessions.ReconfigureAsync(async ct =>
+            {
+                await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct);
+                await runtime.RefreshContentAsync(ct);
+            }, token);
+            return ToResponse(runtime.Preferences);
+        }
+        finally { _gate.Release(); }
+    }
+
     public string GetAvatarPath(string id)
     {
         var character = FindCharacter(id);

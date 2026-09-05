@@ -65,6 +65,8 @@ public sealed record SaveSettingsRequest(UpdateClientPreferencesRequest Preferen
     UpdateAppearanceMediaRequest Appearance, UpdateModelSelectionRequest Models);
 public sealed record SaveSettingsResponse(ClientPreferencesResponse Preferences,
     IReadOnlyList<ModelProfileResponse> Models);
+public sealed record SaveUserProfileRequest(UserProfilePreferences Profile, string? AvatarMediaId,
+    bool ClearAvatar, ImageDisplayPreferences? AvatarDisplay);
 public sealed record SaveCustomModelRequest(string DisplayName, string Provider, string ModelName, string BaseUrl,
     string? LocalModelPath, string? LocalMmprojPath, ModelCapabilities Capabilities, int ContextSize,
     int MaxOutputTokens, double Temperature, int GpuLayers, string ComputeDevice, bool EnableThinking);

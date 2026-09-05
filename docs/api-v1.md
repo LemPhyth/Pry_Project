@@ -234,6 +234,7 @@
 - `PATCH /api/v1/preferences`：局部更新上述偏好。
 - `PUT /api/v1/appearance/media`：用托管媒体 ID 设置或清除背景及用户头像。
 - `PUT /api/v1/settings`：原子应用偏好、外观媒体引用和模型选择，供“保存全部设置”使用。
+- `PUT /api/v1/user-profile`：原子保存用户资料与用户头像，供独立的用户资料窗口使用。
 - `GET /api/v1/appearance/background`
 - `GET /api/v1/appearance/user-avatar`
 
@@ -262,6 +263,19 @@
 后端会先验证三个部分并解析媒体引用，然后只写入一次偏好并重载运行时；任何验证失败都不会应用其中任一配置。成功返回最终 `preferences` 和 `models` 投影。上传媒体是独立操作，未被设置引用的上传资源不会自动绑定到配置。
 
 快捷键格式、快捷键冲突、回复数量关系、打字延迟关系、桌宠缩放及其他数值范围均由后端最终校验。客户端可以重复这些检查以即时提示，但不得将客户端校验视为安全或一致性边界。
+
+独立用户资料窗口应调用 `PUT /api/v1/user-profile`：
+
+```json
+{
+  "profile": { "displayName": "你", "signature": "愿今天也有好心情" },
+  "avatarMediaId": "已上传的媒体ID或null",
+  "clearAvatar": false,
+  "avatarDisplay": { "focusX": 0.5, "focusY": 0.5, "zoom": 1.0 }
+}
+```
+
+后端先校验资料、媒体资源类型和头像显示参数，再单次保存并刷新内容。任一字段或媒体引用无效时，资料和头像均保持原值。清除头像时传 `clearAvatar:true`；不得先调用偏好接口再调用外观接口模拟该操作。
 
 ## 模型配置
 
