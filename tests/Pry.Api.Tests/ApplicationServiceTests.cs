@@ -38,6 +38,35 @@ public sealed class ApplicationServiceTests
     }
 
     [Fact]
+    public async Task Media_cleanup_removes_only_expired_unreferenced_assets()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"pry-media-cleanup-{Guid.NewGuid():N}");
+        try
+        {
+            var configuration = new ConfigurationManager(); configuration["Pry:DataDirectory"] = directory;
+            var store = new MediaAssetStore(configuration);
+            var png = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0, 0, 0, 0, 0 };
+            var retained = await store.SaveAsync(new MemoryStream(png), "retained.png", png.Length,
+                TestContext.Current.CancellationToken);
+            var orphan = await store.SaveAsync(new MemoryStream(png), "orphan.png", png.Length,
+                TestContext.Current.CancellationToken);
+            var retainedAsset = await store.ResolveAsync(retained.Id, TestContext.Current.CancellationToken);
+            var orphanAsset = await store.ResolveAsync(orphan.Id, TestContext.Current.CancellationToken);
+
+            var result = await store.CleanupOrphansAsync([retainedAsset.Path], DateTimeOffset.UtcNow.AddMinutes(1),
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.RemovedCount);
+            Assert.Equal(png.Length, result.RemovedBytes);
+            Assert.True(File.Exists(retainedAsset.Path));
+            Assert.False(File.Exists(orphanAsset.Path));
+            await Assert.ThrowsAsync<ResourceNotFoundException>(() =>
+                store.ResolveAsync(orphan.Id, TestContext.Current.CancellationToken));
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task Model_registry_reuses_identical_model_configuration()
     {
         await using var registry = new ModelProcessRegistry(NullLogger<ModelProcessRegistry>.Instance);

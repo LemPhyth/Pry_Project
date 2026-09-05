@@ -10,6 +10,7 @@ namespace Pry.Api.Services;
 public sealed class MediaAssetStore(IConfiguration configuration)
 {
     public const long LargeFileWarningBytes = 10 * 1024 * 1024;
+    private readonly SemaphoreSlim _cleanupGate = new(1, 1);
     private readonly string _directory = Path.Combine(Path.GetFullPath(configuration["Pry:DataDirectory"] ??
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion")), "media");
 
@@ -83,6 +84,44 @@ public sealed class MediaAssetStore(IConfiguration configuration)
         metadata.ContentType, metadata.Size, metadata.Kind, metadata.CreatedAt, $"/api/v1/media/{metadata.Id}/content",
         metadata.Size >= LargeFileWarningBytes ? ["文件较大，上传和处理可能耗时，并会占用较多本地磁盘空间"] : []);
 
+    public async Task<MediaCleanupResult> CleanupOrphansAsync(IEnumerable<string> referencedPaths,
+        DateTimeOffset createdBefore, CancellationToken token)
+    {
+        if (!Directory.Exists(_directory)) return new MediaCleanupResult(0, 0);
+        var references = referencedPaths.Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var removed = 0; long bytes = 0;
+        await _cleanupGate.WaitAsync(token);
+        try
+        {
+            foreach (var metadataPath in Directory.EnumerateFiles(_directory, "*.json"))
+            {
+                token.ThrowIfCancellationRequested();
+                MediaMetadata? metadata;
+                try
+                {
+                    metadata = JsonSerializer.Deserialize<MediaMetadata>(
+                        await File.ReadAllTextAsync(metadataPath, token), JsonOptions);
+                }
+                catch (JsonException) { continue; }
+                if (metadata is null || metadata.CreatedAt >= createdBefore) continue;
+                var path = Path.GetFullPath(Path.Combine(_directory, metadata.StoredName));
+                if (!path.StartsWith(Path.GetFullPath(_directory) + Path.DirectorySeparatorChar,
+                        StringComparison.OrdinalIgnoreCase) || references.Contains(path)) continue;
+                try
+                {
+                    if (File.Exists(path)) File.Delete(path);
+                    File.Delete(metadataPath);
+                    removed++; bytes += metadata.Size;
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+        finally { _cleanupGate.Release(); }
+        return new MediaCleanupResult(removed, bytes);
+    }
+
     private string MetadataPath(string id) => Path.Combine(_directory, id + ".json");
 
     private static async Task<DetectedMedia> DetectAsync(string path, string name, CancellationToken token)
@@ -143,3 +182,4 @@ public sealed class MediaAssetStore(IConfiguration configuration)
 public sealed record MediaMetadata(string Id, string OriginalName, string StoredName, string ContentType, long Size,
     string Kind, string Sha256, DateTimeOffset CreatedAt);
 public sealed record ResolvedMediaAsset(MediaMetadata Metadata, string Path);
+public sealed record MediaCleanupResult(int RemovedCount, long RemovedBytes);

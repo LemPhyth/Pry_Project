@@ -52,6 +52,7 @@ namespace Pry.Api
             builder.Services.AddSingleton<BackendRuntime>();
             builder.Services.AddSingleton<ConversationSessionService>();
             builder.Services.AddHostedService(sp => sp.GetRequiredService<BackendRuntime>());
+            builder.Services.AddHostedService<MediaCleanupService>();
             builder.Services.AddHealthChecks();
             builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options => options.MultipartBodyLengthLimit = long.MaxValue);
             var app = builder.Build();
