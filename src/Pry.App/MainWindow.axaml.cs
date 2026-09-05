@@ -1545,6 +1545,12 @@ public sealed partial class MainWindow : Window
         Image? settingsBackgroundImage = null; Border? settingsBackgroundDim = null;
         var settingsSurface = CreateThemedDialogSurface(layout, transparentContent: true, (image, dim) => { settingsBackgroundImage = image; settingsBackgroundDim = dim; });
         var window = new Window { Title = "设置", Width = 900, Height = 740, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = settingsSurface };
+        var surfaceController = new SettingsSurfaceController(levels => window.TransparencyLevelHint = levels,
+            (Grid)settingsSurface,
+            settingsBackgroundImage, settingsBackgroundDim, settingCards,
+            [layout, modelPanel, conversationPanel, shortcutPanel, desktopPanel, themePanel,
+                characterManagerPanel, stickerManagerPanel, memoryManagerPanel, backgroundPage, avatarPage],
+            settingsShell, ThemeAccentBrush, _backgroundImages.Get, ApplyImageDisplay);
         void StoreCurrentImageDisplays()
         {
             backgroundImagesEditor.StoreCurrent();
@@ -1555,43 +1561,8 @@ public sealed partial class MainWindow : Window
             StoreCurrentImageDisplays();
             return appearanceEditor.BuildTheme(themePreferences, backgroundDraft, avatarDraft);
         }
-        void UpdateSettingsSurface(ThemePreferences draft)
-        {
-            var light = draft.ThemeMode == "light" || (draft.ThemeMode == "system" && Application.Current?.ActualThemeVariant == ThemeVariant.Light);
-            var hasThemeBackground = !string.IsNullOrWhiteSpace(draft.BackgroundImagePath) && File.Exists(draft.BackgroundImagePath);
-            var palette = new SettingsSurfaceTheme(light, hasThemeBackground);
-            var canvas = palette.Canvas;
-            window.Background = Brushes.Transparent;
-            window.TransparencyLevelHint = draft.BackgroundBlurRadius > .5
-                ? [WindowTransparencyLevel.Blur, WindowTransparencyLevel.Transparent]
-                : [WindowTransparencyLevel.Transparent];
-            if (settingsSurface is Grid settingsRoot) settingsRoot.Background = hasThemeBackground ? Brushes.Transparent : canvas;
-            if (settingsBackgroundImage is not null)
-            {
-                settingsBackgroundImage.IsVisible = hasThemeBackground;
-                settingsBackgroundImage.Opacity = Math.Clamp(draft.BackgroundImageOpacity, 0, 1);
-                if (hasThemeBackground)
-                {
-                    try
-                    {
-                        settingsBackgroundImage.Source = _backgroundImages.Get(draft.BackgroundImagePath!, Math.Clamp(draft.BackgroundBlurRadius, 0, 32));
-                        var display = draft.BackgroundDisplays.TryGetValue(draft.BackgroundImagePath!, out var savedDisplay) ? savedDisplay : new ImageDisplayPreferences();
-                        ApplyImageDisplay(settingsBackgroundImage, display);
-                    }
-                    catch { settingsBackgroundImage.IsVisible = false; }
-                }
-            }
-            if (settingsBackgroundDim is not null)
-            {
-                settingsBackgroundDim.IsVisible = hasThemeBackground;
-                settingsBackgroundDim.Background = canvas;
-                settingsBackgroundDim.Opacity = Math.Clamp(draft.BackgroundDimOpacity, 0, .85);
-            }
-            palette.Apply(settingCards, [layout, modelPanel, conversationPanel, shortcutPanel,
-                desktopPanel, themePanel, characterManagerPanel, stickerManagerPanel,
-                memoryManagerPanel, backgroundPage, avatarPage]);
-            settingsShell.ApplyColors(palette.Panel, palette.Card, palette.Border, ThemeAccentBrush());
-        }
+        void UpdateSettingsSurface(ThemePreferences draft) => surfaceController.Apply(draft,
+            Application.Current?.ActualThemeVariant == ThemeVariant.Light);
         using var themePreview = new ThemePreviewController(
             () => Color.TryParse(appearanceEditor.AccentColorText, out _) ? BuildThemeDraft() : null,
             draft => { _preferences = _preferences with { Theme = draft }; ApplyTheme(); UpdateSettingsSurface(draft); },
