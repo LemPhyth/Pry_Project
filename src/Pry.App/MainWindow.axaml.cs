@@ -1626,8 +1626,10 @@ public sealed partial class MainWindow : Window
                 turnOverride.TypingStyle.MaxDelayMs, appearanceEditor.AccentColorText)
                 ?? SettingsDraftService.ValidateShortcuts(shortcutDraft);
             if (validationError is not null) { await ShowNoticeAsync(validationError.Title, validationError.Message); return; }
-            var tuningDrafts = tuningEditor.BuildDrafts(); var selectedModelId = modelSelection.TextModelId ?? GetActiveModelId(); var selectedVisionId = modelSelection.VisionModelId; var selectedSpeechId = modelSelection.SpeechModelId; var modelTuning = tuningDrafts.TryGetValue(selectedModelId, out var selectedTuning) ? selectedTuning with { ActiveModelId = selectedModelId } : new ModelTuningPreferences { ActiveModelId = selectedModelId };
-            var candidate = _preferences with { ActiveModelId = selectedModelId, ActiveVisionModelId = selectedVisionId, ActiveSpeechModelId = selectedSpeechId, ModelTunings = new Dictionary<string, ModelTuningPreferences>(tuningDrafts), EnableThinking = modelTuning.EnableThinking == true, ModelTuning = modelTuning, TurnTakingOverride = turnOverride, SelectedCharacterId = _character?.Id, DesktopPet = desktopPetEditor.BuildDraft(), Theme = BuildThemeDraft(), Shortcuts = shortcutDraft };
+            var candidate = SettingsCandidateComposer.Compose(_preferences, new SettingsCandidateDraft(
+                modelSelection.TextModelId ?? GetActiveModelId(), modelSelection.VisionModelId,
+                modelSelection.SpeechModelId, tuningEditor.BuildDrafts(), turnOverride,
+                desktopPetEditor.BuildDraft(), BuildThemeDraft(), shortcutDraft, _character?.Id));
             save.IsEnabled = false; _turnManager?.CancelAgentReply();
             try
             {
@@ -1637,7 +1639,10 @@ public sealed partial class MainWindow : Window
                 _preferences = candidate;
                 _profiles = _builtInProfiles.Concat(candidate.CustomModels).ToArray();
                 ApplyTheme(); await ReloadActiveConversationAsync();
-                RuntimeStatus.Text = $"后端模型配置已保存 · {backendModels.First(x => x.SelectedForText).DisplayName}";
+                var selectedName = SettingsSaveService.SelectedModelName(backendModels, candidate.ActiveModelId);
+                RuntimeStatus.Text = selectedName is null
+                    ? "后端模型配置已保存"
+                    : $"后端模型配置已保存 · {selectedName}";
                 themePreview.Commit(); window.Close();
             }
             catch (Exception ex)

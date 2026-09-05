@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Pry.App.Services;
 using Pry.Client;
+using Pry.Contracts;
 using Pry.Core.Models;
 using Xunit;
 
@@ -10,6 +11,17 @@ namespace Pry.App.Tests;
 
 public sealed class SettingsSaveServiceTests
 {
+    [Fact]
+    public void Selected_model_name_tolerates_incomplete_backend_projection()
+    {
+        static ModelProfileResponse Model(string id, string name, bool selected = false) =>
+            new(id, name, "local", id, new(), 2048, 256, .7, 0, "cpu", false, selected, false, false);
+        Assert.Equal("Selected", SettingsSaveService.SelectedModelName(
+            [Model("fallback", "Fallback"), Model("selected", "Selected", true)], "fallback"));
+        Assert.Equal("Fallback", SettingsSaveService.SelectedModelName([Model("fallback", "Fallback")], "fallback"));
+        Assert.Null(SettingsSaveService.SelectedModelName([], "missing"));
+    }
+
     [Fact]
     public async Task Save_preserves_request_order_and_explicit_appearance_clear()
     {

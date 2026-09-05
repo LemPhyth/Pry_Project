@@ -6,6 +6,10 @@ namespace Pry.App.Services;
 
 public sealed class SettingsSaveService(PryBackendClient api, Func<string, string> imageContentType)
 {
+    public static string? SelectedModelName(IReadOnlyList<ModelProfileResponse> models, string? modelId) =>
+        models.FirstOrDefault(model => model.SelectedForText)?.DisplayName ??
+        models.FirstOrDefault(model => string.Equals(model.Id, modelId, StringComparison.Ordinal))?.DisplayName;
+
     public async Task<IReadOnlyList<ModelProfileResponse>> SaveAsync(UserPreferences candidate,
         string conversationId, Action<string> warning, CancellationToken token = default)
     {
