@@ -45,9 +45,7 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer _chatScrollTimer = new() { Interval = TimeSpan.FromMilliseconds(24) };
     private bool _chatScrollPending;
     private int _chatScrollPassesRemaining;
-    private double _lastChatMaskHeight = -1;
-    private double _lastChatMaskHeaderHeight = -1;
-    private double _lastChatMaskComposerHeight = -1;
+    private readonly ChatUnderlayMaskState _chatMask = new();
     private bool _changingConversation;
     private readonly ConversationDraftStore _conversationDrafts = new();
     private readonly HashSet<string> _collapsedConversationFolders = new(StringComparer.Ordinal);
@@ -885,23 +883,8 @@ public sealed partial class MainWindow : Window
 
     private void UpdateChatUnderlayMask()
     {
-        var height = ChatScroll.Bounds.Height;
-        if (height <= 1) return;
-        var headerHeight = HeaderGlass.Bounds.Height;
-        var composerHeight = ComposerGlass.Bounds.Height;
-        if (Math.Abs(height - _lastChatMaskHeight) < .5 &&
-            Math.Abs(headerHeight - _lastChatMaskHeaderHeight) < .5 &&
-            Math.Abs(composerHeight - _lastChatMaskComposerHeight) < .5)
-        {
-            return;
-        }
-
-        _lastChatMaskHeight = height;
-        _lastChatMaskHeaderHeight = headerHeight;
-        _lastChatMaskComposerHeight = composerHeight;
-        var feather = Math.Clamp(12 / height, .008, .04);
-        var top = Math.Clamp(headerHeight / height, 0, .42);
-        var bottom = Math.Clamp(1 - composerHeight / height, .58, 1);
+        if (!_chatMask.TryCalculate(ChatScroll.Bounds.Height, HeaderGlass.Bounds.Height,
+                ComposerGlass.Bounds.Height, out var mask)) return;
         ChatScroll.OpacityMask = new LinearGradientBrush
         {
             StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
@@ -909,10 +892,10 @@ public sealed partial class MainWindow : Window
             GradientStops =
             {
                 new GradientStop(Colors.Transparent, 0),
-                new GradientStop(Colors.Transparent, top),
-                new GradientStop(Colors.White, Math.Min(.49, top + feather)),
-                new GradientStop(Colors.White, Math.Max(.51, bottom - feather)),
-                new GradientStop(Colors.Transparent, bottom),
+                new GradientStop(Colors.Transparent, mask.TopTransparentEnd),
+                new GradientStop(Colors.White, mask.TopFeatherEnd),
+                new GradientStop(Colors.White, mask.BottomFeatherStart),
+                new GradientStop(Colors.Transparent, mask.BottomTransparentStart),
                 new GradientStop(Colors.Transparent, 1)
             }
         };
