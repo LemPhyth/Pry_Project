@@ -1231,20 +1231,8 @@ public sealed partial class MainWindow : Window
         if (_character is null) return;
         TextBox Box(int height = 34) => new() { MinHeight = height, AcceptsReturn = height > 60, TextWrapping = TextWrapping.Wrap };
         var cardName = Box(); var name = Box(); var userName = Box(); var identity = Box(80); var personality = Box(80); var speech = Box(70); var rules = Box(110); var facts = Box(110); var greeting = Box(70); var legacyPrompt = Box(430);
-        string? avatarPath = _character.AvatarPath;
-        var avatarDisplay = _character.AvatarDisplay;
-        var avatarPreview = new Image { Width = 180, Height = 180, Stretch = Stretch.UniformToFill };
-        var chooseAvatar = new Button { Content = "导入角色头像…" }; var clearAvatar = new Button { Content = "恢复默认" };
-        var avatarFocusX = new NumericUpDown { Value = (decimal)avatarDisplay.FocusX, Minimum = 0, Maximum = 1, Increment = .05m };
-        var avatarFocusY = new NumericUpDown { Value = (decimal)avatarDisplay.FocusY, Minimum = 0, Maximum = 1, Increment = .05m };
-        var avatarZoom = new NumericUpDown { Value = (decimal)avatarDisplay.Zoom, Minimum = 1, Maximum = 3, Increment = .05m };
-        void RefreshAvatarPreview()
-        {
-            avatarPreview.Source = null;
-            avatarDisplay = new ImageDisplayPreferences { FocusX = (double)(avatarFocusX.Value ?? .5m), FocusY = (double)(avatarFocusY.Value ?? .5m), Zoom = (double)(avatarZoom.Value ?? 1) };
-            if (!string.IsNullOrWhiteSpace(avatarPath) && File.Exists(avatarPath)) try { avatarPreview.Source = new Bitmap(avatarPath); ApplyImageDisplay(avatarPreview, avatarDisplay); } catch { }
-        }
-        avatarFocusX.ValueChanged += (_, _) => RefreshAvatarPreview(); avatarFocusY.ValueChanged += (_, _) => RefreshAvatarPreview(); avatarZoom.ValueChanged += (_, _) => RefreshAvatarPreview();
+        var avatarEditor = new CharacterAvatarEditor(ApplyImageDisplay);
+        avatarEditor.Load(_character.AvatarPath, _character.AvatarDisplay);
         var cardList = new ListBox { Margin = new Thickness(12), Background = Brushes.Transparent }; var currentHint = new TextBlock { Foreground = ThemeAccentBrush(), TextWrapping = TextWrapping.Wrap };
         var newCard = new Button { Content = "＋ 新建角色卡", Margin = new Thickness(12, 0, 12, 12) };
         var structuredButton = new Button { Content = "结构化" }; var legacyButton = new Button { Content = "Legacy" }; var mode = CharacterPromptMode.Structured; string? editingId = _character.Id; bool loading = false;
@@ -1257,7 +1245,7 @@ public sealed partial class MainWindow : Window
         Field(form, "角色卡名称（显示名-用途-版本）", cardName); Field(form, "聊天显示名", name);
         form.Children.Add(new TextBlock { Text = "角色头像", FontWeight = FontWeight.SemiBold });
         form.Children.Add(new TextBlock { Text = "从原始图片直接解码；拖动调整取景，滚轮缩放，不会压缩或改写原图。", Foreground = Brush.Parse("#8EA2B5"), TextWrapping = TextWrapping.Wrap });
-        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Children = { VisualCropEditor.Create(avatarPreview, avatarFocusX, avatarFocusY, avatarZoom, 180, 180, true), new StackPanel { Spacing = 7, VerticalAlignment = VerticalAlignment.Center, Children = { chooseAvatar, clearAvatar } } } });
+        form.Children.Add(avatarEditor.View);
         form.Children.Add(currentHint); form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { structuredButton, legacyButton } }); form.Children.Add(structuredPanel); form.Children.Add(legacyPanel); Field(form, "开场白", greeting);
         var removeCard = new Button { Content = "删除角色卡" };
         var save = new Button { Content = "保存", Classes = { "primary" } }; var saveAndSwitch = new Button { Content = "保存并切换到此角色" }; form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Margin = new Thickness(0, 10, 0, 0), Children = { removeCard, saveAndSwitch, save } });
@@ -1266,43 +1254,42 @@ public sealed partial class MainWindow : Window
         var divider = new Border { Width = 1, Background = Brush.Parse("#263746"), HorizontalAlignment = HorizontalAlignment.Right };
         var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("210,*"), Background = Brushes.Transparent, Children = { left, divider, editorScroll } }; Grid.SetColumn(editorScroll, 1);
         var window = new Window { Title = "角色卡管理", Width = 920, Height = 740, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = CreateThemedDialogSurface(layout) };
-        chooseAvatar.Click += async (_, _) =>
+        avatarEditor.ChooseButton.Click += async (_, _) =>
         {
             var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "选择角色头像", AllowMultiple = false, FileTypeFilter = [new FilePickerFileType("图片") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"] }] });
             var source = files.FirstOrDefault()?.TryGetLocalPath();
-            if (!string.IsNullOrWhiteSpace(source)) { avatarPath = source; RefreshAvatarPreview(); }
+            if (!string.IsNullOrWhiteSpace(source)) avatarEditor.Load(source, avatarEditor.Display);
         };
-        clearAvatar.Click += (_, _) => { avatarPath = null; RefreshAvatarPreview(); };
         void RefreshList(string? selectId)
         {
             loading = true; var items = _characters.Select(x => new CharacterChoice(x.Id, CharacterCardDraftService.Label(x) + (x.Id == _character?.Id ? "  · 当前" : ""))).ToArray(); cardList.ItemsSource = items; cardList.SelectedItem = items.FirstOrDefault(x => x.Id == selectId); loading = false;
         }
         void LoadCard(CharacterDefinition card)
         {
-            editingId = card.Id; cardName.Text = CharacterCardDraftService.Label(card); name.Text = card.Name; avatarPath = card.AvatarPath; avatarDisplay = card.AvatarDisplay; avatarFocusX.Value = (decimal)avatarDisplay.FocusX; avatarFocusY.Value = (decimal)avatarDisplay.FocusY; avatarZoom.Value = (decimal)avatarDisplay.Zoom; RefreshAvatarPreview(); userName.Text = card.UserName; identity.Text = card.Identity; personality.Text = card.Personality; speech.Text = card.SpeechStyle; rules.Text = string.Join(Environment.NewLine, card.BehavioralRules); facts.Text = string.Join(Environment.NewLine, card.WorldFacts); greeting.Text = card.Greeting; legacyPrompt.Text = card.LegacySystemPrompt; currentHint.Text = card.Id == _character?.Id ? "这是当前聊天角色" : "正在编辑其他角色；保存不会自动切换当前聊天"; SetMode(card.PromptMode);
+            editingId = card.Id; cardName.Text = CharacterCardDraftService.Label(card); name.Text = card.Name; avatarEditor.Load(card.AvatarPath, card.AvatarDisplay); userName.Text = card.UserName; identity.Text = card.Identity; personality.Text = card.Personality; speech.Text = card.SpeechStyle; rules.Text = string.Join(Environment.NewLine, card.BehavioralRules); facts.Text = string.Join(Environment.NewLine, card.WorldFacts); greeting.Text = card.Greeting; legacyPrompt.Text = card.LegacySystemPrompt; currentHint.Text = card.Id == _character?.Id ? "这是当前聊天角色" : "正在编辑其他角色；保存不会自动切换当前聊天"; SetMode(card.PromptMode);
         }
         cardList.SelectionChanged += (_, _) => { if (!loading && cardList.SelectedItem is CharacterChoice choice) { var card = _characters.FirstOrDefault(x => x.Id == choice.Id); if (card is not null) LoadCard(card); } };
-        newCard.Click += (_, _) => { editingId = null; cardName.Text = "新角色-正式-v1"; name.Text = "新角色"; avatarPath = null; avatarDisplay = new ImageDisplayPreferences(); avatarFocusX.Value = .5m; avatarFocusY.Value = .5m; avatarZoom.Value = 1; RefreshAvatarPreview(); userName.Text = "你"; identity.Text = ""; personality.Text = ""; speech.Text = ""; rules.Text = ""; facts.Text = ""; greeting.Text = "你好。"; legacyPrompt.Text = ""; currentHint.Text = "尚未保存的新角色卡"; SetMode(CharacterPromptMode.Structured); loading = true; cardList.SelectedItem = null; loading = false; };
+        newCard.Click += (_, _) => { editingId = null; cardName.Text = "新角色-正式-v1"; name.Text = "新角色"; avatarEditor.Load(null, new ImageDisplayPreferences()); userName.Text = "你"; identity.Text = ""; personality.Text = ""; speech.Text = ""; rules.Text = ""; facts.Text = ""; greeting.Text = "你好。"; legacyPrompt.Text = ""; currentHint.Text = "尚未保存的新角色卡"; SetMode(CharacterPromptMode.Structured); loading = true; cardList.SelectedItem = null; loading = false; };
         CharacterDefinition? ReadEditedCard()
         {
             var original = editingId is null ? _character : _characters.FirstOrDefault(x => x.Id == editingId) ?? _character;
             return CharacterCardDraftService.Build(original, new CharacterCardDraft(editingId, cardName.Text,
-                name.Text, avatarPath, avatarDisplay, mode, legacyPrompt.Text, userName.Text, identity.Text,
+                name.Text, avatarEditor.AvatarPath, avatarEditor.Display, mode, legacyPrompt.Text, userName.Text, identity.Text,
                 personality.Text, speech.Text, rules.Text, facts.Text, greeting.Text));
         }
         async Task SaveAsync(bool switchToCard)
         {
             var edited = ReadEditedCard(); if (edited is null) { await ShowNoticeAsync("无法保存", "角色名以及当前模式的角色设定不能为空。"); return; }
             string? avatarMediaId = null;
-            if (!string.IsNullOrWhiteSpace(avatarPath) && File.Exists(avatarPath))
+            if (!string.IsNullOrWhiteSpace(avatarEditor.AvatarPath) && File.Exists(avatarEditor.AvatarPath))
             {
-                await using var avatar = File.OpenRead(avatarPath);
-                avatarMediaId = (await _api.UploadAsync(avatar, Path.GetFileName(avatarPath), ImageContentType(avatarPath))).Id;
+                await using var avatar = File.OpenRead(avatarEditor.AvatarPath);
+                avatarMediaId = (await _api.UploadAsync(avatar, Path.GetFileName(avatarEditor.AvatarPath), ImageContentType(avatarEditor.AvatarPath))).Id;
             }
             var request = new SaveCharacterRequest(edited.Name, edited.CardName, edited.UserName, edited.Identity,
                 edited.Personality, edited.SpeechStyle, edited.BehavioralRules, edited.WorldFacts, edited.InitialState,
                 edited.Greeting, edited.PromptMode, edited.LegacySystemPrompt, avatarMediaId,
-                avatarPath is null, edited.AvatarDisplay);
+                avatarEditor.AvatarPath is null, edited.AvatarDisplay);
             var saved = editingId is null
                 ? await _api.CreateCharacterAsync(request)
                 : await _api.UpdateCharacterAsync(editingId, request);
