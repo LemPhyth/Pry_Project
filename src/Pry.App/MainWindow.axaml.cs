@@ -1230,23 +1230,20 @@ public sealed partial class MainWindow : Window
     {
         if (_character is null) return;
         TextBox Box(int height = 34) => new() { MinHeight = height, AcceptsReturn = height > 60, TextWrapping = TextWrapping.Wrap };
-        var cardName = Box(); var name = Box(); var userName = Box(); var identity = Box(80); var personality = Box(80); var speech = Box(70); var rules = Box(110); var facts = Box(110); var greeting = Box(70); var legacyPrompt = Box(430);
+        var cardName = Box(); var name = Box(); var greeting = Box(70);
+        var promptEditor = new CharacterPromptEditor();
         var avatarEditor = new CharacterAvatarEditor(ApplyImageDisplay);
         avatarEditor.Load(_character.AvatarPath, _character.AvatarDisplay);
         var cardList = new ListBox { Margin = new Thickness(12), Background = Brushes.Transparent }; var currentHint = new TextBlock { Foreground = ThemeAccentBrush(), TextWrapping = TextWrapping.Wrap };
         var newCard = new Button { Content = "＋ 新建角色卡", Margin = new Thickness(12, 0, 12, 12) };
-        var structuredButton = new Button { Content = "结构化" }; var legacyButton = new Button { Content = "Legacy" }; var mode = CharacterPromptMode.Structured; string? editingId = _character.Id; bool loading = false;
-        var structuredPanel = new StackPanel { Spacing = 8 }; var legacyPanel = new StackPanel { Spacing = 8 }; var form = new StackPanel { Margin = new Thickness(24), Spacing = 10 };
+        string? editingId = _character.Id; bool loading = false;
+        var form = new StackPanel { Margin = new Thickness(24), Spacing = 10 };
         void Field(Panel target, string label, Control control) { target.Children.Add(new TextBlock { Text = label, FontWeight = FontWeight.SemiBold }); target.Children.Add(control); }
-        Field(structuredPanel, "对用户的称呼", userName); Field(structuredPanel, "身份", identity); Field(structuredPanel, "人格", personality); Field(structuredPanel, "说话风格", speech); Field(structuredPanel, "行为规则（每行一条）", rules); Field(structuredPanel, "世界设定（每行一条）", facts);
-        legacyPanel.Children.Add(new TextBlock { Text = "完整 System Prompt", FontWeight = FontWeight.SemiBold }); legacyPanel.Children.Add(new TextBlock { Text = "内容原样作为角色设定；应用只追加记忆、当前状态和回复格式要求。", Foreground = Brush.Parse("#8EA2B5"), TextWrapping = TextWrapping.Wrap }); legacyPanel.Children.Add(legacyPrompt);
-        void SetMode(CharacterPromptMode value) { mode = value; structuredPanel.IsVisible = value == CharacterPromptMode.Structured; legacyPanel.IsVisible = value == CharacterPromptMode.Legacy; structuredButton.Classes.Set("primary", value == CharacterPromptMode.Structured); legacyButton.Classes.Set("primary", value == CharacterPromptMode.Legacy); }
-        structuredButton.Click += (_, _) => SetMode(CharacterPromptMode.Structured); legacyButton.Click += (_, _) => SetMode(CharacterPromptMode.Legacy);
         Field(form, "角色卡名称（显示名-用途-版本）", cardName); Field(form, "聊天显示名", name);
         form.Children.Add(new TextBlock { Text = "角色头像", FontWeight = FontWeight.SemiBold });
         form.Children.Add(new TextBlock { Text = "从原始图片直接解码；拖动调整取景，滚轮缩放，不会压缩或改写原图。", Foreground = Brush.Parse("#8EA2B5"), TextWrapping = TextWrapping.Wrap });
         form.Children.Add(avatarEditor.View);
-        form.Children.Add(currentHint); form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { structuredButton, legacyButton } }); form.Children.Add(structuredPanel); form.Children.Add(legacyPanel); Field(form, "开场白", greeting);
+        form.Children.Add(currentHint); form.Children.Add(promptEditor.View); Field(form, "开场白", greeting);
         var removeCard = new Button { Content = "删除角色卡" };
         var save = new Button { Content = "保存", Classes = { "primary" } }; var saveAndSwitch = new Button { Content = "保存并切换到此角色" }; form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Margin = new Thickness(0, 10, 0, 0), Children = { removeCard, saveAndSwitch, save } });
         var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), Background = Brushes.Transparent, Children = { new TextBlock { Text = "角色卡", FontSize = 21, FontWeight = FontWeight.SemiBold, Margin = new Thickness(16, 18, 12, 4) }, cardList, newCard } }; Grid.SetRow(cardList, 1); Grid.SetRow(newCard, 2);
@@ -1266,16 +1263,17 @@ public sealed partial class MainWindow : Window
         }
         void LoadCard(CharacterDefinition card)
         {
-            editingId = card.Id; cardName.Text = CharacterCardDraftService.Label(card); name.Text = card.Name; avatarEditor.Load(card.AvatarPath, card.AvatarDisplay); userName.Text = card.UserName; identity.Text = card.Identity; personality.Text = card.Personality; speech.Text = card.SpeechStyle; rules.Text = string.Join(Environment.NewLine, card.BehavioralRules); facts.Text = string.Join(Environment.NewLine, card.WorldFacts); greeting.Text = card.Greeting; legacyPrompt.Text = card.LegacySystemPrompt; currentHint.Text = card.Id == _character?.Id ? "这是当前聊天角色" : "正在编辑其他角色；保存不会自动切换当前聊天"; SetMode(card.PromptMode);
+            editingId = card.Id; cardName.Text = CharacterCardDraftService.Label(card); name.Text = card.Name; avatarEditor.Load(card.AvatarPath, card.AvatarDisplay); promptEditor.Load(card); greeting.Text = card.Greeting; currentHint.Text = card.Id == _character?.Id ? "这是当前聊天角色" : "正在编辑其他角色；保存不会自动切换当前聊天";
         }
         cardList.SelectionChanged += (_, _) => { if (!loading && cardList.SelectedItem is CharacterChoice choice) { var card = _characters.FirstOrDefault(x => x.Id == choice.Id); if (card is not null) LoadCard(card); } };
-        newCard.Click += (_, _) => { editingId = null; cardName.Text = "新角色-正式-v1"; name.Text = "新角色"; avatarEditor.Load(null, new ImageDisplayPreferences()); userName.Text = "你"; identity.Text = ""; personality.Text = ""; speech.Text = ""; rules.Text = ""; facts.Text = ""; greeting.Text = "你好。"; legacyPrompt.Text = ""; currentHint.Text = "尚未保存的新角色卡"; SetMode(CharacterPromptMode.Structured); loading = true; cardList.SelectedItem = null; loading = false; };
+        newCard.Click += (_, _) => { editingId = null; cardName.Text = "新角色-正式-v1"; name.Text = "新角色"; avatarEditor.Load(null, new ImageDisplayPreferences()); promptEditor.Reset(); greeting.Text = "你好。"; currentHint.Text = "尚未保存的新角色卡"; loading = true; cardList.SelectedItem = null; loading = false; };
         CharacterDefinition? ReadEditedCard()
         {
             var original = editingId is null ? _character : _characters.FirstOrDefault(x => x.Id == editingId) ?? _character;
             return CharacterCardDraftService.Build(original, new CharacterCardDraft(editingId, cardName.Text,
-                name.Text, avatarEditor.AvatarPath, avatarEditor.Display, mode, legacyPrompt.Text, userName.Text, identity.Text,
-                personality.Text, speech.Text, rules.Text, facts.Text, greeting.Text));
+                name.Text, avatarEditor.AvatarPath, avatarEditor.Display, promptEditor.Mode, promptEditor.LegacyPrompt,
+                promptEditor.UserName, promptEditor.Identity, promptEditor.Personality, promptEditor.SpeechStyle,
+                promptEditor.BehavioralRules, promptEditor.WorldFacts, greeting.Text));
         }
         async Task SaveAsync(bool switchToCard)
         {
