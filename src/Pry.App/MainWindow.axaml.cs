@@ -1681,39 +1681,11 @@ public sealed partial class MainWindow : Window
 
     private async Task ManageCustomModelsAsync(Window owner)
     {
-        var models = _preferences.CustomModels.ToList();
-        var window = new Window { Title = "自定义模型", Width = 700, Height = 500, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        var list = new ListBox(); void Refresh() => list.ItemsSource = models.Select(x => new ModelChoice(x.Id, $"{x.DisplayName} · {x.Provider} · {x.ModelName}")).ToArray(); Refresh();
-        var add = new Button { Content = "添加" }; var edit = new Button { Content = "编辑" }; var remove = new Button { Content = "删除" }; var done = new Button { Content = "完成", Classes = { "primary" } };
-        async Task<ModelProfile?> EditModelAsync(ModelProfile? source)
-        {
-            var name = new TextBox { Text = source?.DisplayName ?? "我的模型" }; var provider = new ComboBox { ItemsSource = new[] { "local-llama", "openai-compatible" }, SelectedItem = source?.Provider ?? "local-llama" };
-            var modelName = new TextBox { Text = source?.ModelName ?? "model" }; var baseUrl = new TextBox { Text = source?.BaseUrl ?? "http://127.0.0.1:8080/v1" }; var modelPath = new TextBox { Text = source?.ModelPath ?? "" }; var mmproj = new TextBox { Text = source?.MmprojPath ?? "" }; var vision = new CheckBox { Content = "支持图片输入", IsChecked = source?.Capabilities.Vision == true };
-            var save = new Button { Content = "保存", Classes = { "primary" }, HorizontalAlignment = HorizontalAlignment.Right }; var editor = new Window { Title = source is null ? "添加自定义模型" : "编辑自定义模型", Width = 580, Height = 610, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-            var panel = new StackPanel { Margin = new Thickness(24), Spacing = 8 }; void Field(string label, Control control) { panel.Children.Add(new TextBlock { Text = label }); panel.Children.Add(control); }
-            Field("显示名称", name); Field("类型", provider); Field("模型名称 / API model", modelName); Field("OpenAI-compatible 地址", baseUrl); Field("GGUF 路径（在线模型可留空）", modelPath); Field("多模态 mmproj 路径（可留空）", mmproj); panel.Children.Add(vision); panel.Children.Add(new TextBlock { Text = "在线 API 密钥通过环境变量 PRY_API_KEY_<模型ID> 提供，避免把密钥明文写进角色与偏好文件。", TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") }); panel.Children.Add(save); editor.Content = CreateThemedDialogSurface(new ScrollViewer { Content = panel });
-            ModelProfile? result = null; save.Click += (_, _) => { if (string.IsNullOrWhiteSpace(name.Text) || string.IsNullOrWhiteSpace(modelName.Text) || string.IsNullOrWhiteSpace(baseUrl.Text)) return; result = new ModelProfile { Id = source?.Id ?? $"custom-{Guid.NewGuid():N}", DisplayName = name.Text.Trim(), Provider = provider.SelectedItem?.ToString() ?? "local-llama", ModelName = modelName.Text.Trim(), BaseUrl = baseUrl.Text.Trim(), ModelPath = string.IsNullOrWhiteSpace(modelPath.Text) ? null : modelPath.Text.Trim(), MmprojPath = string.IsNullOrWhiteSpace(mmproj.Text) ? null : mmproj.Text.Trim(), Capabilities = new ModelCapabilities(Text: true, Vision: vision.IsChecked == true), ContextSize = source?.ContextSize ?? 4096, MaxOutputTokens = source?.MaxOutputTokens ?? 512, Temperature = source?.Temperature ?? .8, GpuLayers = source?.GpuLayers is > 0 ? source.GpuLayers : 999, ComputeDevice = source?.ComputeDevice ?? "auto-discrete", EnableThinking = source?.EnableThinking ?? true }; editor.Close(); };
-            await editor.ShowDialog(owner); return result;
-        }
-        static SaveCustomModelRequest ModelRequest(ModelProfile value) => new(value.DisplayName, value.Provider,
-            value.ModelName, value.BaseUrl, value.ModelPath, value.MmprojPath, value.Capabilities, value.ContextSize,
-            value.MaxOutputTokens, value.Temperature, value.GpuLayers, value.ComputeDevice, value.EnableThinking);
-        add.Click += async (_, _) =>
-        {
-            var result = await EditModelAsync(null); if (result is null) return;
-            var saved = await _api.CreateCustomModelAsync(ModelRequest(result));
-            models.Add(result with { Id = saved.Id }); Refresh();
-        };
-        edit.Click += async (_, _) =>
-        {
-            if (list.SelectedItem is not ModelChoice choice) return;
-            var index = models.FindIndex(x => x.Id == choice.Id); if (index < 0) return;
-            var result = await EditModelAsync(models[index]); if (result is null) return;
-            await _api.UpdateCustomModelAsync(choice.Id, ModelRequest(result)); models[index] = result; Refresh();
-        };
-        remove.Click += async (_, _) => { if (list.SelectedItem is not ModelChoice choice || !await ConfirmAsync(window, "删除自定义模型", $"确定从配置中删除“{choice.Name}”吗？模型文件不会被删除。")) return; await _api.DeleteCustomModelAsync(choice.Id); models.RemoveAll(x => x.Id == choice.Id); Refresh(); };
-        done.Click += (_, _) => { _preferences = _preferences with { CustomModels = models.ToArray() }; window.Close(); };
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { add, edit, remove, done } }; var modelLayout = new Grid { Margin = new Thickness(20), RowDefinitions = new RowDefinitions("Auto,*,Auto"), Children = { new TextBlock { Text = "内置模型不会出现在这里；自定义模型可长期保存多个。", TextWrapping = TextWrapping.Wrap }, list, buttons } }; window.Content = CreateThemedDialogSurface(modelLayout); Grid.SetRow(list, 1); Grid.SetRow(buttons, 2); await window.ShowDialog(owner);
+        var manager = new CustomModelManagerDialog(
+            _api, content => CreateThemedDialogSurface(content), ConfirmAsync);
+        var updated = await manager.ShowAsync(owner, _preferences.CustomModels);
+        if (updated is not null)
+            _preferences = _preferences with { CustomModels = updated.ToArray() };
     }
 
     private async Task EditStickerAsync(Window owner, StickerDefinition sticker)
@@ -1760,7 +1732,6 @@ public sealed partial class MainWindow : Window
                     || (mode.Equals("system", StringComparison.OrdinalIgnoreCase) && Application.Current?.ActualThemeVariant == ThemeVariant.Light);
         return Brush.Parse(light ? "#17212B" : "#F2F6FA");
     }
-    private sealed record ModelChoice(string Id, string Name) { public override string ToString() => Name; }
     private sealed record CharacterChoice(string Id, string Name) { public override string ToString() => Name; }
     private sealed record ConversationRoomChoice(ConversationRoom Room)
     {
