@@ -1229,29 +1229,17 @@ public sealed partial class MainWindow : Window
     private async Task OpenCharacterEditorAsync(Window? owner = null)
     {
         if (_character is null) return;
-        TextBox Box(int height = 34) => new() { MinHeight = height, AcceptsReturn = height > 60, TextWrapping = TextWrapping.Wrap };
-        var cardName = Box(); var name = Box(); var greeting = Box(70);
         var promptEditor = new CharacterPromptEditor();
         var avatarEditor = new CharacterAvatarEditor(ApplyImageDisplay);
         avatarEditor.Load(_character.AvatarPath, _character.AvatarDisplay);
-        var cardList = new ListBox { Margin = new Thickness(12), Background = Brushes.Transparent }; var currentHint = new TextBlock { Foreground = ThemeAccentBrush(), TextWrapping = TextWrapping.Wrap };
+        var shell = new CharacterEditorShell(
+            content => CreateThemedDialogSurface(content), ThemeAccentBrush(), avatarEditor, promptEditor);
+        var window = shell.Window;
+        var cardName = shell.CardName; var name = shell.Name; var greeting = shell.Greeting;
+        var cardList = shell.CardList; var currentHint = shell.CurrentHint;
         var cardListController = new CharacterCardListController(cardList);
-        var newCard = new Button { Content = "＋ 新建角色卡", Margin = new Thickness(12, 0, 12, 12) };
+        var newCard = shell.NewCard;
         string? editingId = _character.Id;
-        var form = new StackPanel { Margin = new Thickness(24), Spacing = 10 };
-        void Field(Panel target, string label, Control control) { target.Children.Add(new TextBlock { Text = label, FontWeight = FontWeight.SemiBold }); target.Children.Add(control); }
-        Field(form, "角色卡名称（显示名-用途-版本）", cardName); Field(form, "聊天显示名", name);
-        form.Children.Add(new TextBlock { Text = "角色头像", FontWeight = FontWeight.SemiBold });
-        form.Children.Add(new TextBlock { Text = "从原始图片直接解码；拖动调整取景，滚轮缩放，不会压缩或改写原图。", Foreground = Brush.Parse("#8EA2B5"), TextWrapping = TextWrapping.Wrap });
-        form.Children.Add(avatarEditor.View);
-        form.Children.Add(currentHint); form.Children.Add(promptEditor.View); Field(form, "开场白", greeting);
-        var removeCard = new Button { Content = "删除角色卡" };
-        var save = new Button { Content = "保存", Classes = { "primary" } }; var saveAndSwitch = new Button { Content = "保存并切换到此角色" }; form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Margin = new Thickness(0, 10, 0, 0), Children = { removeCard, saveAndSwitch, save } });
-        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), Background = Brushes.Transparent, Children = { new TextBlock { Text = "角色卡", FontSize = 21, FontWeight = FontWeight.SemiBold, Margin = new Thickness(16, 18, 12, 4) }, cardList, newCard } }; Grid.SetRow(cardList, 1); Grid.SetRow(newCard, 2);
-        var editorScroll = new ScrollViewer { Content = form, Background = Brushes.Transparent };
-        var divider = new Border { Width = 1, Background = Brush.Parse("#263746"), HorizontalAlignment = HorizontalAlignment.Right };
-        var layout = new Grid { ColumnDefinitions = new ColumnDefinitions("210,*"), Background = Brushes.Transparent, Children = { left, divider, editorScroll } }; Grid.SetColumn(editorScroll, 1);
-        var window = new Window { Title = "角色卡管理", Width = 920, Height = 740, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = CreateThemedDialogSurface(layout) };
         avatarEditor.ChooseButton.Click += async (_, _) =>
         {
             var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "选择角色头像", AllowMultiple = false, FileTypeFilter = [new FilePickerFileType("图片") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"] }] });
@@ -1304,7 +1292,7 @@ public sealed partial class MainWindow : Window
             }
             RefreshCharacterSelector(); RefreshList(edited.Id); currentHint.Text = edited.Id == _character?.Id ? "这是当前聊天角色" : "已保存；当前聊天角色没有改变"; RuntimeStatus.Text = "角色卡已保存";
         }
-        removeCard.Click += async (_, _) =>
+        shell.RemoveCard.Click += async (_, _) =>
         {
             if (editingId is null) { await ShowNoticeAsync("无法删除", "这张角色卡尚未保存。"); return; }
             var deletingId = editingId;
@@ -1323,7 +1311,7 @@ public sealed partial class MainWindow : Window
                 await ShowNoticeAsync("无法删除角色卡", ex.Message);
             }
         };
-        save.Click += async (_, _) => await SaveAsync(false); saveAndSwitch.Click += async (_, _) => await SaveAsync(true);
+        shell.Save.Click += async (_, _) => await SaveAsync(false); shell.SaveAndSwitch.Click += async (_, _) => await SaveAsync(true);
         RefreshList(_character.Id); LoadCard(_character); await window.ShowDialog(owner ?? this);
     }
 
