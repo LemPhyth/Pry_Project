@@ -49,7 +49,7 @@ public sealed partial class MainWindow : Window
     private double _lastChatMaskHeaderHeight = -1;
     private double _lastChatMaskComposerHeight = -1;
     private bool _changingConversation;
-    private readonly Dictionary<string, string> _conversationDrafts = new(StringComparer.Ordinal);
+    private readonly ConversationDraftStore _conversationDrafts = new();
     private readonly HashSet<string> _collapsedConversationFolders = new(StringComparer.Ordinal);
     private double _expandedSidebarWidth = 300;
     private bool _sidebarCollapsed;
@@ -209,7 +209,7 @@ public sealed partial class MainWindow : Window
         CharacterSelectorText.Text = choice.Name; CharacterSelectorPopup.IsOpen = false;
         var selected = _characters.FirstOrDefault(x => x.Id == choice.Id); if (selected is null || selected.Id == _character?.Id) return;
         _turnManager?.CancelAgentReply(); _character = selected; CharacterName.Text = selected.Name; ApplyTheme();
-        var created = await _api.CreateConversationAsync(selected.Id); _conversationId = created.Id; ResetMessagesPanel(); CreateTurnManager(); AddTextBubble(selected.Name, selected.Greeting, false);
+        var created = await _api.CreateConversationAsync(selected.Id); SwitchConversationInput(created.Id); ResetMessagesPanel(); CreateTurnManager(); AddTextBubble(selected.Name, selected.Greeting, false);
         _preferences = _preferences with { SelectedCharacterId = selected.Id, ActiveConversationId = _conversationId };
         await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(selected.Id, _conversationId, null, null, null, null, null));
         await RefreshConversationRoomsAsync();
@@ -329,11 +329,19 @@ public sealed partial class MainWindow : Window
         if (item.Tag is ConversationRoom room && room.Id != _conversationId) await OpenConversationRoomAsync(room);
     }
 
-    private async Task OpenConversationRoomAsync(ConversationRoom room)
+    private void SwitchConversationInput(string nextConversationId, bool preserveCurrent = true)
     {
-        _conversationDrafts[_conversationId] = InputBox.Text ?? "";
-        EndUserComposition(); _turnManager?.CancelAgentReply(); _conversationId = room.Id;
-        _suppressInputActivity = true; InputBox.Text = _conversationDrafts.GetValueOrDefault(_conversationId, ""); _suppressInputActivity = false;
+        var restored = _conversationDrafts.Switch(_conversationId, InputBox.Text, nextConversationId, preserveCurrent);
+        _conversationId = nextConversationId;
+        _suppressInputActivity = true;
+        InputBox.Text = restored;
+        _suppressInputActivity = false;
+    }
+
+    private async Task OpenConversationRoomAsync(ConversationRoom room, bool preserveCurrentDraft = true)
+    {
+        EndUserComposition(); _turnManager?.CancelAgentReply();
+        SwitchConversationInput(room.Id, preserveCurrentDraft);
         if (!string.IsNullOrWhiteSpace(room.CharacterId))
         {
             var roomCharacter = _characters.FirstOrDefault(x => x.Id == room.CharacterId);
@@ -412,11 +420,12 @@ public sealed partial class MainWindow : Window
     private async Task DeleteConversationAsync(ConversationRoom room)
     {
         if (!await ConfirmAsync(this, "删除对话房间", $"确定删除“{room.Title}”及其中全部消息吗？")) return;
-        _turnManager?.CancelAgentReply(); await _api.DeleteConversationAsync(room.Id); _conversationDrafts.Remove(room.Id);
+        _turnManager?.CancelAgentReply(); await _api.DeleteConversationAsync(room.Id); _conversationDrafts.Discard(room.Id);
         var remaining = await _api.GetConversationsAsync();
         if (room.Id == _conversationId)
         {
-            if (remaining.Count > 0) await OpenConversationRoomAsync(remaining[0]); else NewConversation_Click(null, new RoutedEventArgs());
+            if (remaining.Count > 0) await OpenConversationRoomAsync(remaining[0], preserveCurrentDraft: false);
+            else await CreateNewConversationAsync(preserveCurrentDraft: false);
         }
         else await RefreshConversationRoomsAsync();
     }
@@ -775,7 +784,7 @@ public sealed partial class MainWindow : Window
             }
             _attachmentDraft.RemoveRange(sentAttachments);
             RefreshAttachmentTray();
-            _conversationDrafts.Remove(_conversationId);
+            _conversationDrafts.Discard(_conversationId);
             if (text.Length > 0) AddTextBubble("你", text, true, messageId: messageId);
             if (stickerId is not null) AddStickerBubble("你", stickerId, true, messageId: messageId);
             foreach (var attachment in sentAttachments) AddAttachmentBubble("你", attachment, true, messageId);
@@ -1169,12 +1178,14 @@ public sealed partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(InputBox.Text)) EndUserComposition(); else BeginUserComposition(false);
         return Task.CompletedTask;
     }
-    private async void NewConversation_Click(object? sender, RoutedEventArgs e)
+    private async void NewConversation_Click(object? sender, RoutedEventArgs e) => await CreateNewConversationAsync();
+
+    private async Task CreateNewConversationAsync(bool preserveCurrentDraft = true)
     {
-        _conversationDrafts[_conversationId] = InputBox.Text ?? "";
         EndUserComposition(); _turnManager?.CancelAgentReply();
-        var conversation = await _api.CreateConversationAsync(_character?.Id); _conversationId = conversation.Id;
-        _suppressInputActivity = true; InputBox.Text = ""; _suppressInputActivity = false; ResetMessagesPanel(); CreateTurnManager();
+        var conversation = await _api.CreateConversationAsync(_character?.Id);
+        SwitchConversationInput(conversation.Id, preserveCurrentDraft);
+        ResetMessagesPanel(); CreateTurnManager();
         if (_character is not null) AddTextBubble(_character.Name, _character.Greeting, false);
         _preferences = _preferences with { ActiveConversationId = _conversationId };
         await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(_character?.Id, _conversationId, null, null, null, null, null));
@@ -1346,7 +1357,7 @@ public sealed partial class MainWindow : Window
             if (_character?.Id == edited.Id || switchToCard) { _character = edited; CharacterName.Text = edited.Name; ApplyTheme(); CreateTurnManager(); }
             if (switchToCard)
             {
-                var conversation = await _api.CreateConversationAsync(edited.Id); _conversationId = conversation.Id;
+                var conversation = await _api.CreateConversationAsync(edited.Id); SwitchConversationInput(conversation.Id);
                 ResetMessagesPanel(); AddTextBubble(edited.Name, edited.Greeting, false);
                 _preferences = _preferences with { SelectedCharacterId = edited.Id, ActiveConversationId = _conversationId };
                 await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(edited.Id, _conversationId, null, null, null, null, null));
