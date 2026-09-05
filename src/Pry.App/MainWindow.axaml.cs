@@ -1235,8 +1235,9 @@ public sealed partial class MainWindow : Window
         var avatarEditor = new CharacterAvatarEditor(ApplyImageDisplay);
         avatarEditor.Load(_character.AvatarPath, _character.AvatarDisplay);
         var cardList = new ListBox { Margin = new Thickness(12), Background = Brushes.Transparent }; var currentHint = new TextBlock { Foreground = ThemeAccentBrush(), TextWrapping = TextWrapping.Wrap };
+        var cardListController = new CharacterCardListController(cardList);
         var newCard = new Button { Content = "＋ 新建角色卡", Margin = new Thickness(12, 0, 12, 12) };
-        string? editingId = _character.Id; bool loading = false;
+        string? editingId = _character.Id;
         var form = new StackPanel { Margin = new Thickness(24), Spacing = 10 };
         void Field(Panel target, string label, Control control) { target.Children.Add(new TextBlock { Text = label, FontWeight = FontWeight.SemiBold }); target.Children.Add(control); }
         Field(form, "角色卡名称（显示名-用途-版本）", cardName); Field(form, "聊天显示名", name);
@@ -1259,14 +1260,14 @@ public sealed partial class MainWindow : Window
         };
         void RefreshList(string? selectId)
         {
-            loading = true; var items = _characters.Select(x => new CharacterChoice(x.Id, CharacterCardDraftService.Label(x) + (x.Id == _character?.Id ? "  · 当前" : ""))).ToArray(); cardList.ItemsSource = items; cardList.SelectedItem = items.FirstOrDefault(x => x.Id == selectId); loading = false;
+            cardListController.Refresh(_characters, _character?.Id, selectId);
         }
         void LoadCard(CharacterDefinition card)
         {
             editingId = card.Id; cardName.Text = CharacterCardDraftService.Label(card); name.Text = card.Name; avatarEditor.Load(card.AvatarPath, card.AvatarDisplay); promptEditor.Load(card); greeting.Text = card.Greeting; currentHint.Text = card.Id == _character?.Id ? "这是当前聊天角色" : "正在编辑其他角色；保存不会自动切换当前聊天";
         }
-        cardList.SelectionChanged += (_, _) => { if (!loading && cardList.SelectedItem is CharacterChoice choice) { var card = _characters.FirstOrDefault(x => x.Id == choice.Id); if (card is not null) LoadCard(card); } };
-        newCard.Click += (_, _) => { editingId = null; cardName.Text = "新角色-正式-v1"; name.Text = "新角色"; avatarEditor.Load(null, new ImageDisplayPreferences()); promptEditor.Reset(); greeting.Text = "你好。"; currentHint.Text = "尚未保存的新角色卡"; loading = true; cardList.SelectedItem = null; loading = false; };
+        cardListController.Selected += LoadCard;
+        newCard.Click += (_, _) => { editingId = null; cardName.Text = "新角色-正式-v1"; name.Text = "新角色"; avatarEditor.Load(null, new ImageDisplayPreferences()); promptEditor.Reset(); greeting.Text = "你好。"; currentHint.Text = "尚未保存的新角色卡"; cardListController.ClearSelection(); };
         CharacterDefinition? ReadEditedCard()
         {
             var original = editingId is null ? _character : _characters.FirstOrDefault(x => x.Id == editingId) ?? _character;
