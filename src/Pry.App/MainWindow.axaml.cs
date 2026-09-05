@@ -1645,38 +1645,11 @@ public sealed partial class MainWindow : Window
 
     private async Task OpenStickerManagerAsync(Window? owner = null)
     {
-        var window = new Window { Title = "管理表情包", Width = 760, Height = 570, Background = Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner }; var grid = new WrapPanel { Orientation = Orientation.Horizontal, ItemWidth = 112, ItemHeight = 132 }; StickerDefinition? selected = null;
-        var import = new Button { Content = "导入" }; var edit = new Button { Content = "编辑" }; var remove = new Button { Content = "删除" }; var close = new Button { Content = "完成" };
-        void Refresh()
-        {
-            grid.Children.Clear();
-            foreach (var sticker in _stickers)
-            {
-                Control preview; try { preview = new Image { Source = new Bitmap(sticker.FilePath), Width = 88, Height = 88, Stretch = Stretch.Uniform }; } catch { preview = new TextBlock { Text = "无法预览", Width = 88, Height = 88 }; }
-                var button = new Button { Width = 104, Height = 124, Padding = new Thickness(5), BorderBrush = sticker.Id == selected?.Id ? ThemeAccentBrush() : Brush.Parse("#344452"), BorderThickness = new Thickness(sticker.Id == selected?.Id ? 2 : 1), Content = new StackPanel { Spacing = 4, Children = { preview, new TextBlock { Text = sticker.Name, MaxWidth = 92, TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Center }, new TextBlock { Text = sticker.Source == StickerSource.BuiltIn ? "内置" : sticker.InteractionRole, FontSize = 10, Foreground = Brush.Parse("#7F91A4"), HorizontalAlignment = HorizontalAlignment.Center } } } };
-                button.Click += (_, _) => { selected = sticker; Refresh(); }; grid.Children.Add(button);
-            }
-        }
-        Refresh();
-        import.Click += async (_, _) =>
-        {
-            var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "导入表情包", AllowMultiple = true, FileTypeFilter = [new FilePickerFileType("表情图片") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"] }] });
-            foreach (var file in files)
-            {
-                var path = file.TryGetLocalPath(); if (path is null) continue;
-                await using var content = File.OpenRead(path);
-                var media = await _api.UploadAsync(content, Path.GetFileName(path), ImageContentType(path));
-                await _api.ImportStickerAsync(media.Id, Path.GetFileNameWithoutExtension(path), []);
-            }
-            await ReloadStickerProjectionAsync(); Refresh();
-        };
-        remove.Click += async (_, _) => { if (selected is { Source: StickerSource.User } && await ConfirmAsync(window, "删除表情", $"确定删除“{selected.Name}”吗？这会同时删除应用数据目录里的副本。")) { await _api.DeleteStickerAsync(selected.Id); await ReloadStickerProjectionAsync(); selected = null; Refresh(); } };
-        edit.Click += async (_, _) => { if (selected is { Source: StickerSource.User }) { await EditStickerAsync(window, selected); selected = _stickers.FirstOrDefault(x => x.Id == selected.Id); Refresh(); } }; close.Click += (_, _) => window.Close();
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 9, HorizontalAlignment = HorizontalAlignment.Right, Children = { import, edit, remove, close } };
-        var scroll = new ScrollViewer { Content = grid, Background = Brushes.Transparent };
-        var stickerCard = CreateCompactDialogTextCard(scroll); stickerCard.Padding = new Thickness(12);
-        var root = new Grid { Margin = new Thickness(20), RowDefinitions = new RowDefinitions("Auto,*,Auto"), Background = Brushes.Transparent, RowSpacing = 12, Children = { new TextBlock { Text = "点击缩略图选中表情。你和角色都可以使用启用的表情，互动作用会参与打断判断。", TextWrapping = TextWrapping.Wrap }, stickerCard, buttons } };
-        window.Content = CreateThemedDialogSurface(root); Grid.SetRow(stickerCard, 1); Grid.SetRow(buttons, 2); await window.ShowDialog(owner ?? this);
+        await new StickerManagerDialog(
+            _api, () => _stickers, ReloadStickerProjectionAsync,
+            content => CreateThemedDialogSurface(content), CreateCompactDialogTextCard,
+            CreateCompactDialogLayout, ConfirmAsync, ThemeAccentBrush, ImageContentType)
+            .ShowAsync(owner ?? this);
     }
 
     private async Task ManageCustomModelsAsync(Window owner)
@@ -1686,15 +1659,6 @@ public sealed partial class MainWindow : Window
         var updated = await manager.ShowAsync(owner, _preferences.CustomModels);
         if (updated is not null)
             _preferences = _preferences with { CustomModels = updated.ToArray() };
-    }
-
-    private async Task EditStickerAsync(Window owner, StickerDefinition sticker)
-    {
-        var name = new TextBox { Text = sticker.Name }; var tags = new TextBox { Text = string.Join("，", sticker.Emotions) }; var role = new ComboBox { ItemsSource = new[] { "reaction", "backchannel", "topic" }, SelectedItem = sticker.InteractionRole }; var backchannel = new CheckBox { Content = "这个表情通常表示“我在听”", IsChecked = sticker.LikelyBackchannel }; var save = new Button { Content = "保存", HorizontalAlignment = HorizontalAlignment.Right };
-        var editor = new Window { Title = "编辑表情", Width = 480, Height = 430, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        save.Click += async (_, _) => { var values = (tags.Text ?? "").Split(['，', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries); await _api.UpdateStickerAsync(sticker.Id, new UpdateStickerRequest(name.Text ?? sticker.Name, values, role.SelectedItem?.ToString() ?? "reaction", backchannel.IsChecked == true)); await ReloadStickerProjectionAsync(); editor.Close(); };
-        var form = new StackPanel { Spacing = 10, Children = { new TextBlock { Text = "名称" }, name, new TextBlock { Text = "情绪标签" }, tags, new TextBlock { Text = "互动作用" }, role, backchannel } };
-        editor.Content = CreateThemedDialogSurface(CreateCompactDialogLayout(CreateCompactDialogTextCard(form), save)); await editor.ShowDialog(owner);
     }
 
     private Task ShowNoticeAsync(string title, string message) => _dialogs.ShowNoticeAsync(this, title, message);
