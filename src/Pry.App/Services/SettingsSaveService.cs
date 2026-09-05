@@ -15,23 +15,24 @@ public sealed class SettingsSaveService(PryBackendClient api, Func<string, strin
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(candidate.ActiveModelId);
         var theme = candidate.Theme;
-        await api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(
+        var preferences = new UpdateClientPreferencesRequest(
             candidate.SelectedCharacterId, conversationId, candidate.UserProfile, candidate.DesktopPet,
             candidate.Shortcuts, candidate.TurnTakingOverride,
             new ClientThemePreferences(theme.ThemeMode, theme.AccentColor, theme.UseGlassEffects,
                 theme.LiveSidebarResize, theme.BackgroundDimOpacity, theme.BackgroundImageOpacity,
                 theme.BackgroundBlurMode, theme.BackgroundBlurRadius, theme.AvatarSize,
-                theme.BubbleFontSize, theme.BubbleMaxWidth, theme.BubbleSpacing)), token);
+                theme.BubbleFontSize, theme.BubbleMaxWidth, theme.BubbleSpacing));
 
         var backgroundId = await UploadAsync(theme.BackgroundImagePath, warning, token);
         var avatarId = await UploadAsync(theme.UserAvatarPath, warning, token);
-        await api.UpdateAppearanceAsync(new UpdateAppearanceMediaRequest(backgroundId,
+        var appearance = new UpdateAppearanceMediaRequest(backgroundId,
             theme.BackgroundImagePath is null, avatarId, theme.UserAvatarPath is null,
             DisplayFor(theme.BackgroundImagePath, theme.BackgroundDisplays),
-            DisplayFor(theme.UserAvatarPath, theme.UserAvatarDisplays)), token);
-        return await api.UpdateModelSelectionAsync(new UpdateModelSelectionRequest(
+            DisplayFor(theme.UserAvatarPath, theme.UserAvatarDisplays));
+        var models = new UpdateModelSelectionRequest(
             candidate.ActiveModelId, candidate.ActiveVisionModelId, candidate.ActiveSpeechModelId,
-            candidate.ModelTunings), token);
+            candidate.ModelTunings);
+        return (await api.SaveSettingsAsync(new SaveSettingsRequest(preferences, appearance, models), token)).Models;
     }
 
     private async Task<string?> UploadAsync(string? path, Action<string> warning, CancellationToken token)

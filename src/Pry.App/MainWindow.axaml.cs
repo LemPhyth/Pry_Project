@@ -149,6 +149,7 @@ public sealed partial class MainWindow : Window
         try
         {
             if (!await _api.IsHealthyAsync()) throw new InvalidOperationException("本地后端未就绪。");
+            _attachmentDraft.ApplyPolicy(await _api.GetMediaPolicyAsync());
             await LoadBackendProjectionAsync();
             if (!string.IsNullOrWhiteSpace(_preferences.ActiveConversationId)) _conversationId = _preferences.ActiveConversationId;
             ApplyTheme();
@@ -1125,8 +1126,9 @@ public sealed partial class MainWindow : Window
         try
         {
             var profile = GetSpeechProfile() ?? throw new InvalidOperationException("请先在设置中选择语音识别模型。");
-            if (profile.Provider == "sherpa-onnx" && (!File.Exists(Path.Combine(profile.ModelPath, "model.int8.onnx")) || !File.Exists(Path.Combine(profile.ModelPath, "tokens.txt"))))
-                throw new FileNotFoundException("本地 SenseVoice 模型文件不完整。", profile.ModelPath);
+            var availability = (await _api.GetSpeechModelsAsync()).FirstOrDefault(x => x.Id == profile.Id);
+            if (availability is null || !availability.Available)
+                throw new InvalidOperationException("所选语音识别模型当前不可用，请检查后端模型配置。");
             if (WaveInEvent.DeviceCount == 0) throw new InvalidOperationException("没有检测到可用麦克风。");
             var tempDirectory = Path.Combine(_dataDirectory, "temp"); Directory.CreateDirectory(tempDirectory);
             _recordingPath = Path.Combine(tempDirectory, $"voice-{Guid.NewGuid():N}.wav");

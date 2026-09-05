@@ -178,6 +178,25 @@ public sealed class ApplicationServiceTests
         Assert.Equal("/api/v1/appearance/background", appearance.BackgroundUrl);
         Assert.Null(appearance.UserAvatarUrl);
         Assert.True(File.Exists(service.GetAppearancePath("background")));
+
+        await Assert.ThrowsAsync<ApiValidationException>(() => service.UpdatePreferencesAsync(
+            new UpdateClientPreferencesRequest(null, null, null, null, new ShortcutSettings
+            {
+                Send = "Enter", SendImmediately = "Enter"
+            }, null, null), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ApiValidationException>(() => service.UpdatePreferencesAsync(
+            new UpdateClientPreferencesRequest(null, null, null, null, null, new TurnTakingSettings
+            {
+                MinReplyMessages = 5, MaxReplyMessages = 2
+            }, null), TestContext.Current.CancellationToken));
+
+        await Assert.ThrowsAsync<ApiValidationException>(() => service.SaveSettingsAsync(new SaveSettingsRequest(
+            new UpdateClientPreferencesRequest(null, null,
+                new UserProfilePreferences { DisplayName = "不应保存", Signature = "" }, null, null, null, null),
+            new UpdateAppearanceMediaRequest(null, false, null, false, null, null),
+            new UpdateModelSelectionRequest("missing-model", null, null, null)),
+            TestContext.Current.CancellationToken));
+        Assert.Equal("测试用户", service.GetPreferences().UserProfile.DisplayName);
     }
 
     [Fact]

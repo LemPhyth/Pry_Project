@@ -1,4 +1,5 @@
 using Pry.App.Services;
+using Pry.Contracts;
 using Pry.Core.Models;
 using Xunit;
 
@@ -51,6 +52,30 @@ public sealed class AttachmentDraftServiceTests
 
             service.RemoveRange([sent]);
             Assert.Empty(service.Items);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public void Backend_policy_replaces_client_fallback_limits()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"pry-attachments-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var first = Write(directory, "first.txt", [1, 2]);
+            var second = Write(directory, "second.txt", [3, 4]);
+            var service = new AttachmentDraftService(maximumCount: 6, warningBytes: 100);
+            service.ApplyPolicy(new MediaUploadPolicyResponse(1, null, 1));
+
+            var result = service.AddPaths([first, second]);
+
+            Assert.Single(service.Items);
+            Assert.Contains("最多同时添加 1 个附件", Assert.Single(result.Rejected));
+            Assert.Contains("较大", Assert.Single(result.Warnings));
         }
         finally
         {

@@ -61,6 +61,10 @@ public sealed record UpdateModelSelectionRequest(string ActiveModelId, string? A
 public sealed record UpdateAppearanceMediaRequest(string? BackgroundMediaId, bool ClearBackground,
     string? UserAvatarMediaId, bool ClearUserAvatar, ImageDisplayPreferences? BackgroundDisplay,
     ImageDisplayPreferences? UserAvatarDisplay);
+public sealed record SaveSettingsRequest(UpdateClientPreferencesRequest Preferences,
+    UpdateAppearanceMediaRequest Appearance, UpdateModelSelectionRequest Models);
+public sealed record SaveSettingsResponse(ClientPreferencesResponse Preferences,
+    IReadOnlyList<ModelProfileResponse> Models);
 public sealed record SaveCustomModelRequest(string DisplayName, string Provider, string ModelName, string BaseUrl,
     string? LocalModelPath, string? LocalMmprojPath, ModelCapabilities Capabilities, int ContextSize,
     int MaxOutputTokens, double Temperature, int GpuLayers, string ComputeDevice, bool EnableThinking);

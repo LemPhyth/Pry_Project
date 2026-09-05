@@ -144,7 +144,7 @@
 约束：
 
 - 不设置单文件硬上限；超过 10 MiB 时 JSON `warnings` 返回中文提示，响应头 `X-Pry-Upload-Warning` 返回稳定 ASCII 码 `large-file`。客户端应先读取 `GET /api/v1/media/policy`，在开始传输前根据 `warningThresholdBytes` 提醒用户。
-- 每个聊天回合最多引用 6 个附件。
+- 每个聊天回合最多引用 `GET /api/v1/media/policy` 返回的 `maximumAttachmentsPerTurn` 个附件（当前为 6）。客户端不得硬编码不同的数量。
 - 支持 PNG、JPEG、GIF、WebP、UTF-8 TXT/MD/CSV 和有效 DOCX。
 - 后端同时检查扩展名和文件签名；不信任客户端声明的 Content-Type。
 - 原始名称只用于显示与下载，磁盘文件名由服务端随机生成。
@@ -221,10 +221,35 @@
 - `GET /api/v1/preferences`：返回用户资料、快捷键、回合节奏、桌宠偏好和不含路径的主题设置。
 - `PATCH /api/v1/preferences`：局部更新上述偏好。
 - `PUT /api/v1/appearance/media`：用托管媒体 ID 设置或清除背景及用户头像。
+- `PUT /api/v1/settings`：原子应用偏好、外观媒体引用和模型选择，供“保存全部设置”使用。
 - `GET /api/v1/appearance/background`
 - `GET /api/v1/appearance/user-avatar`
 
 背景和头像 URL 仅在资源存在时返回。客户端不能通过这些接口设置任意磁盘路径。
+
+`PUT /api/v1/settings` 请求由三个对象组成：
+
+```json
+{
+  "preferences": { "selectedCharacterId": "pry", "activeConversationId": "room-id" },
+  "appearance": {
+    "backgroundMediaId": null,
+    "clearBackground": false,
+    "userAvatarMediaId": null,
+    "clearUserAvatar": false
+  },
+  "models": {
+    "activeModelId": "qwen3-1.7b-local",
+    "activeVisionModelId": null,
+    "activeSpeechModelId": "sensevoice-local",
+    "modelTunings": {}
+  }
+}
+```
+
+后端会先验证三个部分并解析媒体引用，然后只写入一次偏好并重载运行时；任何验证失败都不会应用其中任一配置。成功返回最终 `preferences` 和 `models` 投影。上传媒体是独立操作，未被设置引用的上传资源不会自动绑定到配置。
+
+快捷键格式、快捷键冲突、回复数量关系、打字延迟关系、桌宠缩放及其他数值范围均由后端最终校验。客户端可以重复这些检查以即时提示，但不得将客户端校验视为安全或一致性边界。
 
 ## 模型配置
 
@@ -259,6 +284,7 @@
 
 录音由客户端完成，然后以 WAV 上传到媒体 API。识别由后端串行执行，返回 `text` 和实际 `modelId`；音频资源不能作为聊天附件。首版保持现有能力，只支持 16-bit PCM WAV，不引入隐式转码。
 本地 `sherpa-onnx` 配置要求绝对模型目录，并验证 `model.int8.onnx` 与 `tokens.txt`；在线转写地址必须使用 HTTPS，回环开发地址可以使用 HTTP。响应不返回目录、服务地址或密钥。
+客户端必须使用语音模型响应的 `available` 字段决定能否开始录音，不得尝试读取后端模型目录。
 
 ## 尚未冻结的接口
 

@@ -1,14 +1,22 @@
+using Pry.Contracts;
 using Pry.Core.Models;
 
 namespace Pry.App.Services;
 
-public sealed class AttachmentDraftService(int maximumCount = 12, long warningBytes = 10 * 1024 * 1024)
+public sealed class AttachmentDraftService(int maximumCount = 6, long warningBytes = 10 * 1024 * 1024)
 {
     private readonly List<ChatAttachment> _items = [];
-    private readonly int _maximumCount = Math.Max(1, maximumCount);
-    private readonly long _warningBytes = Math.Max(1, warningBytes);
+    private int _maximumCount = Math.Max(1, maximumCount);
+    private long _warningBytes = Math.Max(1, warningBytes);
 
     public IReadOnlyList<ChatAttachment> Items => _items;
+
+    public void ApplyPolicy(MediaUploadPolicyResponse policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        _maximumCount = Math.Max(1, policy.MaximumAttachmentsPerTurn);
+        _warningBytes = Math.Max(1, policy.WarningThresholdBytes);
+    }
 
     public AttachmentDraftResult AddPaths(IEnumerable<string> paths)
     {
