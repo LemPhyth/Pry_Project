@@ -3,7 +3,8 @@
         x:Class="Pry.App.PryMessengerWindow"
         Width="1180" Height="780" MinWidth="920" MinHeight="620"
         Title="Pry" SystemDecorations="None" Background="#0C111B"
-        ExtendClientAreaToDecorationsHint="True" ExtendClientAreaChromeHints="NoChrome">
+        ExtendClientAreaToDecorationsHint="True" ExtendClientAreaChromeHints="NoChrome"
+        KeyDown="Window_KeyDown">
   <Window.Styles>
     <Style Selector="Button.nav">
       <Setter Property="Width" Value="48"/><Setter Property="Height" Value="48"/>

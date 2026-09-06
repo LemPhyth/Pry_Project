@@ -225,7 +225,55 @@ public sealed partial class PryMessengerWindow : Window
                 new TextBlock { Text = message.CreatedAt.LocalDateTime.ToString("HH:mm"), Foreground = Brush.Parse("#596A80"), FontSize = 9, HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left }
             }
         };
+        stack.ContextMenu = CreateMessageMenu(message, isUser);
         return stack;
+    }
+
+    private ContextMenu CreateMessageMenu(ChatMessage message, bool isUser)
+    {
+        var primary = new MenuItem { Header = isUser ? "从这里重新编辑" : "重新生成这条回复" };
+        var remove = new MenuItem { Header = "删除消息" };
+        primary.Click += async (_, _) =>
+        {
+            if (_conversationId is null || _sending) return;
+            try
+            {
+                if (isUser)
+                {
+                    await _api.DeleteMessageAsync(_conversationId, message.Id);
+                    ComposerTextBox.Text = message.Content;
+                    ComposerTextBox.CaretIndex = message.Content.Length;
+                    ComposerTextBox.Focus();
+                    ConversationStatusText.Text = "已回到这条消息 · Ctrl+Z 可撤销";
+                }
+                else
+                {
+                    SetSending(true);
+                    await _api.RegenerateAsync(_conversationId, message.Id);
+                    ConversationStatusText.Text = "Pry 正在重新回复…";
+                }
+                await ReloadMessagesAsync(_conversationId, _roomRevision);
+                await RefreshRoomsWithoutSwitchAsync();
+            }
+            catch (Exception ex)
+            {
+                SetSending(false);
+                await ShowNoticeAsync(isUser ? "无法编辑这条消息" : "无法重新生成回复", ex.Message);
+            }
+        };
+        remove.Click += async (_, _) =>
+        {
+            if (_conversationId is null || _sending) return;
+            try
+            {
+                var result = await _api.DeleteMessageAsync(_conversationId, message.Id);
+                await ReloadMessagesAsync(_conversationId, _roomRevision);
+                await RefreshRoomsWithoutSwitchAsync();
+                ConversationStatusText.Text = result.CanUndo ? "消息已删除 · Ctrl+Z 可撤销" : "消息已删除";
+            }
+            catch (Exception ex) { await ShowNoticeAsync("无法删除消息", ex.Message); }
+        };
+        return new ContextMenu { ItemsSource = new[] { primary, remove } };
     }
 
     private void StartEventStream(string roomId, long revision)
@@ -336,6 +384,24 @@ public sealed partial class PryMessengerWindow : Window
         if (e.Key != Key.Enter || e.KeyModifiers.HasFlag(KeyModifiers.Shift)) return;
         e.Handled = true;
         await SendAsync();
+    }
+
+    private async void Window_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Z || !e.KeyModifiers.HasFlag(KeyModifiers.Control) || _conversationId is null || _sending) return;
+        e.Handled = true;
+        try
+        {
+            await _api.UndoAsync(_conversationId);
+            await ReloadMessagesAsync(_conversationId, _roomRevision);
+            await RefreshRoomsWithoutSwitchAsync();
+            ConversationStatusText.Text = "已撤销上一条消息操作";
+        }
+        catch (PryBackendException ex) when (ex.Code == "validation_error")
+        {
+            ConversationStatusText.Text = "没有可撤销的消息操作";
+        }
+        catch (Exception ex) { await ShowNoticeAsync("无法撤销", ex.Message); }
     }
 
     private async void CancelReply_Click(object? sender, RoutedEventArgs e)
