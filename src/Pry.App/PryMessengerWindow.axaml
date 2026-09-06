@@ -87,7 +87,7 @@
 
       <Grid Grid.Column="2" Background="#0E1623" RowDefinitions="74,*,Auto">
         <Border Grid.Row="0" Background="#111927" BorderBrush="#202A3C" BorderThickness="0,0,0,1">
-          <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+          <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
             <Border x:Name="CharacterAvatar" Width="46" Height="46" CornerRadius="15" Background="#6C63FF" ClipToBounds="True" VerticalAlignment="Center">
               <Grid><TextBlock x:Name="CharacterAvatarFallback" Text="P" Foreground="White" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image x:Name="CharacterAvatarImage" IsVisible="False" Stretch="UniformToFill"/></Grid>
             </Border>
@@ -96,6 +96,7 @@
               <TextBlock x:Name="ConversationStatusText" Text="等待连接" Foreground="#7F8EA5" FontSize="11"/>
             </StackPanel>
             <Button x:Name="CancelReplyButton" Grid.Column="2" IsVisible="False" Content="停止回复" Click="CancelReply_Click" VerticalAlignment="Center"/>
+            <Button x:Name="ConversationMenuButton" Grid.Column="3" Classes="icon" Content="•••" Click="ConversationMenu_Click" ToolTip.Tip="会话设置" VerticalAlignment="Center"/>
           </Grid>
         </Border>
 

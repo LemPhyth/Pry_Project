@@ -345,6 +345,87 @@ public sealed partial class PryMessengerWindow : Window
         catch (Exception ex) { await ShowNoticeAsync("无法停止回复", ex.Message); }
     }
 
+    private async void ConversationMenu_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_conversationId is null || _rooms.FirstOrDefault(item => item.Id == _conversationId) is not { } room) return;
+
+        var window = CreateDialog("会话设置", 520, 400);
+        var titleInput = new TextBox { Text = room.Title, Watermark = "会话名称", MaxLength = 80 };
+        var save = new Button { Content = "保存名称", Classes = { "primary" }, Width = 100 };
+        var pin = new Button { Content = room.IsPinned ? "取消置顶" : "置顶会话", Width = 100 };
+        var delete = new Button { Content = "删除会话", Foreground = Brush.Parse("#FF9A9A"), Width = 100 };
+        var close = new Button { Content = "完成", Width = 80 };
+        var deleteArmed = false;
+
+        save.Click += async (_, _) =>
+        {
+            var title = titleInput.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(title)) { titleInput.Focus(); return; }
+            await RunConversationMutationAsync(window, "无法保存名称", async () =>
+            {
+                await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(title, null, null));
+                await RefreshRoomsWithoutSwitchAsync();
+                window.Close();
+            });
+        };
+        pin.Click += async (_, _) => await RunConversationMutationAsync(window, "无法更改置顶状态", async () =>
+        {
+            await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, !room.IsPinned, null));
+            await RefreshRoomsWithoutSwitchAsync();
+            window.Close();
+        });
+        delete.Click += async (_, _) =>
+        {
+            if (!deleteArmed)
+            {
+                deleteArmed = true;
+                delete.Content = "再次点击确认";
+                delete.Background = Brush.Parse("#6E2932");
+                return;
+            }
+            await RunConversationMutationAsync(window, "无法删除会话", async () =>
+            {
+                _eventCancellation?.Cancel();
+                await _api.DeleteConversationAsync(room.Id);
+                _conversationId = null;
+                window.Close();
+                await RefreshRoomsAsync();
+                if (_conversationId is null) await CreateConversationAsync();
+            });
+        };
+        close.Click += (_, _) => window.Close();
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right,
+            Children = { delete, pin, save, close }
+        };
+        var panel = new StackPanel
+        {
+            Margin = new Thickness(22), Spacing = 16,
+            Children =
+            {
+                new TextBlock { Text = "会话设置", FontSize = 22, FontWeight = FontWeight.SemiBold },
+                new TextBlock { Text = "名称", Foreground = Brush.Parse("#8492A8"), FontSize = 11 },
+                titleInput,
+                new TextBlock { Text = "删除后，该会话与其中的消息将无法从界面恢复。", Foreground = Brush.Parse("#78879C"), TextWrapping = TextWrapping.Wrap },
+                actions
+            }
+        };
+        window.Content = CreateThemedDialogSurface(panel);
+        await window.ShowDialog(this);
+    }
+
+    private async Task RunConversationMutationAsync(Window owner, string errorTitle, Func<Task> action)
+    {
+        try { await action(); }
+        catch (Exception ex)
+        {
+            owner.Close();
+            await ShowNoticeAsync(errorTitle, ex.Message);
+        }
+    }
+
     private async void Attach_Click(object? sender, RoutedEventArgs e)
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "添加到消息", AllowMultiple = true });
