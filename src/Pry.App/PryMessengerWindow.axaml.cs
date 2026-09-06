@@ -20,7 +20,6 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
 {
     private readonly PryBackendClient _api;
     private readonly List<ConversationRoom> _rooms = [];
-    private readonly List<ConversationFolder> _folders = [];
     private readonly List<CharacterSummaryResponse> _characters = [];
     private readonly List<MediaAssetResponse> _attachments = [];
     private readonly List<StickerResponse> _stickers = [];
@@ -93,7 +92,6 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
             await ApplyBackgroundAsync();
             ApplyChromeMaterial();
             _characters.AddRange(await _api.GetCharactersAsync());
-            _folders.AddRange(await _api.GetFoldersAsync());
             _stickers.AddRange(await _api.GetStickersAsync());
             _character = FindCharacter(_preferences.SelectedCharacterId) ?? _characters.FirstOrDefault();
             await ApplyCharacterAsync();
@@ -190,12 +188,15 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
             }
         };
+        var title = new TextBlock { Text = room.Title, Foreground = Brush.Parse("#ECF0F8"), FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
+        var titleEditor = new TextBox { Text = room.Title, IsVisible = false, MaxLength = 80, Padding = new Thickness(5, 1), MinHeight = 26 };
+        var titleArea = new Grid { Children = { title, titleEditor } };
         var identity = new StackPanel
         {
             Spacing = 4,
             Children =
             {
-                new TextBlock { Text = room.Title, Foreground = Brush.Parse("#ECF0F8"), FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis },
+                titleArea,
                 new TextBlock { Text = RoomSubtitle(room), Foreground = Brush.Parse("#728198"), FontSize = 11 }
             }
         };
@@ -212,11 +213,41 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
         Grid.SetColumn(identity, 1); Grid.SetColumn(meta, 2);
         layout.Children.Add(avatar); layout.Children.Add(identity); layout.Children.Add(meta);
         var item = new ListBoxItem { Tag = room, Content = layout };
-        var settings = new MenuItem { Header = "会话设置" };
-        settings.Click += async (_, _) => { await OpenRoomAsync(room); ConversationMenu_Click(item, new RoutedEventArgs()); };
+        async Task CommitRenameAsync()
+        {
+            var value = titleEditor.Text?.Trim();
+            titleEditor.IsVisible = false; title.IsVisible = true;
+            if (string.IsNullOrWhiteSpace(value) || value == room.Title) return;
+            await RunConversationMutationAsync("无法重命名会话", async () =>
+            {
+                await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(value, null, null));
+                await RefreshRoomsWithoutSwitchAsync();
+            });
+        }
+        void BeginRename()
+        {
+            titleEditor.Text = room.Title; title.IsVisible = false; titleEditor.IsVisible = true;
+            titleEditor.Focus(); titleEditor.SelectAll();
+        }
+        title.PointerPressed += (_, args) =>
+        {
+            if (ConversationList.SelectedItem != item || !args.GetCurrentPoint(title).Properties.IsLeftButtonPressed) return;
+            args.Handled = true; BeginRename();
+        };
+        titleEditor.KeyDown += async (_, args) =>
+        {
+            if (args.Key == Key.Enter) { args.Handled = true; await CommitRenameAsync(); }
+            else if (args.Key == Key.Escape) { args.Handled = true; titleEditor.IsVisible = false; title.IsVisible = true; }
+        };
+        titleEditor.LostFocus += async (_, _) => { if (titleEditor.IsVisible) await CommitRenameAsync(); };
+        var rename = new MenuItem { Header = "重命名" };
+        rename.Click += (_, _) => Dispatcher.UIThread.Post(BeginRename, DispatcherPriority.Input);
         var pin = new MenuItem { Header = room.IsPinned ? "取消置顶" : "置顶会话" };
         pin.Click += async (_, _) => { await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, !room.IsPinned, null)); await RefreshRoomsWithoutSwitchAsync(); };
-        item.ContextMenu = new ContextMenu { ItemsSource = new[] { settings, pin } };
+        var confirmDelete = new MenuItem { Header = "确认永久删除" };
+        confirmDelete.Click += async (_, _) => await DeleteRoomAsync(room);
+        var delete = new MenuItem { Header = "删除会话", Foreground = Brush.Parse("#FF9A9A"), ItemsSource = new[] { confirmDelete } };
+        item.ContextMenu = new ContextMenu { ItemsSource = new[] { rename, pin, delete } };
         item.AddHandler(PointerPressedEvent, (_, args) =>
         {
             if (!args.GetCurrentPoint(item).Properties.IsRightButtonPressed) return;
@@ -227,9 +258,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
 
     private string RoomSubtitle(ConversationRoom room)
     {
-        var count = _lastMessagePreviews.GetValueOrDefault(room.Id, room.MessageCount == 0 ? "还没有消息" : "打开会话以读取最近消息");
-        var folder = _folders.FirstOrDefault(item => item.Id == room.FolderId)?.Name;
-        return folder is null ? count : $"{folder} · {count}";
+        return _lastMessagePreviews.GetValueOrDefault(room.Id, room.MessageCount == 0 ? "还没有消息" : "打开会话以读取最近消息");
     }
 
     private static string MessagePreview(ChatMessage message)
@@ -517,85 +546,13 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
         catch (Exception ex) { await ShowNoticeAsync("无法停止回复", ex.Message); }
     }
 
-    private void ConversationMenu_Click(object? sender, RoutedEventArgs e)
+    private async Task DeleteRoomAsync(ConversationRoom room) => await RunConversationMutationAsync("无法删除会话", async () =>
     {
-        if (_conversationId is null || _rooms.FirstOrDefault(item => item.Id == _conversationId) is not { } room) return;
-
-        var titleInput = new TextBox { Text = room.Title, Watermark = "会话名称", MaxLength = 80 };
-        var save = new Button { Content = "保存名称", Classes = { "primary" }, Width = 100 };
-        var pin = new Button { Content = room.IsPinned ? "取消置顶" : "置顶会话", Width = 100 };
-        var folder = new ComboBox { ItemsSource = new[] { new FolderChoice(null, "未分组") }.Concat(_folders.Select(item => new FolderChoice(item.Id, item.Name))).ToArray() };
-        folder.SelectedItem = folder.Items.Cast<FolderChoice>().FirstOrDefault(item => item.Id == room.FolderId) ?? folder.Items.Cast<FolderChoice>().First();
-        var move = new Button { Content = "移动到分组", Width = 110 };
-        var delete = new Button { Content = "删除会话", Foreground = Brush.Parse("#FF9A9A"), Width = 100 };
-        var close = new Button { Content = "完成", Width = 80 };
-        var deleteArmed = false;
-
-        save.Click += async (_, _) =>
-        {
-            var title = titleInput.Text?.Trim();
-            if (string.IsNullOrWhiteSpace(title)) { titleInput.Focus(); return; }
-            await RunConversationMutationAsync("无法保存名称", async () =>
-            {
-                await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(title, null, null));
-                await RefreshRoomsWithoutSwitchAsync();
-                CloseSideDrawer();
-            });
-        };
-        pin.Click += async (_, _) => await RunConversationMutationAsync("无法更改置顶状态", async () =>
-        {
-            await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, !room.IsPinned, null));
-            await RefreshRoomsWithoutSwitchAsync();
-            CloseSideDrawer();
-        });
-        move.Click += async (_, _) => await RunConversationMutationAsync("无法移动会话", async () =>
-        {
-            var target = folder.SelectedItem as FolderChoice;
-            await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, null, target?.Id, target?.Id is null));
-            await RefreshRoomsWithoutSwitchAsync();
-            CloseSideDrawer();
-        });
-        delete.Click += async (_, _) =>
-        {
-            if (!deleteArmed)
-            {
-                deleteArmed = true;
-                delete.Content = "再次点击确认";
-                delete.Background = Brush.Parse("#6E2932");
-                return;
-            }
-            await RunConversationMutationAsync("无法删除会话", async () =>
-            {
-                _eventCancellation?.Cancel();
-                await _api.DeleteConversationAsync(room.Id);
-                _conversationId = null;
-                CloseSideDrawer();
-                await RefreshRoomsAsync();
-                if (_conversationId is null) await CreateConversationAsync();
-            });
-        };
-        close.Click += (_, _) => CloseSideDrawer();
-
-        var actions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right,
-            Children = { delete, pin, save, close }
-        };
-        var panel = new StackPanel
-        {
-            Margin = new Thickness(22), Spacing = 16,
-            Children =
-            {
-                new TextBlock { Text = "名称", Foreground = Brush.Parse("#8492A8"), FontSize = 11 },
-                titleInput,
-                new TextBlock { Text = "所在分组", Foreground = Brush.Parse("#8492A8"), FontSize = 11 },
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { folder, move } },
-                new TextBlock { Text = "删除后，该会话与其中的消息将无法从界面恢复。", Foreground = Brush.Parse("#78879C"), TextWrapping = TextWrapping.Wrap },
-                actions
-            }
-        };
-        ShowSideDrawer("会话设置", panel);
-    }
+        if (_conversationId == room.Id) { _eventCancellation?.Cancel(); _conversationId = null; }
+        await _api.DeleteConversationAsync(room.Id);
+        await RefreshRoomsAsync();
+        if (_conversationId is null) await CreateConversationAsync();
+    });
 
     private async Task RunConversationMutationAsync(string errorTitle, Func<Task> action)
     {
@@ -605,8 +562,6 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
             await ShowNoticeAsync(errorTitle, ex.Message);
         }
     }
-
-    private sealed record FolderChoice(string? Id, string Name) { public override string ToString() => Name; }
 
     private async void Attach_Click(object? sender, RoutedEventArgs e)
     {
@@ -733,7 +688,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
             _stickers.Clear(); _stickers.AddRange(stickers);
             if (stickers.Length == 0) { await ShowNoticeAsync("没有可用表情", "可以稍后在内容管理中导入表情。"); return; }
             var grid = new WrapPanel { Orientation = Orientation.Horizontal };
-            var flyout = new Flyout { Placement = PlacementMode.Top };
+            var flyout = new Flyout { Placement = PlacementMode.Top, FlyoutPresenterClasses = { "sticker-flyout" } };
             void Render(StickersView view)
             {
                 grid.Children.Clear();
@@ -808,13 +763,10 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
     private void ShowChats_Click(object? sender, RoutedEventArgs e) { SetActiveNav(ChatsNavButton); CloseWorkspacePage(false); ChatsNavButton.Focus(); }
     private void ShowWorkspacePage(string title, Control content)
     {
-        CloseSideDrawer(); WorkspacePageTitle.Text = title; WorkspacePageContent.Content = content; WorkspacePage.IsVisible = true; WorkspacePage.Focusable = true; WorkspacePage.Focus();
+        WorkspacePageTitle.Text = title; WorkspacePageContent.Content = content; WorkspacePage.IsVisible = true; WorkspacePage.Focusable = true; WorkspacePage.Focus();
     }
     private void CloseWorkspacePage_Click(object? sender, RoutedEventArgs e) => CloseWorkspacePage();
     private void CloseWorkspacePage(bool selectChats = true) { WorkspacePage.IsVisible = false; WorkspacePageContent.Content = null; if (selectChats) SetActiveNav(ChatsNavButton); }
-    private void ShowSideDrawer(string title, Control content) { SideDrawerTitle.Text = title; SideDrawerContent.Content = content; SideDrawer.IsVisible = true; }
-    private void CloseSideDrawer_Click(object? sender, RoutedEventArgs e) => CloseSideDrawer();
-    private void CloseSideDrawer() { SideDrawer.IsVisible = false; SideDrawerContent.Content = null; }
     private void SetActiveNav(Button active)
     {
         foreach (var button in new[] { ChatsNavButton, CharactersNavButton, MemoriesNavButton, SettingsNavButton })

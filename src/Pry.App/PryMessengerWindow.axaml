@@ -22,6 +22,7 @@
     <Style Selector="ListBoxItem:selected"><Setter Property="Background" Value="#202A40"/></Style>
     <Style Selector="TextBox"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#263249"/><Setter Property="CornerRadius" Value="12"/></Style>
     <Style Selector="TextBox:focus"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#6C63FF"/></Style>
+    <Style Selector="FlyoutPresenter.sticker-flyout"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="CornerRadius" Value="14"/></Style>
   </Window.Styles>
 
   <Grid RowDefinitions="42,*">
@@ -100,7 +101,7 @@
 
       <Grid x:Name="ChatSurface" Grid.Column="2" Background="#E60E1623" RowDefinitions="74,*,Auto">
         <Border x:Name="ChatHeaderSurface" Grid.Row="0" Background="#D9111927" BorderBrush="#202A3C" BorderThickness="0,0,0,1">
-          <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
+          <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
             <Border x:Name="CharacterAvatar" Width="52" Height="52" CornerRadius="17" Background="#6C63FF" ClipToBounds="True" VerticalAlignment="Center">
               <Grid><TextBlock x:Name="CharacterAvatarFallback" Text="P" Foreground="White" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image x:Name="CharacterAvatarImage" IsVisible="False" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/></Grid>
             </Border>
@@ -109,7 +110,6 @@
               <TextBlock x:Name="ConversationStatusText" Text="等待连接" Foreground="#7F8EA5" FontSize="11"/>
             </StackPanel>
             <Button x:Name="CancelReplyButton" Grid.Column="2" IsVisible="False" Content="停止回复" Click="CancelReply_Click" VerticalAlignment="Center"/>
-            <Button x:Name="ConversationMenuButton" Grid.Column="3" Classes="icon" Background="Transparent" Click="ConversationMenu_Click" ToolTip.Tip="会话设置" VerticalAlignment="Center"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE712;" FontSize="17"/></Button>
           </Grid>
         </Border>
 
@@ -157,12 +157,6 @@
         </Grid>
       </Border>
 
-      <Border x:Name="SideDrawer" Grid.Column="2" Width="430" HorizontalAlignment="Right" IsVisible="False" Background="#F0101827" BorderBrush="#33425D" BorderThickness="1,0,0,0" ZIndex="35">
-        <Grid RowDefinitions="58,*">
-          <Grid Margin="15,0" ColumnDefinitions="*,Auto"><TextBlock x:Name="SideDrawerTitle" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/><Button Grid.Column="1" Classes="icon" Background="Transparent" Click="CloseSideDrawer_Click"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE711;" FontSize="14"/></Button></Grid>
-          <ScrollViewer Grid.Row="1"><ContentControl x:Name="SideDrawerContent"/></ScrollViewer>
-        </Grid>
-      </Border>
     </Grid>
 
     <Border Grid.RowSpan="2" Width="6" HorizontalAlignment="Left" Background="Transparent" Cursor="SizeWestEast" PointerPressed="ResizeLeft_PointerPressed" ZIndex="100"/>
