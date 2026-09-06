@@ -8,7 +8,8 @@
     <Style Selector="Button"><Setter Property="CornerRadius" Value="10"/><Setter Property="Padding" Value="15,8"/></Style>
     <Style Selector="Button.primary"><Setter Property="Background" Value="#6C63FF"/><Setter Property="Foreground" Value="White"/></Style>
     <Style Selector="Border.card"><Setter Property="Background" Value="#182235"/><Setter Property="CornerRadius" Value="13"/><Setter Property="Padding" Value="16"/></Style>
-    <Style Selector="TabItem"><Setter Property="MinWidth" Value="150"/><Setter Property="Padding" Value="16,12"/><Setter Property="HorizontalContentAlignment" Value="Left"/></Style>
+    <Style Selector="TabItem"><Setter Property="Width" Value="148"/><Setter Property="Height" Value="44"/><Setter Property="Margin" Value="0,0,0,5"/><Setter Property="Padding" Value="14,9"/><Setter Property="FontSize" Value="15"/><Setter Property="Background" Value="Transparent"/><Setter Property="CornerRadius" Value="11"/><Setter Property="HorizontalContentAlignment" Value="Left"/></Style>
+    <Style Selector="TabItem:selected"><Setter Property="Background" Value="#202A40"/><Setter Property="Foreground" Value="White"/></Style>
   </UserControl.Styles>
   <Grid RowDefinitions="Auto,*,Auto">
     <StackPanel Margin="24,16,24,12" Spacing="4">
@@ -36,16 +37,17 @@
             <TextBlock Text="视觉模型" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="VisionModelBox"/>
             <TextBlock Text="语音识别模型" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="SpeechModelBox"/>
             <TextBlock x:Name="DeviceText" Foreground="#718198" TextWrapping="Wrap"/>
-            <Expander Header="高级设置">
-              <Grid Margin="0,12,0,0" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="10">
+            <Border Margin="0,8,0,0" Padding="14" Background="#111A29" BorderBrush="#2A3850" BorderThickness="1" CornerRadius="12">
+              <StackPanel Spacing="10"><TextBlock Text="高级参数" FontSize="14" FontWeight="SemiBold" Foreground="#C9D2E1"/>
+              <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="10">
                 <StackPanel><TextBlock Text="温度" FontSize="11" Foreground="#8D9AAF"/><NumericUpDown x:Name="TemperatureBox" Minimum="0" Maximum="2" Increment="0.05" FormatString="0.00"/></StackPanel>
                 <StackPanel Grid.Column="1"><TextBlock Text="最大输出 Token" FontSize="11" Foreground="#8D9AAF"/><NumericUpDown x:Name="MaxOutputBox" Minimum="16" Maximum="32768" Increment="64"/></StackPanel>
                 <StackPanel Grid.Row="1"><TextBlock Text="上下文长度" FontSize="11" Foreground="#8D9AAF"/><NumericUpDown x:Name="ContextSizeBox" Minimum="512" Maximum="1048576" Increment="512"/></StackPanel>
                 <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="GPU 层数" FontSize="11" Foreground="#8D9AAF"/><NumericUpDown x:Name="GpuLayersBox" Minimum="0" Maximum="999" Increment="1"/></StackPanel>
                 <StackPanel Grid.Row="2"><TextBlock Text="计算设备" FontSize="11" Foreground="#8D9AAF"/><ComboBox x:Name="ComputeDeviceBox"/></StackPanel>
                 <CheckBox Grid.Row="2" Grid.Column="1" x:Name="ThinkingBox" Content="启用思考模式" VerticalAlignment="Center"/>
-              </Grid>
-            </Expander>
+              </Grid></StackPanel>
+            </Border>
           </StackPanel></Border>
         </StackPanel></ScrollViewer>
       </TabItem>
@@ -72,7 +74,7 @@
             <TextBlock Text="强调色（#RRGGBB）" Foreground="#8D9AAF" FontSize="11"/><TextBox x:Name="AccentColorBox" MaxLength="9"/>
             <CheckBox x:Name="GlassEffectsBox" Content="启用玻璃效果"/>
             <TextBlock Text="聊天背景" Foreground="#8D9AAF" FontSize="11"/>
-            <Border Height="150" Background="#101827" BorderBrush="#2A3850" BorderThickness="1" CornerRadius="12" ClipToBounds="True"><Grid><TextBlock Text="未设置背景" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#718198"/><Image x:Name="BackgroundPreview" IsVisible="False" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/></Grid></Border>
+            <Border Width="560" Height="315" HorizontalAlignment="Left" Background="#101827" BorderBrush="#2A3850" BorderThickness="1" CornerRadius="12" ClipToBounds="True"><Grid><TextBlock Text="未设置背景" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#718198"/><Image x:Name="BackgroundPreview" IsVisible="False" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/></Grid></Border>
             <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="选择背景" Click="ChooseBackground_Click"/><Button Content="清除背景" Click="ClearBackground_Click"/></StackPanel>
           </StackPanel></Border>
         </StackPanel></ScrollViewer>

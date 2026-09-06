@@ -26,7 +26,7 @@
 
   <Grid RowDefinitions="42,*">
     <Image x:Name="AppBackgroundImage" Grid.RowSpan="2" Stretch="UniformToFill" IsVisible="False" RenderOptions.BitmapInterpolationMode="HighQuality"/>
-    <Border Grid.Row="0" Background="#ED0F1522" BorderBrush="#202A3C" BorderThickness="0,0,0,1" PointerPressed="TitleBar_PointerPressed">
+    <Border x:Name="TitleBarSurface" Grid.Row="0" Background="#ED0F1522" BorderBrush="#202A3C" BorderThickness="0,0,0,1" PointerPressed="TitleBar_PointerPressed">
       <Grid ColumnDefinitions="*,Auto" Margin="16,0,7,0">
         <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
           <Border Width="23" Height="23" CornerRadius="8" Background="#6C63FF"><TextBlock Text="P" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
@@ -48,7 +48,7 @@
         <ColumnDefinition Width="306" MinWidth="238" MaxWidth="460"/>
         <ColumnDefinition Width="*"/>
       </Grid.ColumnDefinitions>
-      <Border Grid.Column="0" Background="#F20D1420" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
+      <Border x:Name="NavigationSurface" Grid.Column="0" Background="#F20D1420" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,*,Auto" Margin="0,18,0,14">
           <Button x:Name="ChatsNavButton" Classes="nav active" HorizontalAlignment="Center" Click="ShowChats_Click" ToolTip.Tip="消息">
             <PathIcon Width="21" Height="21" Data="M3,4 L21,4 L21,17 L14,17 L9,21 L9,17 L3,17 Z"/>
@@ -70,15 +70,14 @@
         </Grid>
       </Border>
 
-      <Border Grid.Column="1" Background="#EC111927" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
+      <Border x:Name="ConversationSurface" Grid.Column="1" Background="#EC111927" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,Auto,*">
-          <Grid Margin="18,18,14,12" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+          <Grid Margin="18,18,14,12" ColumnDefinitions="*,Auto" ColumnSpacing="6">
             <StackPanel Spacing="2">
               <TextBlock Text="消息" Foreground="#F5F7FC" FontSize="22" FontWeight="SemiBold"/>
               <TextBlock x:Name="ConversationCountText" Text="正在加载会话" Foreground="#77869C" FontSize="11"/>
             </StackPanel>
-            <Button Grid.Column="1" Classes="icon" Content="▤" Click="Folders_Click" ToolTip.Tip="管理分组"/>
-            <Button Grid.Column="2" Classes="primary icon" Content="＋" FontSize="20" Click="NewConversation_Click" ToolTip.Tip="新建对话"/>
+            <Button Grid.Column="1" Classes="primary icon" Click="NewConversation_Click" ToolTip.Tip="新建对话"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE710;" FontSize="16"/></Button>
           </Grid>
           <Border Grid.Row="1" Margin="14,0,14,10" Padding="12,8" CornerRadius="12" Background="#0D1420" BorderBrush="#253148" BorderThickness="1">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
@@ -97,10 +96,10 @@
         </Grid>
       </Border>
 
-      <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Right" Background="Transparent" ResizeDirection="Columns"/>
+      <GridSplitter Grid.Column="1" Width="7" HorizontalAlignment="Right" Background="#26354D" Opacity="0.72" ResizeDirection="Columns" Cursor="SizeWestEast"/>
 
-      <Grid Grid.Column="2" Background="#E60E1623" RowDefinitions="74,*,Auto">
-        <Border Grid.Row="0" Background="#111927" BorderBrush="#202A3C" BorderThickness="0,0,0,1">
+      <Grid x:Name="ChatSurface" Grid.Column="2" Background="#E60E1623" RowDefinitions="74,*,Auto">
+        <Border x:Name="ChatHeaderSurface" Grid.Row="0" Background="#D9111927" BorderBrush="#202A3C" BorderThickness="0,0,0,1">
           <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
             <Border x:Name="CharacterAvatar" Width="52" Height="52" CornerRadius="17" Background="#6C63FF" ClipToBounds="True" VerticalAlignment="Center">
               <Grid><TextBlock x:Name="CharacterAvatarFallback" Text="P" Foreground="White" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image x:Name="CharacterAvatarImage" IsVisible="False" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/></Grid>
@@ -110,7 +109,7 @@
               <TextBlock x:Name="ConversationStatusText" Text="等待连接" Foreground="#7F8EA5" FontSize="11"/>
             </StackPanel>
             <Button x:Name="CancelReplyButton" Grid.Column="2" IsVisible="False" Content="停止回复" Click="CancelReply_Click" VerticalAlignment="Center"/>
-            <Button x:Name="ConversationMenuButton" Grid.Column="3" Classes="icon" Content="•••" Click="ConversationMenu_Click" ToolTip.Tip="会话设置" VerticalAlignment="Center"/>
+            <Button x:Name="ConversationMenuButton" Grid.Column="3" Classes="icon" Background="Transparent" Click="ConversationMenu_Click" ToolTip.Tip="会话设置" VerticalAlignment="Center"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE712;" FontSize="17"/></Button>
           </Grid>
         </Border>
 
@@ -125,13 +124,13 @@
           </StackPanel>
         </Grid>
 
-        <Border Grid.Row="2" Margin="18,0,18,18" Padding="10" CornerRadius="17" Background="#111927" BorderBrush="#28354D" BorderThickness="1">
+        <Border x:Name="ComposerSurface" Grid.Row="2" Margin="18,0,18,18" Padding="10" CornerRadius="17" Background="#D9111927" BorderBrush="#28354D" BorderThickness="1">
           <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
             <TextBox x:Name="ComposerTextBox" Grid.ColumnSpan="2" Watermark="给 Pry 发消息…" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="62" MaxHeight="150" Padding="13,10" KeyDown="Composer_KeyDown"/>
             <WrapPanel x:Name="AttachmentDraftPanel" Grid.Row="1" Grid.ColumnSpan="2" Margin="3,7,3,0" IsVisible="False"/>
             <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="5" Margin="2,8,0,0">
-              <Button x:Name="AttachButton" Classes="icon" Content="＋" Click="Attach_Click" ToolTip.Tip="添加附件"/>
-              <Button x:Name="StickerButton" Classes="icon" Content="☺" Click="Sticker_Click" ToolTip.Tip="选择表情"/>
+              <Button x:Name="AttachButton" Classes="icon" Click="Attach_Click" ToolTip.Tip="添加附件"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE723;" FontSize="16"/></Button>
+              <Button x:Name="StickerButton" Classes="icon" Click="Sticker_Click" ToolTip.Tip="选择表情"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE76E;" FontSize="16"/></Button>
               <Button x:Name="VoiceButton" Classes="icon" Click="VoiceButton_Click" ToolTip.Tip="语音输入"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE720;" FontSize="16"/></Button>
             </StackPanel>
             <Button x:Name="SendButton" Grid.Row="2" Grid.Column="1" Classes="primary" Content="发送" Width="76" Height="38" Margin="0,8,0,0" Click="Send_Click"/>
@@ -155,6 +154,13 @@
             </Grid>
           </Border>
           <ContentControl x:Name="WorkspacePageContent" Grid.Row="1"/>
+        </Grid>
+      </Border>
+
+      <Border x:Name="SideDrawer" Grid.Column="2" Width="430" HorizontalAlignment="Right" IsVisible="False" Background="#F0101827" BorderBrush="#33425D" BorderThickness="1,0,0,0" ZIndex="35">
+        <Grid RowDefinitions="58,*">
+          <Grid Margin="15,0" ColumnDefinitions="*,Auto"><TextBlock x:Name="SideDrawerTitle" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/><Button Grid.Column="1" Classes="icon" Background="Transparent" Click="CloseSideDrawer_Click"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE711;" FontSize="14"/></Button></Grid>
+          <ScrollViewer Grid.Row="1"><ContentControl x:Name="SideDrawerContent"/></ScrollViewer>
         </Grid>
       </Border>
     </Grid>

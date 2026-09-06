@@ -91,6 +91,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
             if (!await _api.IsHealthyAsync()) throw new InvalidOperationException("本地服务尚未就绪。");
             _preferences = await _api.GetPreferencesAsync();
             await ApplyBackgroundAsync();
+            ApplyChromeMaterial();
             _characters.AddRange(await _api.GetCharactersAsync());
             _folders.AddRange(await _api.GetFoldersAsync());
             _stickers.AddRange(await _api.GetStickersAsync());
@@ -119,6 +120,17 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
         AppBackgroundImage.Source = null; AppBackgroundImage.IsVisible = false;
         if (_preferences?.BackgroundUrl is not { Length: > 0 } url) return;
         try { var content = await _api.DownloadAsync(url); AppBackgroundImage.Source = new Bitmap(new MemoryStream(content.Bytes)); AppBackgroundImage.Opacity = _preferences.Theme.BackgroundImageOpacity; AppBackgroundImage.IsVisible = true; } catch { }
+    }
+
+    private void ApplyChromeMaterial()
+    {
+        var glass = _preferences?.Theme.UseGlassEffects == true;
+        TitleBarSurface.Background = Brush.Parse(glass ? "#C90F1522" : "#0F1522");
+        NavigationSurface.Background = Brush.Parse(glass ? "#D90D1420" : "#0D1420");
+        ConversationSurface.Background = Brush.Parse(glass ? "#D9111927" : "#111927");
+        ChatSurface.Background = Brush.Parse(glass ? "#B80E1623" : "#0E1623");
+        ChatHeaderSurface.Background = Brush.Parse(glass ? "#C9111927" : "#111927");
+        ComposerSurface.Background = Brush.Parse(glass ? "#C9111927" : "#111927");
     }
 
     private async Task ApplyCharacterAsync()
@@ -527,21 +539,21 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
             {
                 await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(title, null, null));
                 await RefreshRoomsWithoutSwitchAsync();
-                CloseWorkspacePage();
+                CloseSideDrawer();
             });
         };
         pin.Click += async (_, _) => await RunConversationMutationAsync("无法更改置顶状态", async () =>
         {
             await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, !room.IsPinned, null));
             await RefreshRoomsWithoutSwitchAsync();
-            CloseWorkspacePage();
+            CloseSideDrawer();
         });
         move.Click += async (_, _) => await RunConversationMutationAsync("无法移动会话", async () =>
         {
             var target = folder.SelectedItem as FolderChoice;
             await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, null, target?.Id, target?.Id is null));
             await RefreshRoomsWithoutSwitchAsync();
-            CloseWorkspacePage();
+            CloseSideDrawer();
         });
         delete.Click += async (_, _) =>
         {
@@ -557,12 +569,12 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
                 _eventCancellation?.Cancel();
                 await _api.DeleteConversationAsync(room.Id);
                 _conversationId = null;
-                CloseWorkspacePage();
+                CloseSideDrawer();
                 await RefreshRoomsAsync();
                 if (_conversationId is null) await CreateConversationAsync();
             });
         };
-        close.Click += (_, _) => CloseWorkspacePage();
+        close.Click += (_, _) => CloseSideDrawer();
 
         var actions = new StackPanel
         {
@@ -574,7 +586,6 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
             Margin = new Thickness(22), Spacing = 16,
             Children =
             {
-                new TextBlock { Text = "会话设置", FontSize = 22, FontWeight = FontWeight.SemiBold },
                 new TextBlock { Text = "名称", Foreground = Brush.Parse("#8492A8"), FontSize = 11 },
                 titleInput,
                 new TextBlock { Text = "所在分组", Foreground = Brush.Parse("#8492A8"), FontSize = 11 },
@@ -583,46 +594,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
                 actions
             }
         };
-        ShowWorkspacePage("会话设置", panel);
-    }
-
-    private void Folders_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is not Control anchor) return;
-        var list = new ListBox { MinHeight = 220 };
-        var input = new TextBox { Watermark = "分组名称", MaxLength = 60 };
-        var add = new Button { Content = "新建", Classes = { "primary" } };
-        var rename = new Button { Content = "重命名" };
-        var remove = new Button { Content = "删除" };
-        void Render() => list.ItemsSource = _folders.Select(item => new ListBoxItem { Content = item.Name, Tag = item, Padding = new Thickness(11) }).ToArray();
-        list.SelectionChanged += (_, _) => { if (list.SelectedItem is ListBoxItem { Tag: ConversationFolder item }) input.Text = item.Name; };
-        add.Click += async (_, _) =>
-        {
-            if (string.IsNullOrWhiteSpace(input.Text)) return;
-            await RunFolderMutationAsync(async () => await _api.CreateFolderAsync(input.Text.Trim()), "无法创建分组");
-            input.Text = ""; Render();
-        };
-        rename.Click += async (_, _) =>
-        {
-            if (list.SelectedItem is not ListBoxItem { Tag: ConversationFolder item } || string.IsNullOrWhiteSpace(input.Text)) return;
-            await RunFolderMutationAsync(async () => await _api.RenameFolderAsync(item.Id, input.Text.Trim()), "无法重命名分组"); Render();
-        };
-        remove.Click += async (_, _) =>
-        {
-            if (list.SelectedItem is not ListBoxItem { Tag: ConversationFolder item }) return;
-            await RunFolderMutationAsync(async () => await _api.DeleteFolderAsync(item.Id), "无法删除分组"); input.Text = ""; Render(); await RefreshRoomsWithoutSwitchAsync();
-        };
-        Render();
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { add, rename, remove } };
-        var panel = new Grid { Width = 340, Height = 390, RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), RowSpacing = 10, Margin = new Thickness(16), Children = { new TextBlock { Text = "会话分组", FontSize = 18, FontWeight = FontWeight.SemiBold }, list, input, buttons } };
-        Grid.SetRow(list, 1); Grid.SetRow(input, 2); Grid.SetRow(buttons, 3);
-        new Flyout { Content = new Border { Background = Brush.Parse("#182235"), BorderBrush = Brush.Parse("#33425D"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Child = panel } }.ShowAt(anchor);
-    }
-
-    private async Task RunFolderMutationAsync(Func<Task> action, string errorTitle)
-    {
-        try { await action(); _folders.Clear(); _folders.AddRange(await _api.GetFoldersAsync()); }
-        catch (Exception ex) { await ShowNoticeAsync(errorTitle, ex.Message); }
+        ShowSideDrawer("会话设置", panel);
     }
 
     private async Task RunConversationMutationAsync(string errorTitle, Func<Task> action)
@@ -718,7 +690,8 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
 
     private void UpdateAttachmentButton()
     {
-        AttachButton.Content = _attachments.Count == 0 ? "＋" : $"＋ {_attachments.Count}";
+        AttachButton.Content = new TextBlock { FontFamily = new FontFamily("Segoe Fluent Icons"), Text = "\uE723", FontSize = 16 };
+        ToolTip.SetTip(AttachButton, _attachments.Count == 0 ? "添加附件" : $"已添加 {_attachments.Count} 个附件");
         AttachmentDraftPanel.Children.Clear();
         foreach (var attachment in _attachments.ToArray())
         {
@@ -760,27 +733,39 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
             _stickers.Clear(); _stickers.AddRange(stickers);
             if (stickers.Length == 0) { await ShowNoticeAsync("没有可用表情", "可以稍后在内容管理中导入表情。"); return; }
             var grid = new WrapPanel { Orientation = Orientation.Horizontal };
-            foreach (var sticker in stickers)
+            var flyout = new Flyout { Placement = PlacementMode.Top };
+            void Render(StickersView view)
             {
-                var image = new Image { Width = 76, Height = 76, Stretch = Stretch.Uniform };
-                var button = new Button { Width = 88, Height = 88, Margin = new Thickness(3), Padding = new Thickness(6), Content = image, Background = Brushes.Transparent };
-                ToolTip.SetTip(button, string.IsNullOrWhiteSpace(sticker.Name) ? "表情" : sticker.Name);
-                button.Click += async (_, _) => await SendAsync(sticker.Id);
-                grid.Children.Add(button); _ = LoadMessageImageAsync(image, sticker.ContentUrl);
+                grid.Children.Clear();
+                foreach (var sticker in stickers.Where(item => view == StickersView.All || view == StickersView.BuiltIn && item.Source == StickerSource.BuiltIn || view == StickersView.User && item.Source == StickerSource.User))
+                {
+                    var image = new Image { Width = 72, Height = 72, Stretch = Stretch.Uniform };
+                    var button = new Button { Width = 84, Height = 84, Margin = new Thickness(3), Padding = new Thickness(6), Content = image, Background = Brushes.Transparent };
+                    ToolTip.SetTip(button, string.IsNullOrWhiteSpace(sticker.Name) ? "表情" : sticker.Name);
+                    button.Click += async (_, _) => { flyout.Hide(); await SendAsync(sticker.Id); };
+                    grid.Children.Add(button); _ = LoadMessageImageAsync(image, sticker.ContentUrl);
+                }
             }
             var list = new ScrollViewer { Content = grid, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            var manage = new Button { Content = "管理表情", HorizontalAlignment = HorizontalAlignment.Right };
+            Button ToolButton(string glyph, string tip) { var button = new Button { Classes = { "icon" }, Width = 34, Height = 34, Background = Brushes.Transparent, Content = new TextBlock { FontFamily = new FontFamily("Segoe Fluent Icons"), Text = glyph, FontSize = 15 } }; ToolTip.SetTip(button, tip); return button; }
+            var all = ToolButton("\uE76E", "全部表情"); var builtIn = ToolButton("\uE734", "内置表情"); var mine = ToolButton("\uE728", "我的表情"); var manage = ToolButton("\uE713", "管理表情");
+            all.Click += (_, _) => Render(StickersView.All); builtIn.Click += (_, _) => Render(StickersView.BuiltIn); mine.Click += (_, _) => Render(StickersView.User);
             manage.Click += async (_, _) =>
             {
+                flyout.Hide();
                 var manager = new PryMessengerStickerWindow(_api);
                 manager.CloseRequested += () => { CloseWorkspacePage(); Sticker_Click(StickerButton, new RoutedEventArgs()); };
                 ShowWorkspacePage("管理表情", manager);
             };
-            var content = new Grid { Width = 360, Height = 400, RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 10, Margin = new Thickness(16), Children = { new TextBlock { Text = "选择表情", FontSize = 18, FontWeight = FontWeight.SemiBold }, list, manage } }; Grid.SetRow(list, 1); Grid.SetRow(manage, 2);
-            new Flyout { Placement = PlacementMode.Top, Content = new Border { Background = Brush.Parse("#182235"), BorderBrush = Brush.Parse("#33425D"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Child = content } }.ShowAt(anchor);
+            var packBar = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,Auto,*,Auto"), ColumnSpacing = 3, Children = { all, builtIn, mine, manage } }; Grid.SetColumn(builtIn, 1); Grid.SetColumn(mine, 2); Grid.SetColumn(manage, 4);
+            var content = new Grid { Width = 380, Height = 420, RowDefinitions = new RowDefinitions("*,Auto"), RowSpacing = 8, Margin = new Thickness(12), Children = { list, packBar } }; Grid.SetRow(packBar, 1);
+            flyout.Content = new Border { Background = Brush.Parse("#E6182235"), BorderBrush = Brush.Parse("#40506B"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Child = content };
+            Render(StickersView.All); flyout.ShowAt(anchor);
         }
         catch (Exception ex) { await ShowNoticeAsync("表情加载失败", ex.Message); }
     }
+
+    private enum StickersView { All, BuiltIn, User }
 
     private void ShowCharacters_Click(object? sender, RoutedEventArgs e)
     {
@@ -804,7 +789,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
         var page = new PryMessengerSettingsWindow(_api);
         page.CloseRequested += async () =>
         {
-            if (page.Saved) { _preferences = await _api.GetPreferencesAsync(); await ApplyBackgroundAsync(); }
+            if (page.Saved) { _preferences = await _api.GetPreferencesAsync(); await ApplyBackgroundAsync(); ApplyChromeMaterial(); }
             if (page.Saved && page.LayoutChanged) ShowRestartPrompt(); else CloseWorkspacePage();
         };
         ShowWorkspacePage("设置", page);
@@ -823,10 +808,13 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
     private void ShowChats_Click(object? sender, RoutedEventArgs e) { SetActiveNav(ChatsNavButton); CloseWorkspacePage(false); ChatsNavButton.Focus(); }
     private void ShowWorkspacePage(string title, Control content)
     {
-        WorkspacePageTitle.Text = title; WorkspacePageContent.Content = content; WorkspacePage.IsVisible = true; WorkspacePage.Focusable = true; WorkspacePage.Focus();
+        CloseSideDrawer(); WorkspacePageTitle.Text = title; WorkspacePageContent.Content = content; WorkspacePage.IsVisible = true; WorkspacePage.Focusable = true; WorkspacePage.Focus();
     }
     private void CloseWorkspacePage_Click(object? sender, RoutedEventArgs e) => CloseWorkspacePage();
     private void CloseWorkspacePage(bool selectChats = true) { WorkspacePage.IsVisible = false; WorkspacePageContent.Content = null; if (selectChats) SetActiveNav(ChatsNavButton); }
+    private void ShowSideDrawer(string title, Control content) { SideDrawerTitle.Text = title; SideDrawerContent.Content = content; SideDrawer.IsVisible = true; }
+    private void CloseSideDrawer_Click(object? sender, RoutedEventArgs e) => CloseSideDrawer();
+    private void CloseSideDrawer() { SideDrawer.IsVisible = false; SideDrawerContent.Content = null; }
     private void SetActiveNav(Button active)
     {
         foreach (var button in new[] { ChatsNavButton, CharactersNavButton, MemoriesNavButton, SettingsNavButton })
