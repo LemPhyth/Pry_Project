@@ -21,10 +21,12 @@
     <Style Selector="ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,2"/><Setter Property="CornerRadius" Value="14"/></Style>
     <Style Selector="ListBoxItem:selected"><Setter Property="Background" Value="#202A40"/></Style>
     <Style Selector="TextBox"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#263249"/><Setter Property="CornerRadius" Value="12"/></Style>
+    <Style Selector="TextBox:focus"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#6C63FF"/></Style>
   </Window.Styles>
 
   <Grid RowDefinitions="42,*">
-    <Border Grid.Row="0" Background="#0F1522" BorderBrush="#202A3C" BorderThickness="0,0,0,1" PointerPressed="TitleBar_PointerPressed">
+    <Image x:Name="AppBackgroundImage" Grid.RowSpan="2" Stretch="UniformToFill" IsVisible="False" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+    <Border Grid.Row="0" Background="#ED0F1522" BorderBrush="#202A3C" BorderThickness="0,0,0,1" PointerPressed="TitleBar_PointerPressed">
       <Grid ColumnDefinitions="*,Auto" Margin="16,0,7,0">
         <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
           <Border Width="23" Height="23" CornerRadius="8" Background="#6C63FF"><TextBlock Text="P" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
@@ -46,7 +48,7 @@
         <ColumnDefinition Width="306" MinWidth="238" MaxWidth="460"/>
         <ColumnDefinition Width="*"/>
       </Grid.ColumnDefinitions>
-      <Border Grid.Column="0" Background="#0D1420" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
+      <Border Grid.Column="0" Background="#F20D1420" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,*,Auto" Margin="0,18,0,14">
           <Button x:Name="ChatsNavButton" Classes="nav active" HorizontalAlignment="Center" Click="ShowChats_Click" ToolTip.Tip="消息">
             <PathIcon Width="21" Height="21" Data="M3,4 L21,4 L21,17 L14,17 L9,21 L9,17 L3,17 Z"/>
@@ -68,7 +70,7 @@
         </Grid>
       </Border>
 
-      <Border Grid.Column="1" Background="#111927" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
+      <Border Grid.Column="1" Background="#EC111927" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,Auto,*">
           <Grid Margin="18,18,14,12" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
             <StackPanel Spacing="2">
@@ -97,7 +99,7 @@
 
       <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Right" Background="Transparent" ResizeDirection="Columns"/>
 
-      <Grid Grid.Column="2" Background="#0E1623" RowDefinitions="74,*,Auto">
+      <Grid Grid.Column="2" Background="#E60E1623" RowDefinitions="74,*,Auto">
         <Border Grid.Row="0" Background="#111927" BorderBrush="#202A3C" BorderThickness="0,0,0,1">
           <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
             <Border x:Name="CharacterAvatar" Width="52" Height="52" CornerRadius="17" Background="#6C63FF" ClipToBounds="True" VerticalAlignment="Center">

@@ -56,7 +56,8 @@ public static partial class SettingsDraftService
         AvatarSize = Math.Clamp(draft.AvatarSize, 28, 76),
         BubbleFontSize = Math.Clamp(draft.BubbleFontSize, 11, 24),
         BubbleMaxWidth = Math.Clamp(draft.BubbleMaxWidth, 280, 900),
-        BubbleSpacing = Math.Clamp(draft.BubbleSpacing, 2, 36)
+        BubbleSpacing = Math.Clamp(draft.BubbleSpacing, 2, 36),
+        MainWindowLayoutMode = draft.MainWindowLayoutMode
     };
 
     [GeneratedRegex("^#[0-9A-Fa-f]{6}$", RegexOptions.CultureInvariant)]
@@ -84,4 +85,5 @@ public sealed record ThemeSettingsDraft
     public double BubbleFontSize { get; init; }
     public double BubbleMaxWidth { get; init; }
     public double BubbleSpacing { get; init; }
+    public string MainWindowLayoutMode { get; init; } = MainWindowLayoutModes.Messenger;
 }

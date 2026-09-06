@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform.Storage;
 using Pry.Client;
 using Pry.Contracts;
 using Pry.Core.Models;
@@ -13,6 +15,11 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
     private ClientPreferencesResponse? _preferences;
     private IReadOnlyList<ModelProfileResponse> _models = [];
     private IReadOnlyList<SpeechModelResponse> _speechModels = [];
+    private IReadOnlyList<ComputeDeviceResponse> _devices = [];
+    private string? _userAvatarMediaId;
+    private string? _backgroundMediaId;
+    private bool _clearUserAvatar;
+    private bool _clearBackground;
 
     public PryMessengerSettingsWindow() : this(new PryBackendClient(new HttpClient
     {
@@ -27,6 +34,7 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
     }
 
     public bool Saved { get; private set; }
+    public bool LayoutChanged { get; private set; }
     public event Action? CloseRequested;
 
     private async Task LoadAsync()
@@ -43,12 +51,14 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
             _models = await modelsTask;
             _speechModels = await speechTask;
             var runtime = await runtimeTask;
-            var devices = await devicesTask;
+            _devices = await devicesTask;
 
             DisplayNameBox.Text = _preferences.UserProfile.DisplayName;
             SignatureBox.Text = _preferences.UserProfile.Signature;
             ThemeModeBox.ItemsSource = new[] { "system", "dark", "light" };
             ThemeModeBox.SelectedItem = _preferences.Theme.ThemeMode;
+            WindowStyleBox.ItemsSource = new[] { new LayoutChoice(MainWindowLayoutModes.Messenger, "新版 · Messenger"), new LayoutChoice(MainWindowLayoutModes.Card, "经典 · 卡片窗口") };
+            WindowStyleBox.SelectedItem = WindowStyleBox.Items.Cast<LayoutChoice>().First(item => item.Id == _preferences.Theme.MainWindowLayoutMode);
             AccentColorBox.Text = _preferences.Theme.AccentColor;
             GlassEffectsBox.IsChecked = _preferences.Theme.UseGlassEffects;
             var turn = _preferences.TurnTaking ?? new TurnTakingSettings();
@@ -64,7 +74,10 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
             Select(VisionModelBox, _preferences.ActiveVisionModelId);
             Select(SpeechModelBox, _preferences.ActiveSpeechModelId);
             RuntimeText.Text = runtime.State == "ready" ? "本地服务运行正常" : runtime.Error ?? runtime.State;
-            DeviceText.Text = devices.Count == 0 ? "未发现可用计算设备" : "计算设备：" + string.Join("、", devices.Select(item => item.Name));
+            ComputeDeviceBox.ItemsSource = new[] { new DeviceChoice("auto-discrete", "自动选择独立显卡") }.Concat(_devices.Select(item => new DeviceChoice(item.Id, item.Name))).ToArray();
+            DeviceText.Text = _devices.Count == 0 ? "未发现可用计算设备" : "计算设备：" + string.Join("、", _devices.Select(item => item.Name));
+            await LoadPreviewAsync(UserAvatarPreview, _preferences.UserAvatarUrl);
+            await LoadPreviewAsync(BackgroundPreview, _preferences.BackgroundUrl);
         }
         catch (Exception ex) { StatusText.Text = $"设置读取失败：{ex.Message}"; }
     }
@@ -73,6 +86,13 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
     {
         box.SelectedItem = box.ItemsSource?.Cast<ModelChoice>().FirstOrDefault(item => item.Id == (id ?? ""))
                            ?? box.ItemsSource?.Cast<ModelChoice>().FirstOrDefault();
+    }
+
+    private void TextModel_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (TextModelBox.SelectedItem is not ModelChoice choice || _models.FirstOrDefault(item => item.Id == choice.Id) is not { } model) return;
+        TemperatureBox.Value = (decimal)model.Temperature; MaxOutputBox.Value = model.MaxOutputTokens; ContextSizeBox.Value = model.ContextSize; GpuLayersBox.Value = model.GpuLayers; ThinkingBox.IsChecked = model.EnableThinking;
+        ComputeDeviceBox.SelectedItem = ComputeDeviceBox.ItemsSource?.Cast<DeviceChoice>().FirstOrDefault(item => item.Id == model.ComputeDevice) ?? ComputeDeviceBox.ItemsSource?.Cast<DeviceChoice>().FirstOrDefault();
     }
 
     private async void Save_Click(object? sender, RoutedEventArgs e)
@@ -96,21 +116,25 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
                 DebounceMs = (int)(DebounceBox.Value ?? oldTurn.DebounceMs),
                 StyleInstruction = StyleInstructionBox.Text?.Trim() ?? ""
             };
+            var selectedLayout = (WindowStyleBox.SelectedItem as LayoutChoice)?.Id ?? MainWindowLayoutModes.Messenger;
+            LayoutChanged = selectedLayout != _preferences.Theme.MainWindowLayoutMode;
             var theme = _preferences.Theme with
             {
                 ThemeMode = ThemeModeBox.SelectedItem?.ToString() ?? "system",
                 AccentColor = accent,
-                UseGlassEffects = GlassEffectsBox.IsChecked == true
+                UseGlassEffects = GlassEffectsBox.IsChecked == true,
+                MainWindowLayoutMode = selectedLayout
             };
             var profile = _preferences.UserProfile with { DisplayName = displayName, Signature = SignatureBox.Text?.Trim() ?? "" };
-            _preferences = await _api.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(
-                _preferences.SelectedCharacterId, null, profile, _preferences.DesktopPet, _preferences.Shortcuts, turn, theme));
-
             var visionId = (VisionModelBox.SelectedItem as ModelChoice)?.Id;
             var speechId = (SpeechModelBox.SelectedItem as ModelChoice)?.Id;
-            _models = await _api.UpdateModelSelectionAsync(new UpdateModelSelectionRequest(
-                textModel.Id, string.IsNullOrEmpty(visionId) ? null : visionId,
-                string.IsNullOrEmpty(speechId) ? null : speechId, null));
+            var tuning = new ModelTuningPreferences { ActiveModelId = textModel.Id, Temperature = (double?)TemperatureBox.Value, MaxOutputTokens = (int?)MaxOutputBox.Value, ContextSize = (int?)ContextSizeBox.Value, GpuLayers = (int?)GpuLayersBox.Value, ComputeDevice = (ComputeDeviceBox.SelectedItem as DeviceChoice)?.Id, EnableThinking = ThinkingBox.IsChecked == true };
+            var saved = await _api.SaveSettingsAsync(new SaveSettingsRequest(
+                new UpdateClientPreferencesRequest(_preferences.SelectedCharacterId, null, profile, _preferences.DesktopPet, _preferences.Shortcuts, turn, theme),
+                new UpdateAppearanceMediaRequest(_backgroundMediaId, _clearBackground, _userAvatarMediaId, _clearUserAvatar, null, null),
+                new UpdateModelSelectionRequest(textModel.Id, string.IsNullOrEmpty(visionId) ? null : visionId,
+                    string.IsNullOrEmpty(speechId) ? null : speechId, new Dictionary<string, ModelTuningPreferences> { [textModel.Id] = tuning })));
+            _preferences = saved.Preferences; _models = saved.Models;
             Saved = true;
             CloseRequested?.Invoke();
         }
@@ -119,4 +143,30 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
 
     private void Cancel_Click(object? sender, RoutedEventArgs e) => CloseRequested?.Invoke();
     private sealed record ModelChoice(string Id, string Name) { public override string ToString() => Name; }
+    private sealed record LayoutChoice(string Id, string Name) { public override string ToString() => Name; }
+    private sealed record DeviceChoice(string Id, string Name) { public override string ToString() => Name; }
+
+    private async void ChooseUserAvatar_Click(object? sender, RoutedEventArgs e) => await ChooseImageAsync(true);
+    private async void ChooseBackground_Click(object? sender, RoutedEventArgs e) => await ChooseImageAsync(false);
+    private void ClearUserAvatar_Click(object? sender, RoutedEventArgs e) { _clearUserAvatar = true; _userAvatarMediaId = null; UserAvatarPreview.Source = null; UserAvatarPreview.IsVisible = false; }
+    private void ClearBackground_Click(object? sender, RoutedEventArgs e) { _clearBackground = true; _backgroundMediaId = null; BackgroundPreview.Source = null; BackgroundPreview.IsVisible = false; }
+    private async Task ChooseImageAsync(bool avatar)
+    {
+        var storage = TopLevel.GetTopLevel(this)?.StorageProvider; if (storage is null) return;
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = avatar ? "选择用户头像" : "选择聊天背景", AllowMultiple = false, FileTypeFilter = new[] { FilePickerFileTypes.ImageAll } });
+        var file = files.FirstOrDefault(); var path = file?.TryGetLocalPath(); if (file is null || path is null) return;
+        try
+        {
+            await using var stream = File.OpenRead(path); var media = await _api.UploadAsync(stream, file.Name, Mime(path));
+            var preview = avatar ? UserAvatarPreview : BackgroundPreview; preview.Source = new Bitmap(path); preview.IsVisible = true;
+            if (avatar) { _userAvatarMediaId = media.Id; _clearUserAvatar = false; } else { _backgroundMediaId = media.Id; _clearBackground = false; }
+        }
+        catch (Exception ex) { StatusText.Text = $"图片读取失败：{ex.Message}"; }
+    }
+    private async Task LoadPreviewAsync(Image image, string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return;
+        try { var content = await _api.DownloadAsync(url); image.Source = new Bitmap(new MemoryStream(content.Bytes)); image.IsVisible = true; } catch { }
+    }
+    private static string Mime(string path) => Path.GetExtension(path).ToLowerInvariant() switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" };
 }

@@ -26,7 +26,7 @@ using Pry.App.Services;
 
 namespace Pry.App;
 
-public sealed partial class MainWindow : Window
+public sealed partial class MainWindow : Window, IPryMainWindow
 {
     private readonly PryBackendClient _api;
     private readonly BackendProjectionService _projectionService;
@@ -128,6 +128,8 @@ public sealed partial class MainWindow : Window
                 : $"文字：{text.DisplayName} · {text.BaseUrl}\n图片：{vision?.DisplayName ?? "未配置"} · {vision?.BaseUrl ?? "-"}";
         }
     }
+    public Window HostWindow => this;
+    public event Func<Task>? RestartRequested;
 
     public void ShowFromTray() { Show(); WindowState = WindowState.Normal; Activate(); }
 
@@ -1490,6 +1492,9 @@ public sealed partial class MainWindow : Window
                     ? "后端模型配置已保存"
                     : $"后端模型配置已保存 · {selectedName}";
                 themePreview.Commit(); window.Close();
+                if (settingsOriginalTheme.MainWindowLayoutMode != _preferences.Theme.MainWindowLayoutMode &&
+                    await ConfirmAsync(this, "切换窗口样式", "切换窗口样式需要重启前端窗口。本地后端和已经加载的模型会保持运行，是否现在重启？") && RestartRequested is not null)
+                    await RestartRequested.Invoke();
             }
             catch (Exception ex)
             {

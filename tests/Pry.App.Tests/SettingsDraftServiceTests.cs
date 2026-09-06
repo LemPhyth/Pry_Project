@@ -66,7 +66,8 @@ public sealed class SettingsDraftServiceTests
             AvatarSize = 10,
             BubbleFontSize = 30,
             BubbleMaxWidth = 100,
-            BubbleSpacing = 80
+            BubbleSpacing = 80,
+            MainWindowLayoutMode = MainWindowLayoutModes.Card
         });
         history.Add("later.png");
         displays.Clear();
@@ -82,6 +83,7 @@ public sealed class SettingsDraftServiceTests
         Assert.Equal(24, result.BubbleFontSize);
         Assert.Equal(280, result.BubbleMaxWidth);
         Assert.Equal(36, result.BubbleSpacing);
+        Assert.Equal(MainWindowLayoutModes.Card, result.MainWindowLayoutMode);
         Assert.Single(result.BackgroundHistory);
         Assert.Single(result.BackgroundDisplays);
     }

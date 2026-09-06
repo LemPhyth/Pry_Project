@@ -10,6 +10,7 @@ namespace Pry.App.Services;
 public sealed class ThemeAppearanceEditor
 {
     private readonly ComboBox _mode;
+    private readonly ComboBox _layout;
     private readonly TextBox _accent;
     private readonly CheckBox _glass;
     private readonly CheckBox _liveResize;
@@ -21,6 +22,7 @@ public sealed class ThemeAppearanceEditor
     public ThemeAppearanceEditor(ThemePreferences value, SettingsUiFactory ui)
     {
         _mode = new ComboBox { ItemsSource = new[] { "跟随系统", "深色", "浅色" }, SelectedIndex = value.ThemeMode.ToLowerInvariant() switch { "dark" => 1, "light" => 2, _ => 0 } };
+        _layout = new ComboBox { ItemsSource = new[] { "新版 · Messenger", "经典 · 卡片窗口" }, SelectedIndex = value.MainWindowLayoutMode == MainWindowLayoutModes.Card ? 1 : 0 };
         _accent = ui.CreateTextBox(string.IsNullOrWhiteSpace(value.AccentColor) ? "#B148C6" : value.AccentColor);
         _glass = new CheckBox { Content = "侧边栏、顶部标题栏和底部输入区透出软件背景", IsChecked = value.UseGlassEffects };
         _liveResize = new CheckBox { Content = "拖动时实时调整侧边栏宽度", IsChecked = value.LiveSidebarResize };
@@ -47,6 +49,7 @@ public sealed class ThemeAppearanceEditor
         }
         var colors = new StackPanel { Spacing = 7 };
         ui.AddField(colors, "主题模式", _mode);
+        ui.AddField(colors, "窗口样式（切换后需重启前端，后端保持运行）", _layout);
         ui.AddField(colors, "强调色调色板", palette);
         ui.AddField(colors, "自定义十六进制颜色", _accent);
         Panel.Children.Add(ui.CreateCard("颜色主题", colors, Hint("可跟随系统切换深浅色，也可以指定软件强调色。")));
@@ -62,6 +65,7 @@ public sealed class ThemeAppearanceEditor
             Hint("关闭时拖动只显示位置指示线，松手后调整宽度；开启时侧边栏会跟随指针实时变化。"), sizes,
             Hint("调整后主聊天窗口会立即呈现效果；关闭设置而不保存会恢复原值。")));
         _mode.SelectionChanged += (_, _) => Changed?.Invoke();
+        _layout.SelectionChanged += (_, _) => Changed?.Invoke();
         _accent.TextChanged += (_, _) => Changed?.Invoke();
         _glass.IsCheckedChanged += (_, _) => Changed?.Invoke();
         _liveResize.IsCheckedChanged += (_, _) => Changed?.Invoke();
@@ -88,7 +92,8 @@ public sealed class ThemeAppearanceEditor
             UseGlassEffects = _glass.IsChecked == true, LiveSidebarResize = LiveSidebarResize,
             BackgroundImageOpacity = (double)(BackgroundOpacity.Value ?? 1), BackgroundDimOpacity = (double)(BackgroundDim.Value ?? .34m),
             BackgroundBlurRadius = (double)(BackgroundBlur.Value ?? 0), AvatarSize = (double)(_avatarSize.Value ?? 48),
-            BubbleFontSize = (double)(_fontSize.Value ?? 14), BubbleMaxWidth = (double)(_maxWidth.Value ?? 620), BubbleSpacing = (double)(_spacing.Value ?? 10)
+            BubbleFontSize = (double)(_fontSize.Value ?? 14), BubbleMaxWidth = (double)(_maxWidth.Value ?? 620), BubbleSpacing = (double)(_spacing.Value ?? 10),
+            MainWindowLayoutMode = _layout.SelectedIndex == 1 ? MainWindowLayoutModes.Card : MainWindowLayoutModes.Messenger
         });
 
     private static TextBlock Hint(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap, Foreground = Brush.Parse("#7F91A4") };

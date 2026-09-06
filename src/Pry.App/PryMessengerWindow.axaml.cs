@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -15,7 +16,7 @@ using Pry.Core.Models;
 
 namespace Pry.App;
 
-public sealed partial class PryMessengerWindow : Window
+public sealed partial class PryMessengerWindow : Window, IPryMainWindow
 {
     private readonly PryBackendClient _api;
     private readonly List<ConversationRoom> _rooms = [];
@@ -61,6 +62,8 @@ public sealed partial class PryMessengerWindow : Window
     public string ActiveModelLink => _preferences?.ActiveModelId is { Length: > 0 } id
         ? $"当前文字模型：{id}"
         : "模型尚未配置";
+    public Window HostWindow => this;
+    public event Func<Task>? RestartRequested;
 
     public void ShowFromTray()
     {
@@ -87,6 +90,7 @@ public sealed partial class PryMessengerWindow : Window
             LoadingText.Text = "正在读取本地资料…";
             if (!await _api.IsHealthyAsync()) throw new InvalidOperationException("本地服务尚未就绪。");
             _preferences = await _api.GetPreferencesAsync();
+            await ApplyBackgroundAsync();
             _characters.AddRange(await _api.GetCharactersAsync());
             _folders.AddRange(await _api.GetFoldersAsync());
             _stickers.AddRange(await _api.GetStickersAsync());
@@ -109,6 +113,13 @@ public sealed partial class PryMessengerWindow : Window
 
     private CharacterSummaryResponse? FindCharacter(string? id) =>
         _characters.FirstOrDefault(item => item.Id == id);
+
+    private async Task ApplyBackgroundAsync()
+    {
+        AppBackgroundImage.Source = null; AppBackgroundImage.IsVisible = false;
+        if (_preferences?.BackgroundUrl is not { Length: > 0 } url) return;
+        try { var content = await _api.DownloadAsync(url); AppBackgroundImage.Source = new Bitmap(new MemoryStream(content.Bytes)); AppBackgroundImage.Opacity = _preferences.Theme.BackgroundImageOpacity; AppBackgroundImage.IsVisible = true; } catch { }
+    }
 
     private async Task ApplyCharacterAsync()
     {
@@ -194,11 +205,11 @@ public sealed partial class PryMessengerWindow : Window
         var pin = new MenuItem { Header = room.IsPinned ? "取消置顶" : "置顶会话" };
         pin.Click += async (_, _) => { await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, !room.IsPinned, null)); await RefreshRoomsWithoutSwitchAsync(); };
         item.ContextMenu = new ContextMenu { ItemsSource = new[] { settings, pin } };
-        item.PointerPressed += (_, args) =>
+        item.AddHandler(PointerPressedEvent, (_, args) =>
         {
             if (!args.GetCurrentPoint(item).Properties.IsRightButtonPressed) return;
             args.Handled = true; item.ContextMenu?.Open(item);
-        };
+        }, RoutingStrategies.Tunnel, true);
         return item;
     }
 
@@ -748,11 +759,16 @@ public sealed partial class PryMessengerWindow : Window
             var stickers = (await _api.GetStickersAsync()).Where(item => item.Enabled).ToArray();
             _stickers.Clear(); _stickers.AddRange(stickers);
             if (stickers.Length == 0) { await ShowNoticeAsync("没有可用表情", "可以稍后在内容管理中导入表情。"); return; }
-            var list = new ListBox { ItemsSource = stickers.Select(item => new ListBoxItem { Content = item.Name, Tag = item }).ToArray() };
-            list.DoubleTapped += async (_, _) =>
+            var grid = new WrapPanel { Orientation = Orientation.Horizontal };
+            foreach (var sticker in stickers)
             {
-                if (list.SelectedItem is ListBoxItem { Tag: StickerResponse sticker }) await SendAsync(sticker.Id);
-            };
+                var image = new Image { Width = 76, Height = 76, Stretch = Stretch.Uniform };
+                var button = new Button { Width = 88, Height = 88, Margin = new Thickness(3), Padding = new Thickness(6), Content = image, Background = Brushes.Transparent };
+                ToolTip.SetTip(button, string.IsNullOrWhiteSpace(sticker.Name) ? "表情" : sticker.Name);
+                button.Click += async (_, _) => await SendAsync(sticker.Id);
+                grid.Children.Add(button); _ = LoadMessageImageAsync(image, sticker.ContentUrl);
+            }
+            var list = new ScrollViewer { Content = grid, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             var manage = new Button { Content = "管理表情", HorizontalAlignment = HorizontalAlignment.Right };
             manage.Click += async (_, _) =>
             {
@@ -761,7 +777,7 @@ public sealed partial class PryMessengerWindow : Window
                 ShowWorkspacePage("管理表情", manager);
             };
             var content = new Grid { Width = 360, Height = 400, RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 10, Margin = new Thickness(16), Children = { new TextBlock { Text = "选择表情", FontSize = 18, FontWeight = FontWeight.SemiBold }, list, manage } }; Grid.SetRow(list, 1); Grid.SetRow(manage, 2);
-            new Flyout { Content = new Border { Background = Brush.Parse("#182235"), BorderBrush = Brush.Parse("#33425D"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Child = content } }.ShowAt(anchor);
+            new Flyout { Placement = PlacementMode.Top, Content = new Border { Background = Brush.Parse("#182235"), BorderBrush = Brush.Parse("#33425D"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Child = content } }.ShowAt(anchor);
         }
         catch (Exception ex) { await ShowNoticeAsync("表情加载失败", ex.Message); }
     }
@@ -786,14 +802,28 @@ public sealed partial class PryMessengerWindow : Window
     {
         SetActiveNav(SettingsNavButton);
         var page = new PryMessengerSettingsWindow(_api);
-        page.CloseRequested += async () => { if (page.Saved) _preferences = await _api.GetPreferencesAsync(); CloseWorkspacePage(); };
+        page.CloseRequested += async () =>
+        {
+            if (page.Saved) { _preferences = await _api.GetPreferencesAsync(); await ApplyBackgroundAsync(); }
+            if (page.Saved && page.LayoutChanged) ShowRestartPrompt(); else CloseWorkspacePage();
+        };
         ShowWorkspacePage("设置", page);
     }
 
-    private void ShowChats_Click(object? sender, RoutedEventArgs e) { SetActiveNav(ChatsNavButton); CloseWorkspacePage(false); ConversationSearchBox.Focus(); }
+    private void ShowRestartPrompt()
+    {
+        var later = new Button { Content = "稍后重启" };
+        var restart = new Button { Content = "立即重启前端", Classes = { "primary" } };
+        later.Click += (_, _) => CloseWorkspacePage();
+        restart.Click += async (_, _) => { if (RestartRequested is not null) await RestartRequested.Invoke(); };
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { later, restart } };
+        ShowWorkspacePage("切换窗口样式", new StackPanel { Margin = new Thickness(28), Spacing = 16, MaxWidth = 620, Children = { new TextBlock { Text = "窗口样式已经保存", FontSize = 22, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = "切换窗口样式需要重启前端窗口。聊天后端和已经加载的本地模型会保持运行，是否现在重启？", TextWrapping = TextWrapping.Wrap }, actions } });
+    }
+
+    private void ShowChats_Click(object? sender, RoutedEventArgs e) { SetActiveNav(ChatsNavButton); CloseWorkspacePage(false); ChatsNavButton.Focus(); }
     private void ShowWorkspacePage(string title, Control content)
     {
-        WorkspacePageTitle.Text = title; WorkspacePageContent.Content = content; WorkspacePage.IsVisible = true;
+        WorkspacePageTitle.Text = title; WorkspacePageContent.Content = content; WorkspacePage.IsVisible = true; WorkspacePage.Focusable = true; WorkspacePage.Focus();
     }
     private void CloseWorkspacePage_Click(object? sender, RoutedEventArgs e) => CloseWorkspacePage();
     private void CloseWorkspacePage(bool selectChats = true) { WorkspacePage.IsVisible = false; WorkspacePageContent.Content = null; if (selectChats) SetActiveNav(ChatsNavButton); }

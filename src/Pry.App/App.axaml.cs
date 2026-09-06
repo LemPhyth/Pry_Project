@@ -14,7 +14,7 @@ namespace Pry.App;
 public sealed partial class App : Application
 {
     private TrayIcon? _trayIcon;
-    private PryMessengerWindow? _mainWindow;
+    private IPryMainWindow? _mainWindow;
     private WebApplication? _backend;
     private HttpClient? _backendHttpClient;
 
@@ -45,16 +45,41 @@ public sealed partial class App : Application
                 BaseAddress = new Uri(backendUrl + "/"),
                 Timeout = Timeout.InfiniteTimeSpan
             };
-            _mainWindow = new PryMessengerWindow(new PryBackendClient(_backendHttpClient));
-            desktop.MainWindow = _mainWindow;
+            await CreateMainWindowAsync(desktop);
             CreateTrayIcon(desktop);
-            _mainWindow.Show();
+            _mainWindow!.HostWindow.Show();
         }
         catch (Exception ex)
         {
             await DisposeBackendAsync();
             ShowStartupFailure(desktop, ex);
         }
+    }
+
+    private async Task CreateMainWindowAsync(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var api = new PryBackendClient(_backendHttpClient ?? throw new InvalidOperationException("本地 API 客户端尚未建立。"));
+        var preferences = await api.GetPreferencesAsync();
+        _mainWindow = preferences.Theme.MainWindowLayoutMode == Pry.Core.Models.MainWindowLayoutModes.Card
+            ? new MainWindow(api)
+            : new PryMessengerWindow(api);
+        switch (_mainWindow)
+        {
+            case PryMessengerWindow messenger: messenger.RestartRequested += () => RestartFrontendAsync(desktop); break;
+            case MainWindow classic: classic.RestartRequested += () => RestartFrontendAsync(desktop); break;
+        }
+        desktop.MainWindow = _mainWindow.HostWindow;
+    }
+
+    private async Task RestartFrontendAsync(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        if (_mainWindow is null) return;
+        var previous = _mainWindow;
+        await previous.PrepareForExitAsync(false);
+        previous.HostWindow.Close();
+        await CreateMainWindowAsync(desktop);
+        _mainWindow!.HostWindow.Show();
+        _mainWindow.HostWindow.Activate();
     }
 
     private void ShowStartupFailure(IClassicDesktopStyleApplicationLifetime desktop, Exception exception)
@@ -109,7 +134,7 @@ public sealed partial class App : Application
         var topmost = new NativeMenuItem("聊天窗口始终置顶") { ToggleType = NativeMenuItemToggleType.CheckBox };
         var pet = new NativeMenuItem("桌宠模式（等待美术素材）") { IsEnabled = false }; var exit = new NativeMenuItem("退出…");
         open.Click += (_, _) => _mainWindow.ShowFromTray(); model.Click += async (_, _) => await ShowInfoAsync("模型链接信息", _mainWindow.ActiveModelLink);
-        topmost.Click += (_, _) => { topmost.IsChecked = !topmost.IsChecked; _mainWindow.Topmost = topmost.IsChecked; }; exit.Click += async (_, _) => await AskExitAsync(desktop);
+        topmost.Click += (_, _) => { topmost.IsChecked = !topmost.IsChecked; _mainWindow.HostWindow.Topmost = topmost.IsChecked; }; exit.Click += async (_, _) => await AskExitAsync(desktop);
         var menu = new NativeMenu { Items = { open, model, new NativeMenuItemSeparator(), pet, topmost, new NativeMenuItemSeparator(), exit } };
         var iconBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
         _trayIcon = new TrayIcon { ToolTipText = "Pry 本地陪伴助手", Menu = menu, Icon = new WindowIcon(new MemoryStream(iconBytes)), IsVisible = true };
@@ -137,10 +162,10 @@ public sealed partial class App : Application
                 new TextBlock { Text = "保留服务会继续占用内存，之后可由其他兼容客户端使用。", TextWrapping = Avalonia.Media.TextWrapping.Wrap }
             }
         };
-        var messageCard = _mainWindow.CreateCompactDialogTextCard(message);
+        var messageCard = CreateDialogCard(message);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Children = { cancel, keep, stop } };
-        dialog.Content = _mainWindow.CreateThemedDialogSurface(PryMessengerWindow.CreateCompactDialogLayout(messageCard, actions));
-        await dialog.ShowDialog(_mainWindow); if (choice < 0) return; await _mainWindow.PrepareForExitAsync(choice == 1);
+        dialog.Content = CreateDialogSurface(PryMessengerWindow.CreateCompactDialogLayout(messageCard, actions));
+        await dialog.ShowDialog(_mainWindow.HostWindow); if (choice < 0) return; await _mainWindow.PrepareForExitAsync(choice == 1);
         await DisposeBackendAsync();
         _trayIcon!.IsVisible = false; desktop.Shutdown();
     }
@@ -148,8 +173,11 @@ public sealed partial class App : Application
     private async Task ShowInfoAsync(string title, string message)
     {
         if (_mainWindow is null) return; _mainWindow.ShowFromTray(); var dialog = new Window { Title = title, Width = 500, Height = 190, WindowStartupLocation = WindowStartupLocation.CenterOwner }; var close = new Button { Content = "关闭", HorizontalAlignment = HorizontalAlignment.Right }; close.Click += (_, _) => dialog.Close();
-        dialog.Content = _mainWindow.CreateThemedDialogSurface(new StackPanel { Margin = new Thickness(24), Spacing = 18, Children = { new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, close } }); await dialog.ShowDialog(_mainWindow);
+        dialog.Content = CreateDialogSurface(new StackPanel { Margin = new Thickness(24), Spacing = 18, Children = { new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, close } }); await dialog.ShowDialog(_mainWindow.HostWindow);
     }
+
+    private static Border CreateDialogCard(Control content) => new() { Background = Avalonia.Media.Brush.Parse("#182235"), BorderBrush = Avalonia.Media.Brush.Parse("#34495E"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(13), Padding = new Thickness(18), Child = content };
+    private static Control CreateDialogSurface(Control content) => new Grid { Background = Avalonia.Media.Brush.Parse("#101827"), Children = { content } };
 
     private static int ReserveLoopbackPort()
     {

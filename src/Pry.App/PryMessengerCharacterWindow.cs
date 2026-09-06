@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
@@ -23,6 +24,7 @@ internal sealed class PryMessengerCharacterWindow : UserControl
     private readonly TextBox _rules = Area("行为规则，每行一条");
     private readonly TextBox _facts = Area("世界设定，每行一条");
     private readonly TextBlock _status = new() { Foreground = Brush.Parse("#8492A8"), TextWrapping = TextWrapping.Wrap };
+    private readonly Image _avatarPreview = new() { Width = 72, Height = 72, Stretch = Stretch.UniformToFill, IsVisible = false };
     private CharacterResponse? _selected;
     private string? _avatarMediaId;
 
@@ -43,7 +45,9 @@ internal sealed class PryMessengerCharacterWindow : UserControl
         Grid.SetRow(_list, 1);
         var form = new StackPanel { Spacing = 9, Margin = new Thickness(20), Children =
         {
-            new TextBlock { Text = "角色卡", FontSize = 22, FontWeight = FontWeight.SemiBold }, _name, _cardName, _userName,
+            new TextBlock { Text = "角色卡", FontSize = 22, FontWeight = FontWeight.SemiBold },
+            new Border { Width = 76, Height = 76, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(22), Background = Brush.Parse("#26344D"), ClipToBounds = true, Child = _avatarPreview },
+            _name, _cardName, _userName,
             _identity, _personality, _speech, _greeting, _rules, _facts, _status,
             new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { remove, chooseAvatar, save, close } }
         }};
@@ -66,7 +70,7 @@ internal sealed class PryMessengerCharacterWindow : UserControl
         try
         {
             var items = await _api.GetCharactersAsync();
-            _list.ItemsSource = items.Select(item => new ListBoxItem { Tag = item, Padding = new Thickness(11), Margin = new Thickness(0,0,0,4), Content = new StackPanel { Spacing = 3, Children = { new TextBlock { Text = item.Name, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = item.CardName, FontSize = 10, Foreground = Brush.Parse("#718198") } } } }).ToArray();
+            _list.ItemsSource = items.Select(CreateCharacterItem).ToArray();
             _list.SelectedItem = _list.Items.Cast<ListBoxItem>().FirstOrDefault(item => (item.Tag as CharacterSummaryResponse)?.Id == selectId) ?? _list.Items.Cast<ListBoxItem>().FirstOrDefault();
         }
         catch (Exception ex) { _status.Text = $"角色读取失败：{ex.Message}"; }
@@ -80,6 +84,7 @@ internal sealed class PryMessengerCharacterWindow : UserControl
             _name.Text = _selected.Name; _cardName.Text = _selected.CardName; _userName.Text = _selected.UserName;
             _identity.Text = _selected.Identity; _personality.Text = _selected.Personality; _speech.Text = _selected.SpeechStyle;
             _greeting.Text = _selected.Greeting; _rules.Text = string.Join(Environment.NewLine, _selected.BehavioralRules); _facts.Text = string.Join(Environment.NewLine, _selected.WorldFacts);
+            _avatarPreview.Source = null; _avatarPreview.IsVisible = false; if (!string.IsNullOrWhiteSpace(_selected.AvatarUrl)) _ = LoadAvatarAsync(_selected.AvatarUrl);
             _status.Text = _selected.PromptMode == CharacterPromptMode.Legacy ? "旧式角色卡：保存后转为结构化编辑" : "";
         }
         catch (Exception ex) { _status.Text = $"角色读取失败：{ex.Message}"; }
@@ -97,7 +102,7 @@ internal sealed class PryMessengerCharacterWindow : UserControl
         var storage = TopLevel.GetTopLevel(this)?.StorageProvider; if (storage is null) return;
         var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "选择角色头像", AllowMultiple = false, FileTypeFilter = new[] { FilePickerFileTypes.ImageAll } });
         var file = files.FirstOrDefault(); var path = file?.TryGetLocalPath(); if (file is null || path is null) return;
-        try { await using var stream = File.OpenRead(path); _avatarMediaId = (await _api.UploadAsync(stream, file.Name, Mime(path))).Id; _status.Text = $"已选择头像：{file.Name}"; }
+        try { await using var stream = File.OpenRead(path); _avatarMediaId = (await _api.UploadAsync(stream, file.Name, Mime(path))).Id; _avatarPreview.Source = new Avalonia.Media.Imaging.Bitmap(path); _avatarPreview.IsVisible = true; _status.Text = $"已选择头像：{file.Name}"; }
         catch (Exception ex) { _status.Text = $"头像上传失败：{ex.Message}"; }
     }
 
@@ -124,4 +129,19 @@ internal sealed class PryMessengerCharacterWindow : UserControl
 
     private static IReadOnlyList<string> Lines(string? value) => (value ?? "").Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     private static string Mime(string path) => Path.GetExtension(path).ToLowerInvariant() switch { ".png" => "image/png", ".webp" => "image/webp", _ => "image/jpeg" };
+
+    private ListBoxItem CreateCharacterItem(CharacterSummaryResponse item)
+    {
+        var row = new ListBoxItem { Tag = item, Padding = new Thickness(11), Margin = new Thickness(0,0,0,4), Content = new StackPanel { Spacing = 3, Children = { new TextBlock { Text = item.Name, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = item.CardName, FontSize = 10, Foreground = Brush.Parse("#718198") } } } };
+        var edit = new MenuItem { Header = "编辑角色" }; edit.Click += async (_, _) => { _list.SelectedItem = row; await LoadCharacterAsync(item.Id); };
+        var remove = new MenuItem { Header = "删除角色" }; remove.Click += async (_, _) => { await LoadCharacterAsync(item.Id); await DeleteAsync(); };
+        row.ContextMenu = new ContextMenu { ItemsSource = new[] { edit, remove } };
+        row.AddHandler(PointerPressedEvent, (_, args) => { if (args.GetCurrentPoint(row).Properties.IsRightButtonPressed) { args.Handled = true; row.ContextMenu.Open(row); } }, Avalonia.Interactivity.RoutingStrategies.Tunnel, true);
+        return row;
+    }
+
+    private async Task LoadAvatarAsync(string url)
+    {
+        try { var content = await _api.DownloadAsync(url); _avatarPreview.Source = new Avalonia.Media.Imaging.Bitmap(new MemoryStream(content.Bytes)); _avatarPreview.IsVisible = true; } catch { }
+    }
 }
