@@ -166,7 +166,20 @@ public sealed class ApplicationServiceTests
             TestContext.Current.CancellationToken);
         Assert.Equal(created.Id, preferences.SelectedCharacterId);
         Assert.Equal("测试用户", preferences.UserProfile.DisplayName);
+        Assert.Equal(MainWindowLayoutModes.Messenger, preferences.Theme.MainWindowLayoutMode);
         Assert.True(File.Exists(Path.Combine(fixture.Directory, "preferences.json")));
+
+        var cardTheme = preferences.Theme with { MainWindowLayoutMode = MainWindowLayoutModes.Card };
+        preferences = await service.UpdatePreferencesAsync(new UpdateClientPreferencesRequest(null, null, null,
+            null, null, null, cardTheme), TestContext.Current.CancellationToken);
+        Assert.Equal(MainWindowLayoutModes.Card, preferences.Theme.MainWindowLayoutMode);
+        Assert.Contains("\"mainWindowLayoutMode\": \"card\"",
+            await File.ReadAllTextAsync(Path.Combine(fixture.Directory, "preferences.json"),
+                TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ApiValidationException>(() => service.UpdatePreferencesAsync(
+            new UpdateClientPreferencesRequest(null, null, null, null, null, null,
+                cardTheme with { MainWindowLayoutMode = "unsupported" }), TestContext.Current.CancellationToken));
+        Assert.Equal(MainWindowLayoutModes.Card, service.GetPreferences().Theme.MainWindowLayoutMode);
         var models = service.GetModels();
         var text = Assert.Single(models, x => x.SelectedForText);
         var vision = models.First(x => x.Capabilities.Vision);

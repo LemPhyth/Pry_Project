@@ -239,6 +239,7 @@ public sealed record ThemePreferences
     public IReadOnlyDictionary<string, ImageDisplayPreferences> UserAvatarDisplays { get; init; } =
         new Dictionary<string, ImageDisplayPreferences>();
     public string ThemeMode { get; init; } = "system";
+    public string MainWindowLayoutMode { get; init; } = MainWindowLayoutModes.Messenger;
     public string AccentColor { get; init; } = "#B148C6";
     public bool UseGlassEffects { get; init; } = true;
     public bool LiveSidebarResize { get; init; }
@@ -250,6 +251,12 @@ public sealed record ThemePreferences
     public double BubbleFontSize { get; init; } = 14;
     public double BubbleMaxWidth { get; init; } = 620;
     public double BubbleSpacing { get; init; } = 10;
+}
+
+public static class MainWindowLayoutModes
+{
+    public const string Messenger = "messenger";
+    public const string Card = "card";
 }
 
 public sealed record ImageDisplayPreferences

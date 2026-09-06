@@ -37,7 +37,10 @@ public sealed record ClientPreferencesResponse(string? SelectedCharacterId, stri
     ClientThemePreferences Theme, string? BackgroundUrl, string? UserAvatarUrl);
 public sealed record ClientThemePreferences(string ThemeMode, string AccentColor, bool UseGlassEffects,
     bool LiveSidebarResize, double BackgroundDimOpacity, double BackgroundImageOpacity, string BackgroundBlurMode,
-    double BackgroundBlurRadius, double AvatarSize, double BubbleFontSize, double BubbleMaxWidth, double BubbleSpacing);
+    double BackgroundBlurRadius, double AvatarSize, double BubbleFontSize, double BubbleMaxWidth, double BubbleSpacing)
+{
+    public string MainWindowLayoutMode { get; init; } = MainWindowLayoutModes.Messenger;
+}
 public sealed record UpdateClientPreferencesRequest(string? SelectedCharacterId, string? ActiveConversationId,
     UserProfilePreferences? UserProfile, DesktopPetPreferences? DesktopPet, ShortcutSettings? Shortcuts,
     TurnTakingSettings? TurnTaking, ClientThemePreferences? Theme);

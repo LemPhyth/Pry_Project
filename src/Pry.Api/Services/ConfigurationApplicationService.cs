@@ -308,13 +308,17 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         new ClientThemePreferences(value.Theme.ThemeMode, value.Theme.AccentColor, value.Theme.UseGlassEffects,
             value.Theme.LiveSidebarResize, value.Theme.BackgroundDimOpacity, value.Theme.BackgroundImageOpacity,
             value.Theme.BackgroundBlurMode, value.Theme.BackgroundBlurRadius, value.Theme.AvatarSize,
-            value.Theme.BubbleFontSize, value.Theme.BubbleMaxWidth, value.Theme.BubbleSpacing),
+            value.Theme.BubbleFontSize, value.Theme.BubbleMaxWidth, value.Theme.BubbleSpacing)
+        {
+            MainWindowLayoutMode = value.Theme.MainWindowLayoutMode
+        },
         string.IsNullOrWhiteSpace(value.Theme.BackgroundImagePath) ? null : "/api/v1/appearance/background",
         string.IsNullOrWhiteSpace(value.Theme.UserAvatarPath) ? null : "/api/v1/appearance/user-avatar");
 
     private static ThemePreferences ApplyTheme(ThemePreferences current, ClientThemePreferences value) => current with
     {
         ThemeMode = value.ThemeMode, AccentColor = value.AccentColor, UseGlassEffects = value.UseGlassEffects,
+        MainWindowLayoutMode = value.MainWindowLayoutMode,
         LiveSidebarResize = value.LiveSidebarResize, BackgroundDimOpacity = value.BackgroundDimOpacity,
         BackgroundImageOpacity = value.BackgroundImageOpacity, BackgroundBlurMode = value.BackgroundBlurMode,
         BackgroundBlurRadius = value.BackgroundBlurRadius, AvatarSize = value.AvatarSize,
@@ -409,6 +413,8 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
     {
         var theme = value.Theme;
         if (theme.ThemeMode is not ("system" or "light" or "dark")) throw new ApiValidationException("theme.themeMode", "只支持 system、light 或 dark");
+        if (theme.MainWindowLayoutMode is not (MainWindowLayoutModes.Messenger or MainWindowLayoutModes.Card))
+            throw new ApiValidationException("theme.mainWindowLayoutMode", "只支持 messenger 或 card");
         if (!HexColor().IsMatch(theme.AccentColor)) throw new ApiValidationException("theme.accentColor", "必须是 #RRGGBB 颜色");
         Range(theme.BackgroundDimOpacity, 0, 1, "theme.backgroundDimOpacity"); Range(theme.BackgroundImageOpacity, 0, 1, "theme.backgroundImageOpacity");
         Range(theme.BackgroundBlurRadius, 0, 100, "theme.backgroundBlurRadius"); Range(theme.AvatarSize, 28, 76, "theme.avatarSize");

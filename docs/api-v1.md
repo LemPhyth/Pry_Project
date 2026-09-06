@@ -240,6 +240,13 @@
 
 背景和头像 URL 仅在资源存在时返回。客户端不能通过这些接口设置任意磁盘路径。
 
+主题偏好包含 `mainWindowLayoutMode`，稳定值为：
+
+- `messenger`：经典聊天三栏布局，也是旧偏好文件缺少该字段时的默认值。
+- `card`：原有卡片式布局。
+
+客户端通过 `PATCH /api/v1/preferences` 的 `theme.mainWindowLayoutMode` 保存选择，并以响应投影为准。其他值返回 `400 validation_error`，前端不得另建本地持久化配置覆盖服务端结果。
+
 `PUT /api/v1/settings` 请求由三个对象组成：
 
 ```json
