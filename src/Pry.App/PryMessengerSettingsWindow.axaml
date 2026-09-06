@@ -1,0 +1,71 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Pry.App.PryMessengerSettingsWindow"
+        Width="780" Height="650" MinWidth="680" MinHeight="540"
+        Title="Pry 设置" Background="#101827" WindowStartupLocation="CenterOwner">
+  <Window.Styles>
+    <Style Selector="TextBox,ComboBox,NumericUpDown"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#2A3850"/><Setter Property="CornerRadius" Value="10"/></Style>
+    <Style Selector="Button"><Setter Property="CornerRadius" Value="10"/><Setter Property="Padding" Value="15,8"/></Style>
+    <Style Selector="Button.primary"><Setter Property="Background" Value="#6C63FF"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Border.card"><Setter Property="Background" Value="#182235"/><Setter Property="CornerRadius" Value="13"/><Setter Property="Padding" Value="16"/></Style>
+  </Window.Styles>
+  <Grid RowDefinitions="Auto,*,Auto">
+    <StackPanel Margin="24,22,24,16" Spacing="4">
+      <TextBlock Text="设置" FontSize="25" FontWeight="SemiBold" Foreground="#F4F6FC"/>
+      <TextBlock x:Name="RuntimeText" Text="正在读取本地配置…" Foreground="#8090A7" FontSize="11"/>
+    </StackPanel>
+    <TabControl Grid.Row="1" Margin="20,0">
+      <TabItem Header="个人资料">
+        <ScrollViewer><StackPanel Margin="8,18" Spacing="14">
+          <Border Classes="card"><StackPanel Spacing="9">
+            <TextBlock Text="你的资料" FontSize="17" FontWeight="SemiBold"/>
+            <TextBlock Text="显示名称" Foreground="#8D9AAF" FontSize="11"/><TextBox x:Name="DisplayNameBox" MaxLength="60"/>
+            <TextBlock Text="个性签名" Foreground="#8D9AAF" FontSize="11"/><TextBox x:Name="SignatureBox" MaxLength="160"/>
+          </StackPanel></Border>
+        </StackPanel></ScrollViewer>
+      </TabItem>
+      <TabItem Header="模型">
+        <ScrollViewer><StackPanel Margin="8,18" Spacing="14">
+          <Border Classes="card"><StackPanel Spacing="9">
+            <TextBlock Text="模型角色" FontSize="17" FontWeight="SemiBold"/>
+            <TextBlock Text="文字模型" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="TextModelBox"/>
+            <TextBlock Text="视觉模型" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="VisionModelBox"/>
+            <TextBlock Text="语音识别模型" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="SpeechModelBox"/>
+            <TextBlock x:Name="DeviceText" Foreground="#718198" TextWrapping="Wrap"/>
+          </StackPanel></Border>
+        </StackPanel></ScrollViewer>
+      </TabItem>
+      <TabItem Header="聊天体验">
+        <ScrollViewer><StackPanel Margin="8,18" Spacing="14">
+          <Border Classes="card"><StackPanel Spacing="10">
+            <TextBlock Text="回复节奏" FontSize="17" FontWeight="SemiBold"/>
+            <CheckBox x:Name="SplitRepliesBox" Content="将回复拆成更自然的短消息"/>
+            <CheckBox x:Name="ListeningSignalsBox" Content="等待较久时发送倾听反馈"/>
+            <TextBlock Text="输入完成等待时间（毫秒）" Foreground="#8D9AAF" FontSize="11"/>
+            <NumericUpDown x:Name="DebounceBox" Minimum="200" Maximum="10000" Increment="100"/>
+            <TextBlock Text="回复风格提示" Foreground="#8D9AAF" FontSize="11"/>
+            <TextBox x:Name="StyleInstructionBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90" MaxLength="1000"/>
+          </StackPanel></Border>
+        </StackPanel></ScrollViewer>
+      </TabItem>
+      <TabItem Header="外观">
+        <ScrollViewer><StackPanel Margin="8,18" Spacing="14">
+          <Border Classes="card"><StackPanel Spacing="9">
+            <TextBlock Text="界面外观" FontSize="17" FontWeight="SemiBold"/>
+            <TextBlock Text="主题模式" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="ThemeModeBox"/>
+            <TextBlock Text="强调色（#RRGGBB）" Foreground="#8D9AAF" FontSize="11"/><TextBox x:Name="AccentColorBox" MaxLength="9"/>
+            <CheckBox x:Name="GlassEffectsBox" Content="启用玻璃效果"/>
+            <TextBlock Text="新版目前保持独立视觉语言；背景图片与头像取景会在专门的素材管理页处理。" Foreground="#718198" TextWrapping="Wrap"/>
+          </StackPanel></Border>
+        </StackPanel></ScrollViewer>
+      </TabItem>
+    </TabControl>
+    <Border Grid.Row="2" BorderBrush="#243149" BorderThickness="0,1,0,0" Padding="20,14">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="9">
+        <TextBlock x:Name="StatusText" Foreground="#8C9AAF" VerticalAlignment="Center"/>
+        <Button Grid.Column="1" Content="取消" Click="Cancel_Click"/>
+        <Button Grid.Column="2" Classes="primary" Content="保存设置" Click="Save_Click"/>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

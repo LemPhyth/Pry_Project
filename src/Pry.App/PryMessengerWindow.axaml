@@ -62,12 +62,13 @@
 
       <Border Grid.Column="1" Background="#111927" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,Auto,*">
-          <Grid Margin="18,18,14,12" ColumnDefinitions="*,Auto">
+          <Grid Margin="18,18,14,12" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
             <StackPanel Spacing="2">
               <TextBlock Text="消息" Foreground="#F5F7FC" FontSize="22" FontWeight="SemiBold"/>
               <TextBlock x:Name="ConversationCountText" Text="正在加载会话" Foreground="#77869C" FontSize="11"/>
             </StackPanel>
-            <Button Grid.Column="1" Classes="primary icon" Content="＋" FontSize="20" Click="NewConversation_Click" ToolTip.Tip="新建对话"/>
+            <Button Grid.Column="1" Classes="icon" Content="▤" Click="Folders_Click" ToolTip.Tip="管理分组"/>
+            <Button Grid.Column="2" Classes="primary icon" Content="＋" FontSize="20" Click="NewConversation_Click" ToolTip.Tip="新建对话"/>
           </Grid>
           <Border Grid.Row="1" Margin="14,0,14,10" Padding="12,8" CornerRadius="12" Background="#0D1420" BorderBrush="#253148" BorderThickness="1">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
@@ -113,13 +114,14 @@
         </Grid>
 
         <Border Grid.Row="2" Margin="18,0,18,18" Padding="10" CornerRadius="17" Background="#111927" BorderBrush="#28354D" BorderThickness="1">
-          <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+          <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
             <TextBox x:Name="ComposerTextBox" Grid.ColumnSpan="2" Watermark="给 Pry 发消息…" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="62" MaxHeight="150" Padding="13,10" KeyDown="Composer_KeyDown"/>
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="2,8,0,0">
+            <WrapPanel x:Name="AttachmentDraftPanel" Grid.Row="1" Grid.ColumnSpan="2" Margin="3,7,3,0" IsVisible="False"/>
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="5" Margin="2,8,0,0">
               <Button x:Name="AttachButton" Classes="icon" Content="＋" Click="Attach_Click" ToolTip.Tip="添加附件"/>
               <Button Classes="icon" Content="☺" Click="Sticker_Click" ToolTip.Tip="选择表情"/>
             </StackPanel>
-            <Button x:Name="SendButton" Grid.Row="1" Grid.Column="1" Classes="primary" Content="发送" Width="76" Height="38" Margin="0,8,0,0" Click="Send_Click"/>
+            <Button x:Name="SendButton" Grid.Row="2" Grid.Column="1" Classes="primary" Content="发送" Width="76" Height="38" Margin="0,8,0,0" Click="Send_Click"/>
           </Grid>
         </Border>
 

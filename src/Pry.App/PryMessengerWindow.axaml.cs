@@ -18,8 +18,10 @@ public sealed partial class PryMessengerWindow : Window
 {
     private readonly PryBackendClient _api;
     private readonly List<ConversationRoom> _rooms = [];
+    private readonly List<ConversationFolder> _folders = [];
     private readonly List<CharacterSummaryResponse> _characters = [];
     private readonly List<MediaAssetResponse> _attachments = [];
+    private readonly List<StickerResponse> _stickers = [];
     private ClientPreferencesResponse? _preferences;
     private CharacterSummaryResponse? _character;
     private string? _conversationId;
@@ -73,6 +75,8 @@ public sealed partial class PryMessengerWindow : Window
             if (!await _api.IsHealthyAsync()) throw new InvalidOperationException("本地服务尚未就绪。");
             _preferences = await _api.GetPreferencesAsync();
             _characters.AddRange(await _api.GetCharactersAsync());
+            _folders.AddRange(await _api.GetFoldersAsync());
+            _stickers.AddRange(await _api.GetStickersAsync());
             _character = FindCharacter(_preferences.SelectedCharacterId) ?? _characters.FirstOrDefault();
             await ApplyCharacterAsync();
             await RefreshRoomsAsync(_preferences.ActiveConversationId);
@@ -139,7 +143,7 @@ public sealed partial class PryMessengerWindow : Window
         ConversationList.IsVisible = visible.Count > 0;
     }
 
-    private static ListBoxItem CreateRoomItem(ConversationRoom room)
+    private ListBoxItem CreateRoomItem(ConversationRoom room)
     {
         var avatar = new Border
         {
@@ -156,7 +160,7 @@ public sealed partial class PryMessengerWindow : Window
             Children =
             {
                 new TextBlock { Text = room.Title, Foreground = Brush.Parse("#ECF0F8"), FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis },
-                new TextBlock { Text = room.MessageCount == 0 ? "还没有消息" : $"{room.MessageCount} 条消息", Foreground = Brush.Parse("#728198"), FontSize = 11 }
+                new TextBlock { Text = RoomSubtitle(room), Foreground = Brush.Parse("#728198"), FontSize = 11 }
             }
         };
         var meta = new StackPanel
@@ -172,6 +176,13 @@ public sealed partial class PryMessengerWindow : Window
         Grid.SetColumn(identity, 1); Grid.SetColumn(meta, 2);
         layout.Children.Add(avatar); layout.Children.Add(identity); layout.Children.Add(meta);
         return new ListBoxItem { Tag = room, Content = layout };
+    }
+
+    private string RoomSubtitle(ConversationRoom room)
+    {
+        var count = room.MessageCount == 0 ? "还没有消息" : $"{room.MessageCount} 条消息";
+        var folder = _folders.FirstOrDefault(item => item.Id == room.FolderId)?.Name;
+        return folder is null ? count : $"{folder} · {count}";
     }
 
     private async Task OpenRoomAsync(ConversationRoom room)
@@ -208,12 +219,24 @@ public sealed partial class PryMessengerWindow : Window
         if (message.Role == ChatRole.System)
             return new TextBlock { Text = message.Content, Foreground = Brush.Parse("#728198"), FontSize = 11, HorizontalAlignment = HorizontalAlignment.Center, TextWrapping = TextWrapping.Wrap };
         var isUser = message.Role == ChatRole.User;
+        var content = new StackPanel { Spacing = 8 };
+        if (!string.IsNullOrWhiteSpace(message.Content))
+            content.Children.Add(new TextBlock { Text = message.Content, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, FontSize = 14 });
+        var mediaUrl = message.StickerId is { Length: > 0 } stickerId
+            ? _stickers.FirstOrDefault(item => item.Id == stickerId)?.ContentUrl
+            : message.ImagePath;
+        if (!string.IsNullOrWhiteSpace(mediaUrl))
+        {
+            var image = new Image { MaxWidth = 360, MaxHeight = 280, Stretch = Stretch.Uniform, IsVisible = false };
+            content.Children.Add(image);
+            _ = LoadMessageImageAsync(image, mediaUrl);
+        }
         var bubble = new Border
         {
             MaxWidth = 650, Padding = new Thickness(14, 10), CornerRadius = isUser ? new CornerRadius(16, 5, 16, 16) : new CornerRadius(5, 16, 16, 16),
             Background = isUser ? Brush.Parse("#6C63FF") : Brush.Parse("#1B2638"),
             BorderBrush = isUser ? Brushes.Transparent : Brush.Parse("#2A3850"), BorderThickness = new Thickness(1),
-            Child = new TextBlock { Text = message.Content, Foreground = Brushes.White, TextWrapping = TextWrapping.Wrap, FontSize = 14 }
+            Child = content
         };
         var stack = new StackPanel
         {
@@ -227,6 +250,17 @@ public sealed partial class PryMessengerWindow : Window
         };
         stack.ContextMenu = CreateMessageMenu(message, isUser);
         return stack;
+    }
+
+    private async Task LoadMessageImageAsync(Image image, string relativeUrl)
+    {
+        try
+        {
+            var downloaded = await _api.DownloadAsync(relativeUrl);
+            var bitmap = new Bitmap(new MemoryStream(downloaded.Bytes));
+            await Dispatcher.UIThread.InvokeAsync(() => { image.Source = bitmap; image.IsVisible = true; });
+        }
+        catch { }
     }
 
     private ContextMenu CreateMessageMenu(ChatMessage message, bool isUser)
@@ -388,6 +422,21 @@ public sealed partial class PryMessengerWindow : Window
 
     private async void Window_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Key == Key.N && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            e.Handled = true; await CreateConversationAsync(); return;
+        }
+        if (e.Key == Key.E && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            e.Handled = true; Sticker_Click(sender, new RoutedEventArgs()); return;
+        }
+        if (e.Key == Key.Escape && _sending && _conversationId is not null)
+        {
+            e.Handled = true;
+            try { await _api.CancelTurnAsync(_conversationId); SetSending(false); }
+            catch (Exception ex) { await ShowNoticeAsync("无法停止回复", ex.Message); }
+            return;
+        }
         if (e.Key != Key.Z || !e.KeyModifiers.HasFlag(KeyModifiers.Control) || _conversationId is null || _sending) return;
         e.Handled = true;
         try
@@ -419,6 +468,9 @@ public sealed partial class PryMessengerWindow : Window
         var titleInput = new TextBox { Text = room.Title, Watermark = "会话名称", MaxLength = 80 };
         var save = new Button { Content = "保存名称", Classes = { "primary" }, Width = 100 };
         var pin = new Button { Content = room.IsPinned ? "取消置顶" : "置顶会话", Width = 100 };
+        var folder = new ComboBox { ItemsSource = new[] { new FolderChoice(null, "未分组") }.Concat(_folders.Select(item => new FolderChoice(item.Id, item.Name))).ToArray() };
+        folder.SelectedItem = folder.Items.Cast<FolderChoice>().FirstOrDefault(item => item.Id == room.FolderId) ?? folder.Items.Cast<FolderChoice>().First();
+        var move = new Button { Content = "移动到分组", Width = 110 };
         var delete = new Button { Content = "删除会话", Foreground = Brush.Parse("#FF9A9A"), Width = 100 };
         var close = new Button { Content = "完成", Width = 80 };
         var deleteArmed = false;
@@ -437,6 +489,13 @@ public sealed partial class PryMessengerWindow : Window
         pin.Click += async (_, _) => await RunConversationMutationAsync(window, "无法更改置顶状态", async () =>
         {
             await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, !room.IsPinned, null));
+            await RefreshRoomsWithoutSwitchAsync();
+            window.Close();
+        });
+        move.Click += async (_, _) => await RunConversationMutationAsync(window, "无法移动会话", async () =>
+        {
+            var target = folder.SelectedItem as FolderChoice;
+            await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, null, target?.Id, target?.Id is null));
             await RefreshRoomsWithoutSwitchAsync();
             window.Close();
         });
@@ -474,12 +533,53 @@ public sealed partial class PryMessengerWindow : Window
                 new TextBlock { Text = "会话设置", FontSize = 22, FontWeight = FontWeight.SemiBold },
                 new TextBlock { Text = "名称", Foreground = Brush.Parse("#8492A8"), FontSize = 11 },
                 titleInput,
+                new TextBlock { Text = "所在分组", Foreground = Brush.Parse("#8492A8"), FontSize = 11 },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { folder, move } },
                 new TextBlock { Text = "删除后，该会话与其中的消息将无法从界面恢复。", Foreground = Brush.Parse("#78879C"), TextWrapping = TextWrapping.Wrap },
                 actions
             }
         };
         window.Content = CreateThemedDialogSurface(panel);
         await window.ShowDialog(this);
+    }
+
+    private async void Folders_Click(object? sender, RoutedEventArgs e)
+    {
+        var window = CreateDialog("会话分组", 560, 460);
+        var list = new ListBox();
+        var input = new TextBox { Watermark = "分组名称", MaxLength = 60 };
+        var add = new Button { Content = "新建", Classes = { "primary" } };
+        var rename = new Button { Content = "重命名" };
+        var remove = new Button { Content = "删除" };
+        void Render() => list.ItemsSource = _folders.Select(item => new ListBoxItem { Content = item.Name, Tag = item, Padding = new Thickness(11) }).ToArray();
+        list.SelectionChanged += (_, _) => { if (list.SelectedItem is ListBoxItem { Tag: ConversationFolder item }) input.Text = item.Name; };
+        add.Click += async (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(input.Text)) return;
+            await RunFolderMutationAsync(async () => await _api.CreateFolderAsync(input.Text.Trim()), "无法创建分组");
+            input.Text = ""; Render();
+        };
+        rename.Click += async (_, _) =>
+        {
+            if (list.SelectedItem is not ListBoxItem { Tag: ConversationFolder item } || string.IsNullOrWhiteSpace(input.Text)) return;
+            await RunFolderMutationAsync(async () => await _api.RenameFolderAsync(item.Id, input.Text.Trim()), "无法重命名分组"); Render();
+        };
+        remove.Click += async (_, _) =>
+        {
+            if (list.SelectedItem is not ListBoxItem { Tag: ConversationFolder item }) return;
+            await RunFolderMutationAsync(async () => await _api.DeleteFolderAsync(item.Id), "无法删除分组"); input.Text = ""; Render(); await RefreshRoomsWithoutSwitchAsync();
+        };
+        Render();
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { add, rename, remove } };
+        var panel = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto"), RowSpacing = 10, Margin = new Thickness(18), Children = { list, input, buttons } };
+        Grid.SetRow(input, 1); Grid.SetRow(buttons, 2); window.Content = CreateThemedDialogSurface(panel);
+        await window.ShowDialog(this);
+    }
+
+    private async Task RunFolderMutationAsync(Func<Task> action, string errorTitle)
+    {
+        try { await action(); _folders.Clear(); _folders.AddRange(await _api.GetFoldersAsync()); }
+        catch (Exception ex) { await ShowNoticeAsync(errorTitle, ex.Message); }
     }
 
     private async Task RunConversationMutationAsync(Window owner, string errorTitle, Func<Task> action)
@@ -491,6 +591,8 @@ public sealed partial class PryMessengerWindow : Window
             await ShowNoticeAsync(errorTitle, ex.Message);
         }
     }
+
+    private sealed record FolderChoice(string? Id, string Name) { public override string ToString() => Name; }
 
     private async void Attach_Click(object? sender, RoutedEventArgs e)
     {
@@ -512,6 +614,14 @@ public sealed partial class PryMessengerWindow : Window
     private void UpdateAttachmentButton()
     {
         AttachButton.Content = _attachments.Count == 0 ? "＋" : $"＋ {_attachments.Count}";
+        AttachmentDraftPanel.Children.Clear();
+        foreach (var attachment in _attachments.ToArray())
+        {
+            var remove = new Button { Content = $"{attachment.Name}  ×", FontSize = 10, Margin = new Thickness(0, 0, 6, 4), Padding = new Thickness(9, 5) };
+            remove.Click += (_, _) => { _attachments.Remove(attachment); UpdateAttachmentButton(); };
+            AttachmentDraftPanel.Children.Add(remove);
+        }
+        AttachmentDraftPanel.IsVisible = _attachments.Count > 0;
     }
 
     private static string ContentType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
@@ -526,6 +636,7 @@ public sealed partial class PryMessengerWindow : Window
         try
         {
             var stickers = (await _api.GetStickersAsync()).Where(item => item.Enabled).ToArray();
+            _stickers.Clear(); _stickers.AddRange(stickers);
             if (stickers.Length == 0) { await ShowNoticeAsync("没有可用表情", "可以稍后在内容管理中导入表情。"); return; }
             var window = CreateDialog("选择表情", 520, 420);
             var list = new ListBox { ItemsSource = stickers.Select(item => new ListBoxItem { Content = item.Name, Tag = item }).ToArray() };
@@ -533,7 +644,16 @@ public sealed partial class PryMessengerWindow : Window
             {
                 if (list.SelectedItem is ListBoxItem { Tag: StickerResponse sticker }) { window.Close(); await SendAsync(sticker.Id); }
             };
-            window.Content = CreateThemedDialogSurface(new Grid { Margin = new Thickness(18), Children = { list } });
+            var manage = new Button { Content = "管理表情", HorizontalAlignment = HorizontalAlignment.Right };
+            manage.Click += async (_, _) =>
+            {
+                var manager = new PryMessengerStickerWindow(_api); await manager.ShowDialog(window);
+                if (!manager.Changed) return;
+                var updated = await _api.GetStickersAsync(); _stickers.Clear(); _stickers.AddRange(updated);
+                list.ItemsSource = updated.Where(item => item.Enabled).Select(item => new ListBoxItem { Content = item.Name, Tag = item }).ToArray();
+            };
+            var content = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), RowSpacing = 10, Margin = new Thickness(18), Children = { list, manage } }; Grid.SetRow(manage, 1);
+            window.Content = CreateThemedDialogSurface(content);
             await window.ShowDialog(this);
         }
         catch (Exception ex) { await ShowNoticeAsync("表情加载失败", ex.Message); }
@@ -548,7 +668,18 @@ public sealed partial class PryMessengerWindow : Window
             if (list.SelectedItem is not ListBoxItem { Tag: CharacterSummaryResponse character }) return;
             _character = character; await ApplyCharacterAsync(); window.Close(); await CreateConversationAsync();
         };
-        window.Content = CreateThemedDialogSurface(new Grid { Margin = new Thickness(18), Children = { list } });
+        var manage = new Button { Content = "管理角色卡", HorizontalAlignment = HorizontalAlignment.Right };
+        manage.Click += async (_, _) =>
+        {
+            var manager = new PryMessengerCharacterWindow(_api);
+            await manager.ShowDialog(window);
+            if (!manager.Changed) return;
+            _characters.Clear(); _characters.AddRange(await _api.GetCharactersAsync());
+            list.ItemsSource = _characters.Select(item => new ListBoxItem { Content = $"{item.Name}\n{item.CardName}", Tag = item, Padding = new Thickness(12) }).ToArray();
+        };
+        var content = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), RowSpacing = 10, Margin = new Thickness(18), Children = { list, manage } };
+        Grid.SetRow(manage, 1);
+        window.Content = CreateThemedDialogSurface(content);
         await window.ShowDialog(this);
     }
 
@@ -557,13 +688,7 @@ public sealed partial class PryMessengerWindow : Window
         if (_character is null) return;
         try
         {
-            var memories = await _api.GetMemoriesAsync(_character.Id);
-            var window = CreateDialog($"{_character.Name} 的长期记忆", 680, 520);
-            var panel = new StackPanel { Margin = new Thickness(20), Spacing = 10 };
-            panel.Children.Add(new TextBlock { Text = "长期记忆", FontSize = 21, FontWeight = FontWeight.SemiBold });
-            if (memories.Count == 0) panel.Children.Add(new TextBlock { Text = "还没有形成长期记忆。", Foreground = Brush.Parse("#7F8EA5") });
-            foreach (var memory in memories) panel.Children.Add(new Border { Padding = new Thickness(13), CornerRadius = new CornerRadius(11), Background = Brush.Parse("#182235"), Child = new TextBlock { Text = memory.Summary, TextWrapping = TextWrapping.Wrap } });
-            window.Content = CreateThemedDialogSurface(new ScrollViewer { Content = panel });
+            var window = new PryMessengerMemoryWindow(_api, _character);
             await window.ShowDialog(this);
         }
         catch (Exception ex) { await ShowNoticeAsync("记忆加载失败", ex.Message); }
@@ -573,27 +698,12 @@ public sealed partial class PryMessengerWindow : Window
     {
         try
         {
-            var runtime = await _api.GetRuntimeAsync();
-            var models = await _api.GetModelsAsync();
-            var window = CreateDialog("设置", 720, 560);
-            var panel = new StackPanel { Margin = new Thickness(24), Spacing = 14 };
-            panel.Children.Add(new TextBlock { Text = "设置", FontSize = 24, FontWeight = FontWeight.SemiBold });
-            panel.Children.Add(SettingCard("本地运行状态", runtime.State == "ready" ? "服务正常，可以开始聊天" : runtime.Error ?? runtime.State));
-            panel.Children.Add(SettingCard("当前文字模型", models.FirstOrDefault(item => item.SelectedForText)?.DisplayName ?? "尚未选择"));
-            panel.Children.Add(SettingCard("界面", "全新的 Pry 私聊界面。更多主题、密度和背景设置将在这套前端中重新设计。"));
-            var close = new Button { Content = "完成", Classes = { "primary" }, HorizontalAlignment = HorizontalAlignment.Right, Width = 88 };
-            close.Click += (_, _) => window.Close(); panel.Children.Add(close);
-            window.Content = CreateThemedDialogSurface(new ScrollViewer { Content = panel });
+            var window = new PryMessengerSettingsWindow(_api);
             await window.ShowDialog(this);
+            if (window.Saved) _preferences = await _api.GetPreferencesAsync();
         }
         catch (Exception ex) { await ShowNoticeAsync("设置加载失败", ex.Message); }
     }
-
-    private static Border SettingCard(string title, string value) => new()
-    {
-        Padding = new Thickness(15), CornerRadius = new CornerRadius(12), Background = Brush.Parse("#182235"),
-        Child = new StackPanel { Spacing = 5, Children = { new TextBlock { Text = title, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = value, Foreground = Brush.Parse("#8492A8"), TextWrapping = TextWrapping.Wrap } } }
-    };
 
     private void ShowChats_Click(object? sender, RoutedEventArgs e) => ConversationSearchBox.Focus();
     private void TitleBar_PointerPressed(object? sender, PointerPressedEventArgs e)
