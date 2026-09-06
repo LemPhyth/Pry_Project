@@ -1,0 +1,133 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Pry.App.PryMessengerWindow"
+        Width="1180" Height="780" MinWidth="920" MinHeight="620"
+        Title="Pry" SystemDecorations="None" Background="#0C111B"
+        ExtendClientAreaToDecorationsHint="True" ExtendClientAreaChromeHints="NoChrome">
+  <Window.Styles>
+    <Style Selector="Button.nav">
+      <Setter Property="Width" Value="48"/><Setter Property="Height" Value="48"/>
+      <Setter Property="Padding" Value="0"/><Setter Property="CornerRadius" Value="15"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="#91A0B5"/>
+      <Setter Property="FontSize" Value="15"/>
+    </Style>
+    <Style Selector="Button.nav:pointerover"><Setter Property="Background" Value="#192235"/><Setter Property="Foreground" Value="#F5F7FF"/></Style>
+    <Style Selector="Button.nav.active"><Setter Property="Background" Value="#6C63FF"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.icon"><Setter Property="Width" Value="38"/><Setter Property="Height" Value="38"/><Setter Property="Padding" Value="0"/><Setter Property="CornerRadius" Value="11"/></Style>
+    <Style Selector="Button.primary"><Setter Property="Background" Value="#6C63FF"/><Setter Property="Foreground" Value="White"/><Setter Property="CornerRadius" Value="11"/></Style>
+    <Style Selector="ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,2"/><Setter Property="CornerRadius" Value="14"/></Style>
+    <Style Selector="ListBoxItem:selected"><Setter Property="Background" Value="#202A40"/></Style>
+    <Style Selector="TextBox"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#263249"/><Setter Property="CornerRadius" Value="12"/></Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="42,*">
+    <Border Grid.Row="0" Background="#0F1522" BorderBrush="#202A3C" BorderThickness="0,0,0,1" PointerPressed="TitleBar_PointerPressed">
+      <Grid ColumnDefinitions="*,Auto" Margin="16,0,7,0">
+        <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+          <Border Width="23" Height="23" CornerRadius="8" Background="#6C63FF"><TextBlock Text="P" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+          <TextBlock Text="Pry" Foreground="#F4F6FC" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <Border Width="1" Height="15" Background="#2A3549" Margin="4,0"/>
+          <TextBlock x:Name="HeaderConnectionText" Text="正在连接本地服务" Foreground="#7F8CA1" FontSize="11" VerticalAlignment="Center"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+          <Button Classes="icon" Content="—" Click="Minimize_Click"/>
+          <Button Classes="icon" Content="□" Click="Maximize_Click"/>
+          <Button Classes="icon" Content="×" Click="Close_Click"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" ColumnDefinitions="76,306,*">
+      <Border Grid.Column="0" Background="#0D1420" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,*,Auto" Margin="0,18,0,14">
+          <Button Classes="nav active" HorizontalAlignment="Center" Click="ShowChats_Click" ToolTip.Tip="消息">
+            <PathIcon Width="21" Height="21" Data="M3,4 L21,4 L21,17 L14,17 L9,21 L9,17 L3,17 Z"/>
+          </Button>
+          <StackPanel Grid.Row="1" Spacing="9" Margin="0,18,0,0">
+            <Button Classes="nav" HorizontalAlignment="Center" Click="ShowCharacters_Click" ToolTip.Tip="角色">
+              <PathIcon Width="21" Height="21" Data="M12,3 A4,4 0 1 1 12,11 A4,4 0 0 1 12,3 Z M5,21 C5,16 8,13 12,13 C16,13 19,16 19,21 Z"/>
+            </Button>
+            <Button Classes="nav" HorizontalAlignment="Center" Click="ShowMemories_Click" ToolTip.Tip="记忆">
+              <PathIcon Width="21" Height="21" Data="M5,3 L19,3 L19,21 L12,17 L5,21 Z"/>
+            </Button>
+          </StackPanel>
+          <StackPanel Grid.Row="2" Spacing="8">
+            <Button Classes="nav" HorizontalAlignment="Center" Click="OpenSettings_Click" ToolTip.Tip="设置">
+              <PathIcon Width="21" Height="21" Data="M12,8 A4,4 0 1 1 12,16 A4,4 0 0 1 12,8 Z M10,3 L14,3 L15,6 L18,7 L21,6 L23,10 L20,12 L20,15 L22,18 L19,21 L16,19 L13,21 L9,20 L7,22 L3,19 L5,16 L4,13 L2,11 L4,7 L7,8 Z"/>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="1" Background="#111927" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,Auto,*">
+          <Grid Margin="18,18,14,12" ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2">
+              <TextBlock Text="消息" Foreground="#F5F7FC" FontSize="22" FontWeight="SemiBold"/>
+              <TextBlock x:Name="ConversationCountText" Text="正在加载会话" Foreground="#77869C" FontSize="11"/>
+            </StackPanel>
+            <Button Grid.Column="1" Classes="primary icon" Content="＋" FontSize="20" Click="NewConversation_Click" ToolTip.Tip="新建对话"/>
+          </Grid>
+          <Border Grid.Row="1" Margin="14,0,14,10" Padding="12,8" CornerRadius="12" Background="#0D1420" BorderBrush="#253148" BorderThickness="1">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+              <TextBlock Text="⌕" Foreground="#7C8AA0" FontSize="18" VerticalAlignment="Center"/>
+              <TextBox Grid.Column="1" x:Name="ConversationSearchBox" Watermark="搜索当前会话" Background="Transparent" BorderThickness="0" Padding="0" TextChanged="ConversationSearch_TextChanged"/>
+            </Grid>
+          </Border>
+          <Grid Grid.Row="2">
+            <ListBox x:Name="ConversationList" Margin="10,0,10,12" Background="Transparent" SelectionChanged="ConversationList_SelectionChanged"/>
+            <StackPanel x:Name="ConversationEmptyState" IsVisible="False" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+              <TextBlock Text="还没有对话" Foreground="#D8DEEA" FontSize="16" HorizontalAlignment="Center"/>
+              <TextBlock Text="创建一个房间，开始和 Pry 私聊" Foreground="#718096" FontSize="11"/>
+              <Button Classes="primary" Content="开始新对话" Click="NewConversation_Click"/>
+            </StackPanel>
+          </Grid>
+        </Grid>
+      </Border>
+
+      <Grid Grid.Column="2" Background="#0E1623" RowDefinitions="74,*,Auto">
+        <Border Grid.Row="0" Background="#111927" BorderBrush="#202A3C" BorderThickness="0,0,0,1">
+          <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Border x:Name="CharacterAvatar" Width="46" Height="46" CornerRadius="15" Background="#6C63FF" ClipToBounds="True" VerticalAlignment="Center">
+              <Grid><TextBlock x:Name="CharacterAvatarFallback" Text="P" Foreground="White" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image x:Name="CharacterAvatarImage" IsVisible="False" Stretch="UniformToFill"/></Grid>
+            </Border>
+            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+              <TextBlock x:Name="CharacterNameText" Text="Pry" Foreground="#F4F6FC" FontSize="17" FontWeight="SemiBold"/>
+              <TextBlock x:Name="ConversationStatusText" Text="等待连接" Foreground="#7F8EA5" FontSize="11"/>
+            </StackPanel>
+            <Button x:Name="CancelReplyButton" Grid.Column="2" IsVisible="False" Content="停止回复" Click="CancelReply_Click" VerticalAlignment="Center"/>
+          </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+          <ScrollViewer x:Name="MessageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="MessagePanel" Margin="28,24,28,28" Spacing="13" MaxWidth="920" HorizontalAlignment="Stretch"/>
+          </ScrollViewer>
+          <StackPanel x:Name="MessageEmptyState" Spacing="9" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Border Width="62" Height="62" CornerRadius="22" Background="#202A40"><TextBlock Text="P" Foreground="#938DFF" FontSize="25" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+            <TextBlock Text="一段新的私聊" Foreground="#E7EBF4" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            <TextBlock Text="消息只保存在你的本地设备" Foreground="#74839A" FontSize="11"/>
+          </StackPanel>
+        </Grid>
+
+        <Border Grid.Row="2" Margin="18,0,18,18" Padding="10" CornerRadius="17" Background="#111927" BorderBrush="#28354D" BorderThickness="1">
+          <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+            <TextBox x:Name="ComposerTextBox" Grid.ColumnSpan="2" Watermark="给 Pry 发消息…" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="62" MaxHeight="150" Padding="13,10" KeyDown="Composer_KeyDown"/>
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="5" Margin="2,8,0,0">
+              <Button x:Name="AttachButton" Classes="icon" Content="＋" Click="Attach_Click" ToolTip.Tip="添加附件"/>
+              <Button Classes="icon" Content="☺" Click="Sticker_Click" ToolTip.Tip="选择表情"/>
+            </StackPanel>
+            <Button x:Name="SendButton" Grid.Row="1" Grid.Column="1" Classes="primary" Content="发送" Width="76" Height="38" Margin="0,8,0,0" Click="Send_Click"/>
+          </Grid>
+        </Border>
+
+        <Border x:Name="LoadingOverlay" Grid.RowSpan="3" Background="#B20C111B">
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+            <ProgressBar IsIndeterminate="True" Width="180" Height="4"/>
+            <TextBlock x:Name="LoadingText" Text="正在启动 Pry…" Foreground="#C9D1E1" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Grid>
+  </Grid>
+</Window>

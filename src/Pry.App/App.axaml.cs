@@ -14,7 +14,7 @@ namespace Pry.App;
 public sealed partial class App : Application
 {
     private TrayIcon? _trayIcon;
-    private MainWindow? _mainWindow;
+    private PryMessengerWindow? _mainWindow;
     private WebApplication? _backend;
     private HttpClient? _backendHttpClient;
 
@@ -45,7 +45,7 @@ public sealed partial class App : Application
                 BaseAddress = new Uri(backendUrl + "/"),
                 Timeout = Timeout.InfiniteTimeSpan
             };
-            _mainWindow = new MainWindow(new PryBackendClient(_backendHttpClient));
+            _mainWindow = new PryMessengerWindow(new PryBackendClient(_backendHttpClient));
             desktop.MainWindow = _mainWindow;
             CreateTrayIcon(desktop);
             _mainWindow.Show();
@@ -139,7 +139,7 @@ public sealed partial class App : Application
         };
         var messageCard = _mainWindow.CreateCompactDialogTextCard(message);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Children = { cancel, keep, stop } };
-        dialog.Content = _mainWindow.CreateThemedDialogSurface(MainWindow.CreateCompactDialogLayout(messageCard, actions));
+        dialog.Content = _mainWindow.CreateThemedDialogSurface(PryMessengerWindow.CreateCompactDialogLayout(messageCard, actions));
         await dialog.ShowDialog(_mainWindow); if (choice < 0) return; await _mainWindow.PrepareForExitAsync(choice == 1);
         await DisposeBackendAsync();
         _trayIcon!.IsVisible = false; desktop.Shutdown();
