@@ -15,6 +15,8 @@
     <Style Selector="Button.nav:pointerover"><Setter Property="Background" Value="#192235"/><Setter Property="Foreground" Value="#F5F7FF"/></Style>
     <Style Selector="Button.nav.active"><Setter Property="Background" Value="#6C63FF"/><Setter Property="Foreground" Value="White"/></Style>
     <Style Selector="Button.icon"><Setter Property="Width" Value="38"/><Setter Property="Height" Value="38"/><Setter Property="Padding" Value="0"/><Setter Property="CornerRadius" Value="11"/></Style>
+    <Style Selector="Button.window-control"><Setter Property="Width" Value="40"/><Setter Property="Height" Value="40"/><Setter Property="Padding" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="CornerRadius" Value="0"/></Style>
+    <Style Selector="Button.window-control:pointerover"><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="#FFFFFF"/></Style>
     <Style Selector="Button.primary"><Setter Property="Background" Value="#6C63FF"/><Setter Property="Foreground" Value="White"/><Setter Property="CornerRadius" Value="11"/></Style>
     <Style Selector="ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,2"/><Setter Property="CornerRadius" Value="14"/></Style>
     <Style Selector="ListBoxItem:selected"><Setter Property="Background" Value="#202A40"/></Style>
@@ -31,14 +33,19 @@
           <TextBlock x:Name="HeaderConnectionText" Text="正在连接本地服务" Foreground="#7F8CA1" FontSize="11" VerticalAlignment="Center"/>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
-          <Button Classes="icon" Content="—" Click="Minimize_Click"/>
-          <Button Classes="icon" Content="□" Click="Maximize_Click"/>
-          <Button Classes="icon" Content="×" Click="Close_Click"/>
+          <Button Classes="window-control" Content="—" Click="Minimize_Click"/>
+          <Button Classes="window-control" Content="□" Click="Maximize_Click"/>
+          <Button Classes="window-control" Content="×" Click="Close_Click"/>
         </StackPanel>
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1" ColumnDefinitions="76,306,*">
+    <Grid x:Name="MainLayout" Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="76"/>
+        <ColumnDefinition Width="306" MinWidth="238" MaxWidth="460"/>
+        <ColumnDefinition Width="*"/>
+      </Grid.ColumnDefinitions>
       <Border Grid.Column="0" Background="#0D1420" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,*,Auto" Margin="0,18,0,14">
           <Button Classes="nav active" HorizontalAlignment="Center" Click="ShowChats_Click" ToolTip.Tip="消息">
@@ -53,8 +60,9 @@
             </Button>
           </StackPanel>
           <StackPanel Grid.Row="2" Spacing="8">
+            <Button Classes="nav" HorizontalAlignment="Center" Click="ToggleSidebar_Click" ToolTip.Tip="收起会话栏" Content="‹" FontSize="24"/>
             <Button Classes="nav" HorizontalAlignment="Center" Click="OpenSettings_Click" ToolTip.Tip="设置">
-              <PathIcon Width="21" Height="21" Data="M12,8 A4,4 0 1 1 12,16 A4,4 0 0 1 12,8 Z M10,3 L14,3 L15,6 L18,7 L21,6 L23,10 L20,12 L20,15 L22,18 L19,21 L16,19 L13,21 L9,20 L7,22 L3,19 L5,16 L4,13 L2,11 L4,7 L7,8 Z"/>
+              <TextBlock Text="⚙" FontSize="20" VerticalAlignment="Center"/>
             </Button>
           </StackPanel>
         </Grid>
@@ -73,7 +81,7 @@
           <Border Grid.Row="1" Margin="14,0,14,10" Padding="12,8" CornerRadius="12" Background="#0D1420" BorderBrush="#253148" BorderThickness="1">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
               <TextBlock Text="⌕" Foreground="#7C8AA0" FontSize="18" VerticalAlignment="Center"/>
-              <TextBox Grid.Column="1" x:Name="ConversationSearchBox" Watermark="搜索当前会话" Background="Transparent" BorderThickness="0" Padding="0" TextChanged="ConversationSearch_TextChanged"/>
+              <TextBox Grid.Column="1" x:Name="ConversationSearchBox" Watermark="搜索当前会话" Background="Transparent" BorderThickness="0" Padding="0" MinHeight="28" VerticalContentAlignment="Center" VerticalAlignment="Center" TextChanged="ConversationSearch_TextChanged"/>
             </Grid>
           </Border>
           <Grid Grid.Row="2">
@@ -87,11 +95,13 @@
         </Grid>
       </Border>
 
+      <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Right" Background="Transparent" ResizeDirection="Columns"/>
+
       <Grid Grid.Column="2" Background="#0E1623" RowDefinitions="74,*,Auto">
         <Border Grid.Row="0" Background="#111927" BorderBrush="#202A3C" BorderThickness="0,0,0,1">
           <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
-            <Border x:Name="CharacterAvatar" Width="46" Height="46" CornerRadius="15" Background="#6C63FF" ClipToBounds="True" VerticalAlignment="Center">
-              <Grid><TextBlock x:Name="CharacterAvatarFallback" Text="P" Foreground="White" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image x:Name="CharacterAvatarImage" IsVisible="False" Stretch="UniformToFill"/></Grid>
+            <Border x:Name="CharacterAvatar" Width="52" Height="52" CornerRadius="17" Background="#6C63FF" ClipToBounds="True" VerticalAlignment="Center">
+              <Grid><TextBlock x:Name="CharacterAvatarFallback" Text="P" Foreground="White" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image x:Name="CharacterAvatarImage" IsVisible="False" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/></Grid>
             </Border>
             <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
               <TextBlock x:Name="CharacterNameText" Text="Pry" Foreground="#F4F6FC" FontSize="17" FontWeight="SemiBold"/>
@@ -132,6 +142,27 @@
           </StackPanel>
         </Border>
       </Grid>
+
+      <Border x:Name="WorkspacePage" Grid.Column="1" Grid.ColumnSpan="2" IsVisible="False" Background="#101827" ZIndex="20">
+        <Grid RowDefinitions="64,*">
+          <Border BorderBrush="#263249" BorderThickness="0,0,0,1">
+            <Grid Margin="18,0" ColumnDefinitions="Auto,*" ColumnSpacing="12">
+              <Button Content="‹" Classes="icon" FontSize="24" Click="CloseWorkspacePage_Click"/>
+              <TextBlock x:Name="WorkspacePageTitle" Grid.Column="1" FontSize="19" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            </Grid>
+          </Border>
+          <ContentControl x:Name="WorkspacePageContent" Grid.Row="1"/>
+        </Grid>
+      </Border>
     </Grid>
+
+    <Border Grid.RowSpan="2" Width="6" HorizontalAlignment="Left" Background="Transparent" Cursor="SizeWestEast" PointerPressed="ResizeLeft_PointerPressed" ZIndex="100"/>
+    <Border Grid.RowSpan="2" Width="6" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast" PointerPressed="ResizeRight_PointerPressed" ZIndex="100"/>
+    <Border Grid.RowSpan="2" Height="6" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNorthSouth" PointerPressed="ResizeTop_PointerPressed" ZIndex="100"/>
+    <Border Grid.RowSpan="2" Height="6" VerticalAlignment="Bottom" Background="Transparent" Cursor="SizeNorthSouth" PointerPressed="ResizeBottom_PointerPressed" ZIndex="100"/>
+    <Border Grid.RowSpan="2" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" Cursor="TopLeftCorner" PointerPressed="ResizeTopLeft_PointerPressed" ZIndex="101"/>
+    <Border Grid.RowSpan="2" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" Cursor="TopRightCorner" PointerPressed="ResizeTopRight_PointerPressed" ZIndex="101"/>
+    <Border Grid.RowSpan="2" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomLeftCorner" PointerPressed="ResizeBottomLeft_PointerPressed" ZIndex="101"/>
+    <Border Grid.RowSpan="2" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" Cursor="BottomRightCorner" PointerPressed="ResizeBottomRight_PointerPressed" ZIndex="101"/>
   </Grid>
 </Window>

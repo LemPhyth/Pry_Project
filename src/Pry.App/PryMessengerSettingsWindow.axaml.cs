@@ -7,7 +7,7 @@ using Pry.Core.Models;
 
 namespace Pry.App;
 
-public sealed partial class PryMessengerSettingsWindow : Window
+public sealed partial class PryMessengerSettingsWindow : UserControl
 {
     private readonly PryBackendClient _api;
     private ClientPreferencesResponse? _preferences;
@@ -23,10 +23,11 @@ public sealed partial class PryMessengerSettingsWindow : Window
     {
         _api = api;
         InitializeComponent();
-        Opened += async (_, _) => await LoadAsync();
+        AttachedToVisualTree += async (_, _) => await LoadAsync();
     }
 
     public bool Saved { get; private set; }
+    public event Action? CloseRequested;
 
     private async Task LoadAsync()
     {
@@ -111,11 +112,11 @@ public sealed partial class PryMessengerSettingsWindow : Window
                 textModel.Id, string.IsNullOrEmpty(visionId) ? null : visionId,
                 string.IsNullOrEmpty(speechId) ? null : speechId, null));
             Saved = true;
-            Close();
+            CloseRequested?.Invoke();
         }
         catch (Exception ex) { StatusText.Text = $"保存失败：{ex.Message}"; IsEnabled = true; }
     }
 
-    private void Cancel_Click(object? sender, RoutedEventArgs e) => Close();
+    private void Cancel_Click(object? sender, RoutedEventArgs e) => CloseRequested?.Invoke();
     private sealed record ModelChoice(string Id, string Name) { public override string ToString() => Name; }
 }

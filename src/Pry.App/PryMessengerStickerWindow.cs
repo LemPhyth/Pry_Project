@@ -8,7 +8,7 @@ using Pry.Contracts;
 
 namespace Pry.App;
 
-internal sealed class PryMessengerStickerWindow : Window
+internal sealed class PryMessengerStickerWindow : UserControl
 {
     private readonly PryBackendClient _api;
     private readonly ListBox _list = new();
@@ -21,9 +21,8 @@ internal sealed class PryMessengerStickerWindow : Window
 
     public PryMessengerStickerWindow(PryBackendClient api)
     {
-        _api = api; Title = "表情管理"; Width = 760; Height = 540; MinWidth = 650; MinHeight = 460;
-        Background = Brush.Parse("#101827"); WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var import = MakeButton("导入图片", ImportAsync, true); var save = MakeButton("保存", SaveAsync, true); var remove = MakeButton("删除", DeleteAsync); var close = MakeButton("完成", () => Close());
+        _api = api; Background = Brush.Parse("#101827");
+        var import = MakeButton("导入图片", ImportAsync, true); var save = MakeButton("保存", SaveAsync, true); var remove = MakeButton("删除", DeleteAsync); var close = MakeButton("完成", () => CloseRequested?.Invoke());
         _list.SelectionChanged += (_, _) => Select((_list.SelectedItem as ListBoxItem)?.Tag as StickerResponse);
         var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 10, Margin = new Thickness(18), Children = { import, _list } }; Grid.SetRow(_list, 1);
         var form = new StackPanel { Margin = new Thickness(20), Spacing = 11, Children =
@@ -32,10 +31,11 @@ internal sealed class PryMessengerStickerWindow : Window
             new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { remove, save, close } }
         }};
         var root = new Grid { ColumnDefinitions = new ColumnDefinitions("300,*"), Children = { left, new Border { BorderBrush = Brush.Parse("#263249"), BorderThickness = new Thickness(1,0,0,0), Child = form } } }; Grid.SetColumn(root.Children[1], 1); Content = root;
-        Opened += async (_, _) => await ReloadAsync();
+        AttachedToVisualTree += async (_, _) => await ReloadAsync();
     }
 
     public bool Changed { get; private set; }
+    public event Action? CloseRequested;
     private static Button MakeButton(string text, Action action) { var button = new Button { Content = text }; button.Click += (_, _) => action(); return button; }
     private static Button MakeButton(string text, Func<Task> action, bool primary = false) { var button = new Button { Content = text, Background = primary ? Brush.Parse("#6C63FF") : null }; button.Click += async (_, _) => await action(); return button; }
     private async Task ReloadAsync()
@@ -51,7 +51,8 @@ internal sealed class PryMessengerStickerWindow : Window
     private void Select(StickerResponse? item) { if (item is null) return; _selected = item; _name.Text = item.Name; _emotions.Text = string.Join(", ", item.Emotions); _role.SelectedItem = item.InteractionRole; _backchannel.IsChecked = item.LikelyBackchannel; }
     private async Task ImportAsync()
     {
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "导入表情图片", AllowMultiple = false, FileTypeFilter = new[] { FilePickerFileTypes.ImageAll } });
+        var storage = TopLevel.GetTopLevel(this)?.StorageProvider; if (storage is null) return;
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "导入表情图片", AllowMultiple = false, FileTypeFilter = new[] { FilePickerFileTypes.ImageAll } });
         var file = files.FirstOrDefault(); var path = file?.TryGetLocalPath(); if (file is null || path is null) return;
         try
         {

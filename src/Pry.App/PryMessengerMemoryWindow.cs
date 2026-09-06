@@ -8,7 +8,7 @@ using Pry.Core.Models;
 
 namespace Pry.App;
 
-internal sealed class PryMessengerMemoryWindow : Window
+internal sealed class PryMessengerMemoryWindow : UserControl
 {
     private readonly PryBackendClient _api;
     private readonly CharacterSummaryResponse _character;
@@ -23,9 +23,7 @@ internal sealed class PryMessengerMemoryWindow : Window
 
     public PryMessengerMemoryWindow(PryBackendClient api, CharacterSummaryResponse character)
     {
-        _api = api; _character = character;
-        Title = $"{character.Name} 的长期记忆"; Width = 820; Height = 600; MinWidth = 700; MinHeight = 500;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner; Background = Brush.Parse("#101827");
+        _api = api; _character = character; Background = Brush.Parse("#101827");
         var add = Button("新建", NewRecord); var save = Button("保存", SaveAsync, true); var remove = Button("删除", DeleteAsync);
         _search.TextChanged += async (_, _) => await ReloadAsync(_search.Text);
         _list.SelectionChanged += (_, _) => SelectRecord((_list.SelectedItem as ListBoxItem)?.Tag as MemoryRecord);
@@ -40,7 +38,7 @@ internal sealed class PryMessengerMemoryWindow : Window
         Grid.SetColumn(add, 1); Grid.SetRow(_search, 1); Grid.SetRow(_list, 2); left.Children.Add(heading); left.Children.Add(_search); left.Children.Add(_list);
         var root = new Grid { ColumnDefinitions = new ColumnDefinitions("320,*"), Children = { left, new Border { BorderBrush = Brush.Parse("#263249"), BorderThickness = new Thickness(1,0,0,0), Child = fields } } };
         Grid.SetColumn(root.Children[1], 1); Content = root;
-        Opened += async (_, _) => await ReloadAsync();
+        AttachedToVisualTree += async (_, _) => await ReloadAsync();
     }
 
     private static TextBlock Label(string text) => new() { Text = text, Foreground = Brush.Parse("#8D9AAF"), FontSize = 11 };

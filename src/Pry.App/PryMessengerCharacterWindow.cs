@@ -9,7 +9,7 @@ using Pry.Core.Models;
 
 namespace Pry.App;
 
-internal sealed class PryMessengerCharacterWindow : Window
+internal sealed class PryMessengerCharacterWindow : UserControl
 {
     private readonly PryBackendClient _api;
     private readonly ListBox _list = new();
@@ -28,17 +28,17 @@ internal sealed class PryMessengerCharacterWindow : Window
 
     public PryMessengerCharacterWindow(PryBackendClient api)
     {
-        _api = api; Title = "角色管理"; Width = 960; Height = 700; MinWidth = 780; MinHeight = 580;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner; Background = Brush.Parse("#101827");
+        _api = api; Background = Brush.Parse("#101827");
         var add = MakeButton("新建角色", NewCharacter);
         var chooseAvatar = MakeButton("选择头像", ChooseAvatarAsync);
         var save = MakeButton("保存角色", SaveAsync, true);
         var remove = MakeButton("删除角色", DeleteAsync);
-        var close = MakeButton("完成", () => Close());
+        var close = MakeButton("完成", () => CloseRequested?.Invoke());
         _list.SelectionChanged += async (_, _) =>
         {
             if ((_list.SelectedItem as ListBoxItem)?.Tag is CharacterSummaryResponse item) await LoadCharacterAsync(item.Id);
         };
+        _list.DoubleTapped += (_, _) => { if ((_list.SelectedItem as ListBoxItem)?.Tag is CharacterSummaryResponse item) CharacterActivated?.Invoke(item); };
         var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 12, Margin = new Thickness(18), Children = { add, _list } };
         Grid.SetRow(_list, 1);
         var form = new StackPanel { Spacing = 9, Margin = new Thickness(20), Children =
@@ -50,10 +50,12 @@ internal sealed class PryMessengerCharacterWindow : Window
         var right = new ScrollViewer { Content = form };
         var root = new Grid { ColumnDefinitions = new ColumnDefinitions("280,*"), Children = { left, new Border { BorderBrush = Brush.Parse("#263249"), BorderThickness = new Thickness(1,0,0,0), Child = right } } };
         Grid.SetColumn(root.Children[1], 1); Content = root;
-        Opened += async (_, _) => await ReloadAsync();
+        AttachedToVisualTree += async (_, _) => await ReloadAsync();
     }
 
     public bool Changed { get; private set; }
+    public event Action? CloseRequested;
+    public event Action<CharacterSummaryResponse>? CharacterActivated;
     private static TextBox Field(string watermark) => new() { Watermark = watermark, MaxLength = 200 };
     private static TextBox Area(string watermark) => new() { Watermark = watermark, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 62, MaxLength = 4000 };
     private static Button MakeButton(string text, Action action) { var button = new Button { Content = text }; button.Click += (_, _) => action(); return button; }
@@ -92,7 +94,8 @@ internal sealed class PryMessengerCharacterWindow : Window
 
     private async Task ChooseAvatarAsync()
     {
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "选择角色头像", AllowMultiple = false, FileTypeFilter = new[] { FilePickerFileTypes.ImageAll } });
+        var storage = TopLevel.GetTopLevel(this)?.StorageProvider; if (storage is null) return;
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "选择角色头像", AllowMultiple = false, FileTypeFilter = new[] { FilePickerFileTypes.ImageAll } });
         var file = files.FirstOrDefault(); var path = file?.TryGetLocalPath(); if (file is null || path is null) return;
         try { await using var stream = File.OpenRead(path); _avatarMediaId = (await _api.UploadAsync(stream, file.Name, Mime(path))).Id; _status.Text = $"已选择头像：{file.Name}"; }
         catch (Exception ex) { _status.Text = $"头像上传失败：{ex.Message}"; }
