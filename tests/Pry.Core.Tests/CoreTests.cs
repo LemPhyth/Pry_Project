@@ -13,6 +13,35 @@ namespace Pry.Core.Tests;
 public sealed class CoreTests
 {
     [Fact]
+    public void Model_runtime_failure_classifies_cuda_out_of_memory_without_exposing_diagnostics()
+    {
+        var error = ModelRuntimeException.FromProcessExit(1,
+            "cudaMalloc failed: out of memory; failed to allocate CUDA0 buffer");
+
+        Assert.Equal("cuda_out_of_memory", error.Code);
+        Assert.True(error.Retryable);
+        Assert.DoesNotContain("cudaMalloc", error.Message);
+        Assert.Contains("cudaMalloc", error.DiagnosticDetails);
+    }
+
+    [Fact]
+    public async Task Closing_windows_process_job_terminates_owned_process()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            ArgumentList = { "/c", "ping 127.0.0.1 -n 30 > nul" }
+        }) ?? throw new InvalidOperationException("测试子进程未启动。");
+
+        using (WindowsProcessJob.Attach(process)) { }
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.True(process.HasExited);
+    }
+
+    [Fact]
     public void Prompt_contains_identity_state_and_memory()
     {
         var character = new CharacterDefinition { Id = "c", Name = "星", Identity = "陪伴者", Personality = "温柔", SpeechStyle = "简洁" };

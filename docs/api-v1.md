@@ -21,13 +21,18 @@
 
 - `400 validation_error`：字段或业务输入不合法。
 - `404 resource_not_found`：会话、文件夹或记忆不存在。
+- `503 cuda_out_of_memory`：GPU 显存不足，释放显存或降低 GPU 层数后可重试。
+- `503 model_missing` / `runtime_missing` / `invalid_model`：本地模型或运行库不可用。
+- `503 startup_timeout` / `process_exited` / `process_start_failed`：模型服务启动失败；响应中的 `retryable` 表示能否原配置重试。
 - `500 internal_error`：未预期服务端错误；客户端展示通用提示并记录 `traceId`，不应显示内部堆栈。
 
 ## 健康检查
 
 `GET /health`：正常返回 `200 Healthy`。
 
-`GET /api/v1/runtime`：返回后端状态和当前文字/视觉模型 ID。`state` 为 `starting`、`loading_models`、`ready` 或 `failed`。模型按第一次聊天请求延迟加载；错误只返回安全提示，详细原因写入本机日志。
+`GET /api/v1/runtime`：返回后端状态和当前文字/视觉模型 ID。兼容字段 `state` 为 `starting`、`loading_models`、`ready` 或 `failed`；新增字段 `apiState`、`configurationState` 和 `modelState` 分别表示 API、配置和模型状态，其中 `modelState` 为 `not_loaded`、`loading`、`ready` 或 `failed`。模型按第一次聊天请求延迟加载，因此配置完成后的旧 `state=ready` 不等于模型已经加载。失败时返回安全的 `errorCode`、`error` 与 `retryable`，有界 stderr 只写入本机后端日志，不通过 API 暴露路径、密钥或命令行。
+
+`POST /api/v1/runtime/retry`：排空活跃会话、释放失败或旧的模型句柄并重新加载配置，使模型可以在释放显存或修正环境后重试，而无需重启整个应用。响应为新的运行状态；模型仍会在下一次聊天请求时按需加载。
 
 `GET /api/v1/runtime/compute-devices`：由后端调用本地推理运行时探测可用设备，返回稳定的设备 ID、名称和是否为集成显卡。桌面端不得直接启动 `llama-server` 执行硬件探测。
 
@@ -287,6 +292,8 @@
 - `GET /api/v1/runtime`：读取当前运行状态。
 
 模型选择或运行参数改变时，后端先排空会话、原子保存偏好，再释放旧模型进程。在线 API Key 始终来自环境变量，不进入请求或响应。
+
+Windows 下由 Pry 启动的 `llama-server` 会加入带 `kill-on-close` 的 Job Object；正常释放、宿主崩溃或被强制结束时，操作系统都会结束所属模型进程。注册表仍只在当前后端生命周期内按模型参数去重，不会按进程名结束其他软件的 `llama-server`。
 
 远程 OpenAI-compatible 地址必须使用 HTTPS，回环地址允许 HTTP，URL 不得包含用户名或密码。本地模型路径必须由用户通过系统文件选择器明确选择；后端要求绝对 `.gguf` 路径、文件存在且文件头为 `GGUF`。模型路径仅保存在本机偏好文件，不会通过 API 返回。
 

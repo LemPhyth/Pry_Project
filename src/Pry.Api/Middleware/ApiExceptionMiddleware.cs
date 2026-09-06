@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Pry.Contracts;
+using Pry.Core.Inference;
 
 namespace Pry.Api.Middleware;
 
@@ -21,6 +22,11 @@ public sealed class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExce
         {
             await WriteAsync(context, 409, "resource_conflict", "资源仍在使用", ex.Message,
                 new Dictionary<string, object?> { ["resource"] = ex.Resource, ["id"] = ex.Id });
+        }
+        catch (ModelRuntimeException ex)
+        {
+            await WriteAsync(context, 503, ex.Code, "本地模型暂时不可用", ex.SafeMessage,
+                new Dictionary<string, object?> { ["retryable"] = ex.Retryable });
         }
         catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
         {

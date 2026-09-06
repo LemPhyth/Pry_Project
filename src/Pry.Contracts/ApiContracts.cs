@@ -13,7 +13,14 @@ public sealed record CreateMessageRequest(ChatRole Role, string Content, string?
 public sealed record SubmitTurnRequest(string Content, string? StickerId = null, bool Immediate = false,
     IReadOnlyList<string>? AttachmentIds = null);
 public sealed record SubmitTurnResponse(long MessageId);
-public sealed record RuntimeStatusResponse(string State, string? TextModelId, string? VisionModelId, string? Error);
+public sealed record RuntimeStatusResponse(string State, string? TextModelId, string? VisionModelId, string? Error)
+{
+    public string ApiState { get; init; } = "ready";
+    public string ConfigurationState { get; init; } = "ready";
+    public string ModelState { get; init; } = "not_loaded";
+    public string? ErrorCode { get; init; }
+    public bool Retryable { get; init; }
+}
 public sealed record ComputeDeviceResponse(string Id, string Name, bool IsIntegrated);
 public sealed record ConversationEvent(long Sequence, string Type, DateTimeOffset OccurredAt, object Data);
 public sealed record MediaAssetResponse(string Id, string Name, string ContentType, long Size, string Kind,
