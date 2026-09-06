@@ -12,7 +12,7 @@ namespace Pry.App;
 internal sealed class PryMessengerCharacterWindow : UserControl
 {
     private readonly PryBackendClient _api;
-    private readonly ListBox _list = new();
+    private readonly ListBox _list = new() { Background = Brushes.Transparent, BorderThickness = new Thickness(0) };
     private readonly TextBox _name = Field("角色名称");
     private readonly TextBox _cardName = Field("卡片名称");
     private readonly TextBox _userName = Field("角色对你的称呼");
@@ -66,7 +66,7 @@ internal sealed class PryMessengerCharacterWindow : UserControl
         try
         {
             var items = await _api.GetCharactersAsync();
-            _list.ItemsSource = items.Select(item => new ListBoxItem { Tag = item, Padding = new Thickness(11), Content = new StackPanel { Spacing = 3, Children = { new TextBlock { Text = item.Name, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = item.CardName, FontSize = 10, Foreground = Brush.Parse("#718198") } } } }).ToArray();
+            _list.ItemsSource = items.Select(item => new ListBoxItem { Tag = item, Padding = new Thickness(11), Margin = new Thickness(0,0,0,4), Content = new StackPanel { Spacing = 3, Children = { new TextBlock { Text = item.Name, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = item.CardName, FontSize = 10, Foreground = Brush.Parse("#718198") } } } }).ToArray();
             _list.SelectedItem = _list.Items.Cast<ListBoxItem>().FirstOrDefault(item => (item.Tag as CharacterSummaryResponse)?.Id == selectId) ?? _list.Items.Cast<ListBoxItem>().FirstOrDefault();
         }
         catch (Exception ex) { _status.Text = $"角色读取失败：{ex.Message}"; }

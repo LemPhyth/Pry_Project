@@ -48,21 +48,21 @@
       </Grid.ColumnDefinitions>
       <Border Grid.Column="0" Background="#0D1420" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
         <Grid RowDefinitions="Auto,*,Auto" Margin="0,18,0,14">
-          <Button Classes="nav active" HorizontalAlignment="Center" Click="ShowChats_Click" ToolTip.Tip="消息">
+          <Button x:Name="ChatsNavButton" Classes="nav active" HorizontalAlignment="Center" Click="ShowChats_Click" ToolTip.Tip="消息">
             <PathIcon Width="21" Height="21" Data="M3,4 L21,4 L21,17 L14,17 L9,21 L9,17 L3,17 Z"/>
           </Button>
           <StackPanel Grid.Row="1" Spacing="9" Margin="0,18,0,0">
-            <Button Classes="nav" HorizontalAlignment="Center" Click="ShowCharacters_Click" ToolTip.Tip="角色">
+            <Button x:Name="CharactersNavButton" Classes="nav" HorizontalAlignment="Center" Click="ShowCharacters_Click" ToolTip.Tip="角色">
               <PathIcon Width="21" Height="21" Data="M12,3 A4,4 0 1 1 12,11 A4,4 0 0 1 12,3 Z M5,21 C5,16 8,13 12,13 C16,13 19,16 19,21 Z"/>
             </Button>
-            <Button Classes="nav" HorizontalAlignment="Center" Click="ShowMemories_Click" ToolTip.Tip="记忆">
+            <Button x:Name="MemoriesNavButton" Classes="nav" HorizontalAlignment="Center" Click="ShowMemories_Click" ToolTip.Tip="记忆">
               <PathIcon Width="21" Height="21" Data="M5,3 L19,3 L19,21 L12,17 L5,21 Z"/>
             </Button>
           </StackPanel>
           <StackPanel Grid.Row="2" Spacing="8">
-            <Button Classes="nav" HorizontalAlignment="Center" Click="ToggleSidebar_Click" ToolTip.Tip="收起会话栏" Content="‹" FontSize="24"/>
-            <Button Classes="nav" HorizontalAlignment="Center" Click="OpenSettings_Click" ToolTip.Tip="设置">
-              <TextBlock Text="⚙" FontSize="20" VerticalAlignment="Center"/>
+            <Button Classes="nav" HorizontalAlignment="Center" Click="ToggleSidebar_Click" ToolTip.Tip="收起会话栏"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE76B;" FontSize="18"/></Button>
+            <Button x:Name="SettingsNavButton" Classes="nav" HorizontalAlignment="Center" Click="OpenSettings_Click" ToolTip.Tip="设置">
+              <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE713;" FontSize="18"/>
             </Button>
           </StackPanel>
         </Grid>
@@ -129,7 +129,8 @@
             <WrapPanel x:Name="AttachmentDraftPanel" Grid.Row="1" Grid.ColumnSpan="2" Margin="3,7,3,0" IsVisible="False"/>
             <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="5" Margin="2,8,0,0">
               <Button x:Name="AttachButton" Classes="icon" Content="＋" Click="Attach_Click" ToolTip.Tip="添加附件"/>
-              <Button Classes="icon" Content="☺" Click="Sticker_Click" ToolTip.Tip="选择表情"/>
+              <Button x:Name="StickerButton" Classes="icon" Content="☺" Click="Sticker_Click" ToolTip.Tip="选择表情"/>
+              <Button x:Name="VoiceButton" Classes="icon" Click="VoiceButton_Click" ToolTip.Tip="语音输入"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE720;" FontSize="16"/></Button>
             </StackPanel>
             <Button x:Name="SendButton" Grid.Row="2" Grid.Column="1" Classes="primary" Content="发送" Width="76" Height="38" Margin="0,8,0,0" Click="Send_Click"/>
           </Grid>
@@ -147,7 +148,7 @@
         <Grid RowDefinitions="64,*">
           <Border BorderBrush="#263249" BorderThickness="0,0,0,1">
             <Grid Margin="18,0" ColumnDefinitions="Auto,*" ColumnSpacing="12">
-              <Button Content="‹" Classes="icon" FontSize="24" Click="CloseWorkspacePage_Click"/>
+              <Button Classes="icon" Background="Transparent" BorderThickness="0" Click="CloseWorkspacePage_Click"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE72B;" FontSize="16"/></Button>
               <TextBlock x:Name="WorkspacePageTitle" Grid.Column="1" FontSize="19" FontWeight="SemiBold" VerticalAlignment="Center"/>
             </Grid>
           </Border>

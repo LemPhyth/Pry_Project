@@ -12,7 +12,7 @@ internal sealed class PryMessengerMemoryWindow : UserControl
 {
     private readonly PryBackendClient _api;
     private readonly CharacterSummaryResponse _character;
-    private readonly ListBox _list = new();
+    private readonly ListBox _list = new() { Background = Brushes.Transparent, BorderThickness = new Thickness(0) };
     private readonly TextBox _search = new() { Watermark = "搜索记忆" };
     private readonly TextBox _kind = new() { Watermark = "类型，例如 fact" };
     private readonly TextBox _summary = new() { Watermark = "记忆内容", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 110 };
@@ -50,7 +50,7 @@ internal sealed class PryMessengerMemoryWindow : UserControl
         try
         {
             var records = await _api.GetMemoriesAsync(_character.Id, query);
-            _list.ItemsSource = records.Select(item => new ListBoxItem { Tag = item, Padding = new Thickness(10), Content = new StackPanel { Spacing = 3, Children = { new TextBlock { Text = item.Summary, TextTrimming = TextTrimming.CharacterEllipsis }, new TextBlock { Text = $"{item.Kind} · 重要度 {item.Importance:0.0}", FontSize = 10, Foreground = Brush.Parse("#718198") } } } }).ToArray();
+            _list.ItemsSource = records.Select(item => new ListBoxItem { Tag = item, Padding = new Thickness(10), Margin = new Thickness(0,0,0,4), Content = new StackPanel { Spacing = 3, Children = { new TextBlock { Text = item.Summary, TextTrimming = TextTrimming.CharacterEllipsis }, new TextBlock { Text = $"{item.Kind} · 重要度 {item.Importance:0.0}", FontSize = 10, Foreground = Brush.Parse("#718198") } } } }).ToArray();
             _status.Text = records.Count == 0 ? "没有符合条件的记忆" : $"共 {records.Count} 条";
         }
         catch (Exception ex) { _status.Text = $"读取失败：{ex.Message}"; }

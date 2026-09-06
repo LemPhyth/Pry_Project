@@ -8,6 +8,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using NAudio.Wave;
 using Pry.Client;
 using Pry.Contracts;
 using Pry.Core.Models;
@@ -32,6 +33,11 @@ public sealed partial class PryMessengerWindow : Window
     private bool _allowClose;
     private bool _sidebarCollapsed;
     private double _sidebarWidth = 306;
+    private WaveInEvent? _waveInput;
+    private WaveFileWriter? _waveWriter;
+    private TaskCompletionSource? _recordingStopped;
+    private string? _recordingPath;
+    private bool _speechBusy;
     private long _roomRevision;
 
     public PryMessengerWindow() : this(new PryBackendClient(new HttpClient
@@ -67,6 +73,10 @@ public sealed partial class PryMessengerWindow : Window
     {
         _allowClose = true;
         _eventCancellation?.Cancel();
+        _waveInput?.StopRecording();
+        _waveWriter?.Dispose();
+        _waveInput?.Dispose();
+        if (_recordingPath is not null) { try { File.Delete(_recordingPath); } catch { } }
         return Task.CompletedTask;
     }
 
@@ -184,6 +194,11 @@ public sealed partial class PryMessengerWindow : Window
         var pin = new MenuItem { Header = room.IsPinned ? "取消置顶" : "置顶会话" };
         pin.Click += async (_, _) => { await _api.UpdateConversationAsync(room.Id, new UpdateConversationRequest(null, !room.IsPinned, null)); await RefreshRoomsWithoutSwitchAsync(); };
         item.ContextMenu = new ContextMenu { ItemsSource = new[] { settings, pin } };
+        item.PointerPressed += (_, args) =>
+        {
+            if (!args.GetCurrentPoint(item).Properties.IsRightButtonPressed) return;
+            args.Handled = true; item.ContextMenu?.Open(item);
+        };
         return item;
     }
 
@@ -562,7 +577,8 @@ public sealed partial class PryMessengerWindow : Window
 
     private void Folders_Click(object? sender, RoutedEventArgs e)
     {
-        var list = new ListBox();
+        if (sender is not Control anchor) return;
+        var list = new ListBox { MinHeight = 220 };
         var input = new TextBox { Watermark = "分组名称", MaxLength = 60 };
         var add = new Button { Content = "新建", Classes = { "primary" } };
         var rename = new Button { Content = "重命名" };
@@ -587,8 +603,9 @@ public sealed partial class PryMessengerWindow : Window
         };
         Render();
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { add, rename, remove } };
-        var panel = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto"), RowSpacing = 10, Margin = new Thickness(18), Children = { list, input, buttons } };
-        Grid.SetRow(input, 1); Grid.SetRow(buttons, 2); ShowWorkspacePage("会话分组", panel);
+        var panel = new Grid { Width = 340, Height = 390, RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), RowSpacing = 10, Margin = new Thickness(16), Children = { new TextBlock { Text = "会话分组", FontSize = 18, FontWeight = FontWeight.SemiBold }, list, input, buttons } };
+        Grid.SetRow(list, 1); Grid.SetRow(input, 2); Grid.SetRow(buttons, 3);
+        new Flyout { Content = new Border { Background = Brush.Parse("#182235"), BorderBrush = Brush.Parse("#33425D"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Child = panel } }.ShowAt(anchor);
     }
 
     private async Task RunFolderMutationAsync(Func<Task> action, string errorTitle)
@@ -623,6 +640,69 @@ public sealed partial class PryMessengerWindow : Window
             catch (Exception ex) { await ShowNoticeAsync("附件没有添加", $"{file.Name}：{ex.Message}"); }
         }
         UpdateAttachmentButton();
+    }
+
+    private async void VoiceButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_speechBusy) return;
+        if (_waveInput is null) await StartRecordingAsync();
+        else await StopRecordingAndRecognizeAsync();
+    }
+
+    private async Task StartRecordingAsync()
+    {
+        try
+        {
+            var speechId = _preferences?.ActiveSpeechModelId ?? throw new InvalidOperationException("请先在设置中选择语音识别模型。");
+            var profile = (await _api.GetSpeechModelsAsync()).FirstOrDefault(item => item.Id == speechId);
+            if (profile is null || !profile.Available) throw new InvalidOperationException("所选语音识别模型当前不可用。");
+            if (WaveInEvent.DeviceCount == 0) throw new InvalidOperationException("没有检测到可用麦克风。");
+            var tempDirectory = Path.Combine(Path.GetTempPath(), "PryCompanion"); Directory.CreateDirectory(tempDirectory);
+            _recordingPath = Path.Combine(tempDirectory, $"voice-{Guid.NewGuid():N}.wav");
+            _recordingStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _waveInput = new WaveInEvent { WaveFormat = new WaveFormat(profile.SampleRate, 16, 1), BufferMilliseconds = 80 };
+            _waveWriter = new WaveFileWriter(_recordingPath, _waveInput.WaveFormat);
+            _waveInput.DataAvailable += (_, args) => _waveWriter?.Write(args.Buffer, 0, args.BytesRecorded);
+            _waveInput.RecordingStopped += (_, args) =>
+            {
+                _waveWriter?.Dispose(); _waveWriter = null;
+                if (args.Exception is not null) _recordingStopped?.TrySetException(args.Exception); else _recordingStopped?.TrySetResult();
+            };
+            _waveInput.StartRecording(); VoiceButton.Content = "■"; VoiceButton.Classes.Add("active"); ConversationStatusText.Text = "正在录音，再次点击结束";
+        }
+        catch (Exception ex) { await ResetRecordingAsync(); await ShowNoticeAsync("无法开始录音", ex.Message); }
+    }
+
+    private async Task StopRecordingAndRecognizeAsync()
+    {
+        _speechBusy = true; VoiceButton.IsEnabled = false; ConversationStatusText.Text = "正在识别语音…";
+        try
+        {
+            _waveInput!.StopRecording(); if (_recordingStopped is not null) await _recordingStopped.Task;
+            _waveInput.Dispose(); _waveInput = null;
+            var path = _recordingPath ?? throw new InvalidOperationException("没有可转写的录音。");
+            await using var recording = File.OpenRead(path);
+            var uploaded = await _api.UploadAsync(recording, Path.GetFileName(path), "audio/wav");
+            var text = (await _api.TranscribeAsync(uploaded.Id)).Text;
+            if (string.IsNullOrWhiteSpace(text)) await ShowNoticeAsync("没有识别到文字", "请靠近麦克风后重试。");
+            else
+            {
+                var existing = ComposerTextBox.Text ?? "";
+                ComposerTextBox.Text = string.IsNullOrWhiteSpace(existing) ? text : $"{existing.TrimEnd()} {text}";
+                ComposerTextBox.CaretIndex = ComposerTextBox.Text.Length; ComposerTextBox.Focus();
+            }
+        }
+        catch (Exception ex) { await ShowNoticeAsync("语音识别失败", ex.Message); }
+        finally { await ResetRecordingAsync(); }
+    }
+
+    private Task ResetRecordingAsync()
+    {
+        _waveWriter?.Dispose(); _waveWriter = null; _waveInput?.Dispose(); _waveInput = null;
+        if (_recordingPath is not null) { try { File.Delete(_recordingPath); } catch { } }
+        _recordingPath = null; _recordingStopped = null; _speechBusy = false; VoiceButton.Content = new TextBlock { FontFamily = new FontFamily("Segoe Fluent Icons"), Text = "\uE720", FontSize = 16 }; VoiceButton.Classes.Remove("active"); VoiceButton.IsEnabled = true;
+        if (!_sending) ConversationStatusText.Text = "本地私密对话";
+        return Task.CompletedTask;
     }
 
     private void UpdateAttachmentButton()
@@ -662,6 +742,7 @@ public sealed partial class PryMessengerWindow : Window
 
     private async void Sticker_Click(object? sender, RoutedEventArgs e)
     {
+        if (sender is not Control anchor) return;
         try
         {
             var stickers = (await _api.GetStickersAsync()).Where(item => item.Enabled).ToArray();
@@ -670,25 +751,26 @@ public sealed partial class PryMessengerWindow : Window
             var list = new ListBox { ItemsSource = stickers.Select(item => new ListBoxItem { Content = item.Name, Tag = item }).ToArray() };
             list.DoubleTapped += async (_, _) =>
             {
-                if (list.SelectedItem is ListBoxItem { Tag: StickerResponse sticker }) { CloseWorkspacePage(); await SendAsync(sticker.Id); }
+                if (list.SelectedItem is ListBoxItem { Tag: StickerResponse sticker }) await SendAsync(sticker.Id);
             };
             var manage = new Button { Content = "管理表情", HorizontalAlignment = HorizontalAlignment.Right };
             manage.Click += async (_, _) =>
             {
                 var manager = new PryMessengerStickerWindow(_api);
-                manager.CloseRequested += () => { CloseWorkspacePage(); Sticker_Click(this, new RoutedEventArgs()); };
+                manager.CloseRequested += () => { CloseWorkspacePage(); Sticker_Click(StickerButton, new RoutedEventArgs()); };
                 ShowWorkspacePage("管理表情", manager);
             };
-            var content = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), RowSpacing = 10, Margin = new Thickness(18), Children = { list, manage } }; Grid.SetRow(manage, 1);
-            ShowWorkspacePage("选择表情", content);
+            var content = new Grid { Width = 360, Height = 400, RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 10, Margin = new Thickness(16), Children = { new TextBlock { Text = "选择表情", FontSize = 18, FontWeight = FontWeight.SemiBold }, list, manage } }; Grid.SetRow(list, 1); Grid.SetRow(manage, 2);
+            new Flyout { Content = new Border { Background = Brush.Parse("#182235"), BorderBrush = Brush.Parse("#33425D"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14), Child = content } }.ShowAt(anchor);
         }
         catch (Exception ex) { await ShowNoticeAsync("表情加载失败", ex.Message); }
     }
 
     private void ShowCharacters_Click(object? sender, RoutedEventArgs e)
     {
+        SetActiveNav(CharactersNavButton);
         var page = new PryMessengerCharacterWindow(_api);
-        page.CloseRequested += CloseWorkspacePage;
+        page.CloseRequested += () => CloseWorkspacePage();
         page.CharacterActivated += async character => { _character = character; await ApplyCharacterAsync(); CloseWorkspacePage(); await CreateConversationAsync(); };
         ShowWorkspacePage("角色", page);
     }
@@ -696,23 +778,30 @@ public sealed partial class PryMessengerWindow : Window
     private void ShowMemories_Click(object? sender, RoutedEventArgs e)
     {
         if (_character is null) return;
+        SetActiveNav(MemoriesNavButton);
         ShowWorkspacePage("长期记忆", new PryMessengerMemoryWindow(_api, _character));
     }
 
     private void OpenSettings_Click(object? sender, RoutedEventArgs e)
     {
+        SetActiveNav(SettingsNavButton);
         var page = new PryMessengerSettingsWindow(_api);
         page.CloseRequested += async () => { if (page.Saved) _preferences = await _api.GetPreferencesAsync(); CloseWorkspacePage(); };
         ShowWorkspacePage("设置", page);
     }
 
-    private void ShowChats_Click(object? sender, RoutedEventArgs e) { CloseWorkspacePage(); ConversationSearchBox.Focus(); }
+    private void ShowChats_Click(object? sender, RoutedEventArgs e) { SetActiveNav(ChatsNavButton); CloseWorkspacePage(false); ConversationSearchBox.Focus(); }
     private void ShowWorkspacePage(string title, Control content)
     {
         WorkspacePageTitle.Text = title; WorkspacePageContent.Content = content; WorkspacePage.IsVisible = true;
     }
     private void CloseWorkspacePage_Click(object? sender, RoutedEventArgs e) => CloseWorkspacePage();
-    private void CloseWorkspacePage() { WorkspacePage.IsVisible = false; WorkspacePageContent.Content = null; }
+    private void CloseWorkspacePage(bool selectChats = true) { WorkspacePage.IsVisible = false; WorkspacePageContent.Content = null; if (selectChats) SetActiveNav(ChatsNavButton); }
+    private void SetActiveNav(Button active)
+    {
+        foreach (var button in new[] { ChatsNavButton, CharactersNavButton, MemoriesNavButton, SettingsNavButton })
+            button.Classes.Set("active", ReferenceEquals(button, active));
+    }
     private void ToggleSidebar_Click(object? sender, RoutedEventArgs e)
     {
         var column = MainLayout.ColumnDefinitions[1];

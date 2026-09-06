@@ -7,13 +7,13 @@
     <Style Selector="Button"><Setter Property="CornerRadius" Value="10"/><Setter Property="Padding" Value="15,8"/></Style>
     <Style Selector="Button.primary"><Setter Property="Background" Value="#6C63FF"/><Setter Property="Foreground" Value="White"/></Style>
     <Style Selector="Border.card"><Setter Property="Background" Value="#182235"/><Setter Property="CornerRadius" Value="13"/><Setter Property="Padding" Value="16"/></Style>
+    <Style Selector="TabItem"><Setter Property="MinWidth" Value="150"/><Setter Property="Padding" Value="16,12"/><Setter Property="HorizontalContentAlignment" Value="Left"/></Style>
   </UserControl.Styles>
   <Grid RowDefinitions="Auto,*,Auto">
-    <StackPanel Margin="24,22,24,16" Spacing="4">
-      <TextBlock Text="设置" FontSize="25" FontWeight="SemiBold" Foreground="#F4F6FC"/>
+    <StackPanel Margin="24,16,24,12" Spacing="4">
       <TextBlock x:Name="RuntimeText" Text="正在读取本地配置…" Foreground="#8090A7" FontSize="11"/>
     </StackPanel>
-    <TabControl Grid.Row="1" Margin="20,0">
+    <TabControl Grid.Row="1" Margin="20,0" TabStripPlacement="Left">
       <TabItem Header="个人资料">
         <ScrollViewer><StackPanel Margin="8,18" Spacing="14">
           <Border Classes="card"><StackPanel Spacing="9">
