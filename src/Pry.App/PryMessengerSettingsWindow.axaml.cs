@@ -6,6 +6,7 @@ using Avalonia.Platform.Storage;
 using Pry.Client;
 using Pry.Contracts;
 using Pry.Core.Models;
+using Pry.App.Services;
 
 namespace Pry.App;
 
@@ -66,7 +67,15 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
             ListeningSignalsBox.IsChecked = turn.EnableListeningSignals;
             DebounceBox.Value = turn.DebounceMs;
             StyleInstructionBox.Text = turn.StyleInstruction;
+            SendShortcutBox.Text = _preferences.Shortcuts.Send;
+            SendImmediatelyShortcutBox.Text = _preferences.Shortcuts.SendImmediately;
+            NewLineShortcutBox.Text = _preferences.Shortcuts.NewLine;
+            CancelReplyShortcutBox.Text = _preferences.Shortcuts.CancelReply;
+            NewConversationShortcutBox.Text = _preferences.Shortcuts.NewConversation;
+            OpenStickersShortcutBox.Text = _preferences.Shortcuts.OpenStickers;
+            OpenCharacterShortcutBox.Text = _preferences.Shortcuts.OpenCharacterEditor;
 
+            ComputeDeviceBox.ItemsSource = new[] { new DeviceChoice("auto-discrete", "自动选择独立显卡") }.Concat(_devices.Select(item => new DeviceChoice(item.Id, item.Name))).ToArray();
             TextModelBox.ItemsSource = _models.Where(item => item.Capabilities.Text).Select(item => new ModelChoice(item.Id, item.DisplayName)).ToArray();
             VisionModelBox.ItemsSource = new[] { new ModelChoice("", "不单独指定") }.Concat(_models.Where(item => item.Capabilities.Vision).Select(item => new ModelChoice(item.Id, item.DisplayName))).ToArray();
             SpeechModelBox.ItemsSource = new[] { new ModelChoice("", "不启用语音识别") }.Concat(_speechModels.Where(item => item.Available).Select(item => new ModelChoice(item.Id, item.DisplayName))).ToArray();
@@ -74,7 +83,6 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
             Select(VisionModelBox, _preferences.ActiveVisionModelId);
             Select(SpeechModelBox, _preferences.ActiveSpeechModelId);
             RuntimeText.Text = runtime.State == "ready" ? "本地服务运行正常" : runtime.Error ?? runtime.State;
-            ComputeDeviceBox.ItemsSource = new[] { new DeviceChoice("auto-discrete", "自动选择独立显卡") }.Concat(_devices.Select(item => new DeviceChoice(item.Id, item.Name))).ToArray();
             DeviceText.Text = _devices.Count == 0 ? "未发现可用计算设备" : "计算设备：" + string.Join("、", _devices.Select(item => item.Name));
             await LoadPreviewAsync(UserAvatarPreview, _preferences.UserAvatarUrl);
             await LoadPreviewAsync(BackgroundPreview, _preferences.BackgroundUrl);
@@ -92,7 +100,16 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
     {
         if (TextModelBox.SelectedItem is not ModelChoice choice || _models.FirstOrDefault(item => item.Id == choice.Id) is not { } model) return;
         TemperatureBox.Value = (decimal)model.Temperature; MaxOutputBox.Value = model.MaxOutputTokens; ContextSizeBox.Value = model.ContextSize; GpuLayersBox.Value = model.GpuLayers; ThinkingBox.IsChecked = model.EnableThinking;
-        ComputeDeviceBox.SelectedItem = ComputeDeviceBox.ItemsSource?.Cast<DeviceChoice>().FirstOrDefault(item => item.Id == model.ComputeDevice) ?? ComputeDeviceBox.ItemsSource?.Cast<DeviceChoice>().FirstOrDefault();
+        var configuredDevice = string.IsNullOrWhiteSpace(model.ComputeDevice) ? "auto-discrete" : model.ComputeDevice;
+        ComputeDeviceBox.SelectedItem = ComputeDeviceBox.ItemsSource?.Cast<DeviceChoice>().FirstOrDefault(item => item.Id == configuredDevice)
+                                        ?? ComputeDeviceBox.ItemsSource?.Cast<DeviceChoice>().FirstOrDefault();
+    }
+
+    private void AdvancedSettingsToggle_Changed(object? sender, RoutedEventArgs e)
+    {
+        var expanded = AdvancedSettingsToggle.IsChecked == true;
+        AdvancedSettingsPanel.IsVisible = expanded;
+        AdvancedSettingsChevron.Text = expanded ? "\uE70E" : "\uE70D";
     }
 
     private async void Save_Click(object? sender, RoutedEventArgs e)
@@ -103,6 +120,20 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
         if (string.IsNullOrWhiteSpace(displayName)) { StatusText.Text = "显示名称不能为空"; DisplayNameBox.Focus(); return; }
         if (!Regex.IsMatch(accent, "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$")) { StatusText.Text = "强调色必须使用 #RRGGBB 格式"; AccentColorBox.Focus(); return; }
         if (TextModelBox.SelectedItem is not ModelChoice textModel) { StatusText.Text = "请选择文字模型"; return; }
+        var shortcuts = new ShortcutSettings
+        {
+            Send = Shortcut(SendShortcutBox, "Enter"),
+            SendImmediately = Shortcut(SendImmediatelyShortcutBox, "Ctrl+Enter"),
+            NewLine = Shortcut(NewLineShortcutBox, "Shift+Enter"),
+            CancelReply = Shortcut(CancelReplyShortcutBox, "Escape"),
+            NewConversation = Shortcut(NewConversationShortcutBox, "Ctrl+N"),
+            OpenStickers = Shortcut(OpenStickersShortcutBox, "Ctrl+E"),
+            OpenCharacterEditor = Shortcut(OpenCharacterShortcutBox, "Ctrl+Shift+C")
+        };
+        if (SettingsDraftService.ValidateShortcuts(shortcuts) is { } shortcutError)
+        {
+            StatusText.Text = shortcutError.Message; return;
+        }
 
         try
         {
@@ -130,7 +161,7 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
             var speechId = (SpeechModelBox.SelectedItem as ModelChoice)?.Id;
             var tuning = new ModelTuningPreferences { ActiveModelId = textModel.Id, Temperature = (double?)TemperatureBox.Value, MaxOutputTokens = (int?)MaxOutputBox.Value, ContextSize = (int?)ContextSizeBox.Value, GpuLayers = (int?)GpuLayersBox.Value, ComputeDevice = (ComputeDeviceBox.SelectedItem as DeviceChoice)?.Id, EnableThinking = ThinkingBox.IsChecked == true };
             var saved = await _api.SaveSettingsAsync(new SaveSettingsRequest(
-                new UpdateClientPreferencesRequest(_preferences.SelectedCharacterId, null, profile, _preferences.DesktopPet, _preferences.Shortcuts, turn, theme),
+                new UpdateClientPreferencesRequest(_preferences.SelectedCharacterId, null, profile, _preferences.DesktopPet, shortcuts, turn, theme),
                 new UpdateAppearanceMediaRequest(_backgroundMediaId, _clearBackground, _userAvatarMediaId, _clearUserAvatar, null, null),
                 new UpdateModelSelectionRequest(textModel.Id, string.IsNullOrEmpty(visionId) ? null : visionId,
                     string.IsNullOrEmpty(speechId) ? null : speechId, new Dictionary<string, ModelTuningPreferences> { [textModel.Id] = tuning })));
@@ -142,6 +173,7 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
     }
 
     private void Cancel_Click(object? sender, RoutedEventArgs e) => CloseRequested?.Invoke();
+    private static string Shortcut(TextBox input, string fallback) => string.IsNullOrWhiteSpace(input.Text) ? fallback : input.Text.Trim();
     private sealed record ModelChoice(string Id, string Name) { public override string ToString() => Name; }
     private sealed record LayoutChoice(string Id, string Name) { public override string ToString() => Name; }
     private sealed record DeviceChoice(string Id, string Name) { public override string ToString() => Name; }

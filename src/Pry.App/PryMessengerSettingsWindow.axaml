@@ -37,8 +37,10 @@
             <TextBlock Text="视觉模型" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="VisionModelBox"/>
             <TextBlock Text="语音识别模型" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="SpeechModelBox"/>
             <TextBlock x:Name="DeviceText" Foreground="#718198" TextWrapping="Wrap"/>
-            <Border Margin="0,8,0,0" Padding="14" Background="#111A29" BorderBrush="#2A3850" BorderThickness="1" CornerRadius="12">
-              <StackPanel Spacing="10"><TextBlock Text="高级参数" FontSize="14" FontWeight="SemiBold" Foreground="#C9D2E1"/>
+            <ToggleButton x:Name="AdvancedSettingsToggle" Margin="0,8,0,0" HorizontalContentAlignment="Stretch" Checked="AdvancedSettingsToggle_Changed" Unchecked="AdvancedSettingsToggle_Changed">
+              <Grid ColumnDefinitions="*,Auto"><TextBlock Text="高级设置" FontSize="14" FontWeight="SemiBold"/><TextBlock x:Name="AdvancedSettingsChevron" Grid.Column="1" FontFamily="Segoe Fluent Icons" Text="&#xE70D;"/></Grid>
+            </ToggleButton>
+            <Border x:Name="AdvancedSettingsPanel" IsVisible="False" Padding="14" Background="#111A29" BorderBrush="#2A3850" BorderThickness="1" CornerRadius="12">
               <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="10">
                 <StackPanel><TextBlock Text="温度" FontSize="11" Foreground="#8D9AAF"/><NumericUpDown x:Name="TemperatureBox" Minimum="0" Maximum="2" Increment="0.05" FormatString="0.00"/></StackPanel>
                 <StackPanel Grid.Column="1"><TextBlock Text="最大输出 Token" FontSize="11" Foreground="#8D9AAF"/><NumericUpDown x:Name="MaxOutputBox" Minimum="16" Maximum="32768" Increment="64"/></StackPanel>
@@ -46,7 +48,7 @@
                 <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="GPU 层数" FontSize="11" Foreground="#8D9AAF"/><NumericUpDown x:Name="GpuLayersBox" Minimum="0" Maximum="999" Increment="1"/></StackPanel>
                 <StackPanel Grid.Row="2"><TextBlock Text="计算设备" FontSize="11" Foreground="#8D9AAF"/><ComboBox x:Name="ComputeDeviceBox"/></StackPanel>
                 <CheckBox Grid.Row="2" Grid.Column="1" x:Name="ThinkingBox" Content="启用思考模式" VerticalAlignment="Center"/>
-              </Grid></StackPanel>
+              </Grid>
             </Border>
           </StackPanel></Border>
         </StackPanel></ScrollViewer>
@@ -61,6 +63,23 @@
             <NumericUpDown x:Name="DebounceBox" Minimum="200" Maximum="10000" Increment="100"/>
             <TextBlock Text="回复风格提示" Foreground="#8D9AAF" FontSize="11"/>
             <TextBox x:Name="StyleInstructionBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90" MaxLength="1000"/>
+          </StackPanel></Border>
+        </StackPanel></ScrollViewer>
+      </TabItem>
+      <TabItem Header="快捷键">
+        <ScrollViewer><StackPanel Margin="8,18" Spacing="14">
+          <Border Classes="card"><StackPanel Spacing="10">
+            <TextBlock Text="键盘操作" FontSize="17" FontWeight="SemiBold"/>
+            <TextBlock Text="点击输入框后直接输入组合键名称，例如 Enter、Shift+Enter、Ctrl+N。保存时会检查格式和冲突。" Foreground="#8D9AAF" TextWrapping="Wrap"/>
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="10">
+              <StackPanel><TextBlock Text="发送消息" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="SendShortcutBox"/></StackPanel>
+              <StackPanel Grid.Column="1"><TextBlock Text="换行" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="NewLineShortcutBox"/></StackPanel>
+              <StackPanel Grid.Row="1"><TextBlock Text="立即回复" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="SendImmediatelyShortcutBox"/></StackPanel>
+              <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="停止回复" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="CancelReplyShortcutBox"/></StackPanel>
+              <StackPanel Grid.Row="2"><TextBlock Text="新建会话" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="NewConversationShortcutBox"/></StackPanel>
+              <StackPanel Grid.Row="2" Grid.Column="1"><TextBlock Text="打开表情" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="OpenStickersShortcutBox"/></StackPanel>
+              <StackPanel Grid.Row="3"><TextBlock Text="打开角色" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="OpenCharacterShortcutBox"/></StackPanel>
+            </Grid>
           </StackPanel></Border>
         </StackPanel></ScrollViewer>
       </TabItem>
