@@ -25,8 +25,8 @@ public sealed class ModelTuningSettingsEditor
         _computeChoices = computeChoices;
         _drafts = initialDrafts.ToDictionary(item => item.Key, item => item.Value);
         _temperature = ui.CreateNumber(.8m, 0, 2, .05m);
-        _outputTokens = ui.CreateNumber(512, 32, 8192, 32);
-        _contextSize = ui.CreateNumber(4096, 512, 131072, 512);
+        _outputTokens = ui.CreateNumber(512, 32, 100000, 32);
+        _contextSize = ui.CreateNumber(4096, 512, 1000000, 512);
         _gpuLayers = ui.CreateNumber(0, 0, 999);
         _computeDevice = new ComboBox { ItemsSource = computeChoices };
         Panel = new StackPanel { Spacing = 7 };
@@ -44,6 +44,12 @@ public sealed class ModelTuningSettingsEditor
             Foreground = Avalonia.Media.Brush.Parse("#7F91A4")
         });
         _computeDevice.SelectionChanged += (_, _) => UpdateComputeState();
+        _contextSize.Spinned += (_, args) =>
+        {
+            args.Handled = true;
+            _contextSize.Value = ModelContextSteps.Move((int)(_contextSize.Value ?? 4096),
+                args.Direction == SpinDirection.Increase);
+        };
         _model.SelectionChanged += (_, _) => SwitchModel();
         UpdateProfiles(profiles, initialModelId);
     }
@@ -107,6 +113,7 @@ public sealed class ModelTuningSettingsEditor
         var requestedDevice = tuning?.ComputeDevice ?? profile.ComputeDevice;
         _computeDevice.SelectedItem = _computeChoices.FirstOrDefault(item => item.Id == requestedDevice)
             ?? _computeChoices.FirstOrDefault();
+        ApplyRecommendedContext();
         _gpuLayers.Value = requestedDevice == "cpu" ? 0
             : tuning?.GpuLayers is > 0 ? tuning.GpuLayers
             : profile.GpuLayers > 0 ? profile.GpuLayers : 999;
@@ -121,10 +128,17 @@ public sealed class ModelTuningSettingsEditor
         _gpuLayers.IsEnabled = !cpu;
         if (cpu) _gpuLayers.Value = 0;
         else if (_gpuLayers.Value <= 0) _gpuLayers.Value = 999;
+        ApplyRecommendedContext();
+    }
+
+    private void ApplyRecommendedContext()
+    {
+        if (_computeDevice.SelectedItem is not ComputeDeviceChoice { RecommendedContextSize: int recommended }) return;
+        if (_contextSize.Value is null || _contextSize.Value > recommended) _contextSize.Value = recommended;
     }
 }
 
-public sealed record ComputeDeviceChoice(string Id, string Name)
+public sealed record ComputeDeviceChoice(string Id, string Name, int? RecommendedContextSize = null)
 {
     public override string ToString() => Name;
 }

@@ -31,6 +31,12 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
     {
         _api = api;
         InitializeComponent();
+        ContextSizeBox.Spinned += (_, args) =>
+        {
+            args.Handled = true;
+            ContextSizeBox.Value = ModelContextSteps.Move((int)(ContextSizeBox.Value ?? 4096),
+                args.Direction == SpinDirection.Increase);
+        };
         AttachedToVisualTree += async (_, _) => await LoadAsync();
     }
 
@@ -75,7 +81,15 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
             OpenStickersShortcutBox.Text = _preferences.Shortcuts.OpenStickers;
             OpenCharacterShortcutBox.Text = _preferences.Shortcuts.OpenCharacterEditor;
 
-            ComputeDeviceBox.ItemsSource = new[] { new DeviceChoice("auto-discrete", "自动选择独立显卡") }.Concat(_devices.Select(item => new DeviceChoice(item.Id, item.Name))).ToArray();
+            var automaticDevice = PreferredAutomaticDevice(_devices);
+            ComputeDeviceBox.ItemsSource = new[]
+            {
+                new DeviceChoice("auto-discrete", automaticDevice is null ? "自动选择独立显卡" :
+                    $"自动 · {automaticDevice.Name}（推荐 {automaticDevice.RecommendedContextSize / 1024}K）",
+                    automaticDevice?.RecommendedContextSize)
+            }.Concat(_devices.Select(item => new DeviceChoice(item.Id,
+                $"{item.Name}（{item.PerformanceTierId} · 推荐 {item.RecommendedContextSize / 1024}K）",
+                item.RecommendedContextSize))).ToArray();
             TextModelBox.ItemsSource = _models.Where(item => item.Capabilities.Text).Select(item => new ModelChoice(item.Id, item.DisplayName)).ToArray();
             VisionModelBox.ItemsSource = new[] { new ModelChoice("", "不单独指定") }.Concat(_models.Where(item => item.Capabilities.Vision).Select(item => new ModelChoice(item.Id, item.DisplayName))).ToArray();
             SpeechModelBox.ItemsSource = new[] { new ModelChoice("", "不启用语音识别") }.Concat(_speechModels.Where(item => item.Available).Select(item => new ModelChoice(item.Id, item.DisplayName))).ToArray();
@@ -103,6 +117,8 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
         var configuredDevice = string.IsNullOrWhiteSpace(model.ComputeDevice) ? "auto-discrete" : model.ComputeDevice;
         ComputeDeviceBox.SelectedItem = ComputeDeviceBox.ItemsSource?.Cast<DeviceChoice>().FirstOrDefault(item => item.Id == configuredDevice)
                                         ?? ComputeDeviceBox.ItemsSource?.Cast<DeviceChoice>().FirstOrDefault();
+        if (ComputeDeviceBox.SelectedItem is DeviceChoice { RecommendedContextSize: int recommended } &&
+            ContextSizeBox.Value > recommended) ContextSizeBox.Value = recommended;
     }
 
     private void AdvancedSettingsToggle_Changed(object? sender, RoutedEventArgs e)
@@ -176,7 +192,10 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
     private static string Shortcut(TextBox input, string fallback) => string.IsNullOrWhiteSpace(input.Text) ? fallback : input.Text.Trim();
     private sealed record ModelChoice(string Id, string Name) { public override string ToString() => Name; }
     private sealed record LayoutChoice(string Id, string Name) { public override string ToString() => Name; }
-    private sealed record DeviceChoice(string Id, string Name) { public override string ToString() => Name; }
+    internal static ComputeDeviceResponse? PreferredAutomaticDevice(IEnumerable<ComputeDeviceResponse> devices) =>
+        devices.FirstOrDefault(device => !device.IsIntegrated) ?? devices.FirstOrDefault();
+
+    private sealed record DeviceChoice(string Id, string Name, int? RecommendedContextSize = null) { public override string ToString() => Name; }
 
     private async void ChooseUserAvatar_Click(object? sender, RoutedEventArgs e) => await ChooseImageAsync(true);
     private async void ChooseBackground_Click(object? sender, RoutedEventArgs e) => await ChooseImageAsync(false);

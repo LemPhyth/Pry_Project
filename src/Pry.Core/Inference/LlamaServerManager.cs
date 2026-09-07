@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using Pry.Core.Models;
 
 namespace Pry.Core.Inference;
@@ -16,9 +19,9 @@ public sealed class LlamaServerManager : IAsyncDisposable
     public bool IsRunning => _process is { HasExited: false };
     public string ActiveComputeDevice { get; private set; } = "CPU";
 
-    public async Task StartAsync(string executablePath, ModelProfile profile, CancellationToken cancellationToken = default)
+    public async Task<LlamaServerStartupMetrics> StartAsync(string executablePath, ModelProfile profile, CancellationToken cancellationToken = default)
     {
-        if (IsRunning || profile.Provider != "local-llama") return;
+        if (IsRunning || profile.Provider != "local-llama") return new LlamaServerStartupMetrics(null);
         if (!File.Exists(executablePath)) throw new ModelRuntimeException("runtime_missing", "未找到本地推理运行库。", false);
         if (string.IsNullOrWhiteSpace(profile.ModelPath) || !File.Exists(profile.ModelPath))
             throw new ModelRuntimeException("model_missing", "未找到本地模型文件。", false);
@@ -64,13 +67,45 @@ public sealed class LlamaServerManager : IAsyncDisposable
             try
             {
                 using var response = await client.GetAsync(healthUri, cancellationToken);
-                if (response.IsSuccessStatusCode) return;
+                if (response.IsSuccessStatusCode)
+                {
+                    return new LlamaServerStartupMetrics(
+                        await MeasureGenerationSpeedAsync(profile, cancellationToken));
+                }
             }
             catch (HttpRequestException) { }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested) { }
             await Task.Delay(500, cancellationToken);
         }
         throw new ModelRuntimeException("startup_timeout", "本地模型加载超时。", true, GetDiagnostics());
+    }
+
+    private static async Task<double?> MeasureGenerationSpeedAsync(ModelProfile profile, CancellationToken token)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            if (!string.IsNullOrWhiteSpace(profile.ApiKey))
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", profile.ApiKey);
+            var payload = JsonSerializer.Serialize(new
+            {
+                model = profile.ModelName,
+                messages = new[] { new { role = "user", content = "Reply only: OK" } },
+                stream = false,
+                temperature = 0.0,
+                max_tokens = 8,
+                chat_template_kwargs = new { enable_thinking = false }
+            });
+            using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+            using var response = await client.PostAsync($"{profile.BaseUrl.TrimEnd('/')}/chat/completions", content, token);
+            if (!response.IsSuccessStatusCode) return null;
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+            return document.RootElement.TryGetProperty("timings", out var timings) &&
+                   timings.TryGetProperty("predicted_per_second", out var speed)
+                ? speed.GetDouble()
+                : null;
+        }
+        catch (Exception) when (!token.IsCancellationRequested) { return null; }
     }
 
     private async Task DrainStandardErrorAsync(Process process)
@@ -108,3 +143,5 @@ public sealed class LlamaServerManager : IAsyncDisposable
         _process = null;
     }
 }
+
+public sealed record LlamaServerStartupMetrics(double? TokensPerSecond);

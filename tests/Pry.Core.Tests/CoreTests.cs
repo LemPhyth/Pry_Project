@@ -7,11 +7,55 @@ using Pry.Core.Expression;
 using Pry.Core.Abstractions;
 using Pry.Core.Inference;
 using Pry.Core.TurnTaking;
+using System.Net;
+using System.Text;
+using System.Text.Json;
 
 namespace Pry.Core.Tests;
 
 public sealed class CoreTests
 {
+    [Fact]
+    public async Task Structured_reply_plan_preserves_thinking_without_schema_grammar()
+    {
+        var handler = new CapturingHttpHandler();
+        using var client = new HttpClient(handler);
+        var model = new OpenAiCompatibleChatModel(client, new ModelProfile
+        {
+            Id = "qwen", DisplayName = "Qwen", BaseUrl = "http://localhost/v1", EnableThinking = true,
+            TopP = .95, TopK = 20, MinP = 0, PresencePenalty = 1.5, RepetitionPenalty = 1
+        });
+
+        await foreach (var _ in model.StreamAsync("system",
+                           [new ChatMessage(1, "chat", ChatRole.User, "你好", DateTimeOffset.UtcNow)], null,
+                           new ChatRequestOptions(StructuredReplyPlan: true), TestContext.Current.CancellationToken)) { }
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.True(payload.RootElement.GetProperty("chat_template_kwargs").GetProperty("enable_thinking").GetBoolean());
+        Assert.False(payload.RootElement.TryGetProperty("response_format", out _));
+        Assert.Equal(.95, payload.RootElement.GetProperty("top_p").GetDouble());
+        Assert.Equal(20, payload.RootElement.GetProperty("top_k").GetInt32());
+        Assert.Equal(1.5, payload.RootElement.GetProperty("presence_penalty").GetDouble());
+    }
+
+    [Fact]
+    public async Task Structured_reply_plan_uses_schema_grammar_for_non_thinking_models()
+    {
+        var handler = new CapturingHttpHandler();
+        using var client = new HttpClient(handler);
+        var model = new OpenAiCompatibleChatModel(client, new ModelProfile
+        {
+            Id = "instruct", DisplayName = "Instruct", BaseUrl = "http://localhost/v1", EnableThinking = false
+        });
+
+        await foreach (var _ in model.StreamAsync("system",
+                           [new ChatMessage(1, "chat", ChatRole.User, "你好", DateTimeOffset.UtcNow)], null,
+                           new ChatRequestOptions(StructuredReplyPlan: true), TestContext.Current.CancellationToken)) { }
+
+        using var payload = JsonDocument.Parse(handler.RequestBody);
+        Assert.True(payload.RootElement.TryGetProperty("response_format", out _));
+    }
+
     [Fact]
     public void Model_runtime_failure_classifies_cuda_out_of_memory_without_exposing_diagnostics()
     {
@@ -233,6 +277,35 @@ public sealed class CoreTests
     }
 
     [Fact]
+    public async Task Reply_planner_accepts_simplified_json_from_thinking_models()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"pry-plan-json-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var database = new MemoryDatabase(Path.Combine(root, "memory.db"));
+            await database.InitializeAsync(TestContext.Current.CancellationToken);
+            await database.AddMessageAsync("chat", ChatRole.User, "测试", null, TestContext.Current.CancellationToken);
+            var model = new FakeChatModel(new ModelProfile { Id = "text", DisplayName = "Text" },
+                "```json\n[{\"content\":\"思考链路正常\"}]\n```");
+            var catalog = new StickerCatalog(Path.Combine(root, "missing.json"), Path.Combine(root, "stickers"));
+            await catalog.LoadAsync(TestContext.Current.CancellationToken);
+            var planner = new ReplyPlanner(database, new PromptBuilder(), new ModelRouter([model], "text"),
+                new CharacterDefinition { Id = "c", Name = "星", Identity = "陪伴者", Personality = "温柔", SpeechStyle = "简洁" },
+                new RuntimeState(), catalog);
+
+            var result = await planner.PlanAsync("chat", "测试", [], new TurnTakingSettings(), TestContext.Current.CancellationToken);
+
+            Assert.Equal("思考链路正常", Assert.Single(result).Content);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task Turn_cancellation_drains_generation_before_returning()
     {
         var root = Path.Combine(Path.GetTempPath(), $"pry-cancel-{Guid.NewGuid():N}"); Directory.CreateDirectory(root);
@@ -316,6 +389,22 @@ public sealed class CoreTests
             await Task.Yield();
             cancellationToken.ThrowIfCancellationRequested();
             yield return response;
+        }
+    }
+
+    private sealed class CapturingHttpHandler : HttpMessageHandler
+    {
+        public string RequestBody { get; private set; } = "";
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            const string response = "data: {\"choices\":[{\"delta\":{\"content\":\"{}\"}}]}\n\ndata: [DONE]\n\n";
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(response, Encoding.UTF8, "text/event-stream")
+            };
         }
     }
 

@@ -165,6 +165,11 @@ public sealed record ModelProfile
     public int ContextSize { get; init; } = 4096;
     public int MaxOutputTokens { get; init; } = 512;
     public double Temperature { get; init; } = 0.8;
+    public double? TopP { get; init; }
+    public int? TopK { get; init; }
+    public double? MinP { get; init; }
+    public double? PresencePenalty { get; init; }
+    public double? RepetitionPenalty { get; init; }
     public int GpuLayers { get; init; }
     public string ComputeDevice { get; init; } = "auto-discrete";
     public bool EnableThinking { get; init; }

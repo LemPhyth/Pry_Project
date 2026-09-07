@@ -30,11 +30,11 @@
 
 `GET /health`：正常返回 `200 Healthy`。
 
-`GET /api/v1/runtime`：返回后端状态和当前文字/视觉模型 ID。兼容字段 `state` 为 `starting`、`loading_models`、`ready` 或 `failed`；新增字段 `apiState`、`configurationState` 和 `modelState` 分别表示 API、配置和模型状态，其中 `modelState` 为 `not_loaded`、`loading`、`ready` 或 `failed`。模型按第一次聊天请求延迟加载，因此配置完成后的旧 `state=ready` 不等于模型已经加载。失败时返回安全的 `errorCode`、`error` 与 `retryable`，有界 stderr 只写入本机后端日志，不通过 API 暴露路径、密钥或命令行。
+`GET /api/v1/runtime`：返回后端状态和当前文字/视觉模型 ID。兼容字段 `state` 为 `starting`、`loading_models`、`ready` 或 `failed`；新增字段 `apiState`、`configurationState` 和 `modelState` 分别表示 API、配置和模型状态，其中 `modelState` 为 `not_loaded`、`loading`、`ready` 或 `failed`。模型按第一次聊天请求延迟加载，因此配置完成后的旧 `state=ready` 不等于模型已经加载。失败时返回安全的 `errorCode`、`error` 与 `retryable`，有界 stderr 只写入本机后端日志，不通过 API 暴露路径、密钥或命令行。模型加载后还返回 `requestedContextSize`、`effectiveContextSize`、`measuredTokensPerSecond` 和 `modelAdjustmentReason`；未降档时原因是 `null`，因容量或性能降档时为稳定错误码（例如 `cuda_out_of_memory` 或 `context_performance_low`）。客户端只展示该结果，不自行测试性能、选择上下文或重启模型。
 
 `POST /api/v1/runtime/retry`：排空活跃会话、释放失败或旧的模型句柄并重新加载配置，使模型可以在释放显存或修正环境后重试，而无需重启整个应用。响应为新的运行状态；模型仍会在下一次聊天请求时按需加载。
 
-`GET /api/v1/runtime/compute-devices`：由后端调用本地推理运行时探测可用设备，返回稳定的设备 ID、名称和是否为集成显卡。桌面端不得直接启动 `llama-server` 执行硬件探测。
+`GET /api/v1/runtime/compute-devices`：由后端调用本地推理运行时和 NVIDIA 驱动探测可用设备，返回稳定的设备 ID、名称、是否为集成显卡、`totalMemoryMiB`、`freeMemoryMiB`、`performanceTier`（1–5）、`performanceTierId` 和 `recommendedContextSize`。驱动不能提供显存时两个显存字段为 `null`，后端按型号保守估计档位。桌面端不得直接启动 `llama-server`、调用 `nvidia-smi` 或自行决定模型档位。
 
 ## 会话
 
@@ -44,7 +44,7 @@
 
 `limit` 会被限制到 1–200。结果按置顶优先、最近更新优先排序。
 
-每个会话同时返回服务端生成的最后消息投影：`lastMessagePreview`（单行、最多 160 字符）、`lastMessageRole`、`lastMessageKind`（`text`、`image` 或 `sticker`）和 `lastMessageAt`。空会话返回 `null`。图片或表情没有正文时使用安全占位文本。该投影由单次数据库查询生成；客户端不得为了填充会话副标题逐个请求消息列表。
+每个会话同时返回服务端生成的最后消息投影：`lastMessagePreview`（实际正文归一化为单行，最多 160 字符）、`lastMessageRole`、`lastMessageKind`（`text`、`image` 或 `sticker`）和 `lastMessageAt`。空会话的四个字段均为 `null`；图片或表情没有正文时，`lastMessagePreview` 为 `null`，其余元数据照常返回。客户端应依据 `lastMessageKind` 显示本地化占位文案，不得为了填充会话副标题逐个请求消息列表。
 
 ### 查询单个会话
 
@@ -274,7 +274,7 @@
 }
 ```
 
-后端会先验证三个部分并解析媒体引用，然后只写入一次偏好并重载运行时；任何验证失败都不会应用其中任一配置。成功返回最终 `preferences` 和 `models` 投影。上传媒体是独立操作，未被设置引用的上传资源不会自动绑定到配置。
+后端会先验证三个部分并解析媒体引用，然后只写入一次偏好；任何验证失败都不会应用其中任一配置。成功返回最终 `preferences`、`models` 和 `runtimeAction`。`runtimeAction=settings_applied` 表示只更新运行时偏好快照，现有模型进程保持不变；`models_reloaded` 表示文字/视觉模型选择或模型调参发生变化，后端已经排空会话并重载模型运行时。前端不得通过比较字段自行判断是否需要重载。上传媒体是独立操作，未被设置引用的上传资源不会自动绑定到配置。
 
 快捷键格式、快捷键冲突、回复数量关系、打字延迟关系、桌宠缩放及其他数值范围均由后端最终校验。客户端可以重复这些检查以即时提示，但不得将客户端校验视为安全或一致性边界。
 

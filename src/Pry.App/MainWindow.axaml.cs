@@ -41,7 +41,7 @@ public sealed partial class MainWindow : Window, IPryMainWindow
     private readonly ConversationListSynchronizer _conversationListSynchronizer;
     private readonly BackgroundImageCache _backgroundImages = new();
     private string? _currentBackgroundRenderKey;
-    private readonly Border _chatBottomAnchor = new() { Height = 64, IsHitTestVisible = false };
+    private readonly Border _chatBottomAnchor = new() { Height = 80, IsHitTestVisible = false };
     private readonly DispatcherTimer _chatScrollTimer = new() { Interval = TimeSpan.FromMilliseconds(24) };
     private bool _chatScrollPending;
     private int _chatScrollPassesRemaining;
@@ -101,7 +101,11 @@ public sealed partial class MainWindow : Window, IPryMainWindow
         };
         ChatScroll.LayoutUpdated += (_, _) => UpdateChatUnderlayMask();
         HeaderGlass.LayoutUpdated += (_, _) => UpdateChatUnderlayMask();
-        ComposerGlass.LayoutUpdated += (_, _) => UpdateChatUnderlayMask();
+        ComposerGlass.LayoutUpdated += (_, _) =>
+        {
+            UpdateChatBottomAnchor();
+            UpdateChatUnderlayMask();
+        };
         _chatScrollTimer.Tick += (_, _) =>
         {
             ForceChatScrollToEnd();
@@ -903,6 +907,13 @@ public sealed partial class MainWindow : Window, IPryMainWindow
         };
     }
 
+    private void UpdateChatBottomAnchor()
+    {
+        var desiredHeight = Math.Max(64, ComposerGlass.Bounds.Height + 16);
+        if (Math.Abs(_chatBottomAnchor.Height - desiredHeight) < 0.5) return;
+        _chatBottomAnchor.Height = desiredHeight;
+    }
+
     private void ResetMessagesPanel()
         => _conversationView.Reset();
 
@@ -1323,12 +1334,18 @@ public sealed partial class MainWindow : Window, IPryMainWindow
         var settingsOriginalTheme = ThemeAppearanceEditor.ForCurrentWindow(
             _preferences.Theme ?? new ThemePreferences(), MainWindowLayoutModes.Card);
         var detectedDevices = await _api.GetComputeDevicesAsync();
+        var automaticDevice = detectedDevices.FirstOrDefault(device => !device.IsIntegrated)
+            ?? detectedDevices.FirstOrDefault();
         var computeChoices = new List<ComputeDeviceChoice>
         {
-            new("auto-discrete", detectedDevices.Count == 0 ? "自动（优先独显；当前未检测到 GPU 后端）" : "自动（优先独立显卡）"),
+            new("auto-discrete", automaticDevice is null ? "自动（优先独显；当前未检测到 GPU 后端）" :
+                $"自动（{automaticDevice.Name} · 推荐 {automaticDevice.RecommendedContextSize / 1024}K）",
+                automaticDevice?.RecommendedContextSize),
             new("cpu", "仅使用 CPU")
         };
-        computeChoices.AddRange(detectedDevices.Select(x => new ComputeDeviceChoice(x.Id, $"{x.Name}（{x.IsIntegrated switch { true => "核显", false => "独显/加速卡" }}）")));
+        computeChoices.AddRange(detectedDevices.Select(x => new ComputeDeviceChoice(x.Id,
+            $"{x.Name}（{x.PerformanceTierId} · 推荐 {x.RecommendedContextSize / 1024}K）",
+            x.RecommendedContextSize)));
         var settingsUi = new SettingsUiFactory();
         var turn = EffectiveTurnSettings();
         var themePreferences = settingsOriginalTheme;
@@ -1482,26 +1499,15 @@ public sealed partial class MainWindow : Window, IPryMainWindow
             save.IsEnabled = false; _turnManager?.CancelAgentReply();
             try
             {
-                RuntimeStatus.Text = "正在由后端切换模型…";
-                SettingsSaveResult saved;
-                if (SettingsSaveService.CanUsePreferencesOnly(_preferences, candidate))
-                {
-                    RuntimeStatus.Text = "正在保存界面设置…";
-                    var response = await _api.UpdatePreferencesAsync(SettingsSaveService.CreatePreferencesRequest(candidate, _conversationId));
-                    saved = new SettingsSaveResult(SettingsSaveService.ApplyServerProjection(candidate, response), await _api.GetModelsAsync());
-                }
-                else
-                {
-                    saved = await new SettingsSaveService(_api, ImageContentType)
-                        .SaveAsync(candidate, _conversationId, warning => RuntimeStatus.Text = warning);
-                }
+                RuntimeStatus.Text = "正在保存设置…";
+                var saved = await new SettingsSaveService(_api, ImageContentType)
+                    .SaveAsync(candidate, _conversationId, warning => RuntimeStatus.Text = warning);
                 _preferences = saved.Preferences;
                 _profiles = _builtInProfiles.Concat(saved.Preferences.CustomModels).ToArray();
                 ApplyTheme(); await ReloadActiveConversationAsync();
                 var selectedName = SettingsSaveService.SelectedModelName(saved.Models, saved.Preferences.ActiveModelId);
-                RuntimeStatus.Text = selectedName is null
-                    ? "后端模型配置已保存"
-                    : $"后端模型配置已保存 · {selectedName}";
+                var actionText = saved.RuntimeAction == "models_reloaded" ? "模型配置已重载" : "设置已保存";
+                RuntimeStatus.Text = selectedName is null ? actionText : $"{actionText} · {selectedName}";
                 themePreview.Commit(); window.Close();
                 if (settingsOriginalTheme.MainWindowLayoutMode != _preferences.Theme.MainWindowLayoutMode &&
                     await ConfirmAsync(this, "切换窗口样式", "切换窗口样式需要重启前端窗口。本地后端和已经加载的模型会保持运行，是否现在重启？") && RestartRequested is not null)

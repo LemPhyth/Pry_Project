@@ -11,6 +11,8 @@ dotnet run --project src/Pry.App/Pry.App.csproj
 
 `Pry.App` 是普通使用时唯一需要启动的程序。它会在当前桌面进程中自动启动一个仅监听随机回环端口的内嵌后端，再由 `Pry.Client` 连接；不需要另外启动 `Pry.Api`。
 
+正式 ZIP 发行包解压后可直接双击 `Pry.App.exe`。名称带 `lite` 的精简包不含模型权重；应用可以启动，但本地聊天、图片理解和语音识别需要自行安装配置所列模型，或配置兼容服务。
+
 独立后端用于 API 调试或其他客户端接入，本身没有桌面窗口：
 
 ```powershell

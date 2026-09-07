@@ -3,6 +3,8 @@
 日期：2026-09-06
 面向：Pry.App / Pry.Client 前端开发者、Pry.Api / Pry.Core 后端开发者
 
+> 后续记录：2026-09-07 的模型回复故障并非 HTTP 断联，而是孤儿 `llama-server` 导致 CUDA OOM。详见 [`model-runtime-integration-incident-2026-09-07.md`](model-runtime-integration-incident-2026-09-07.md)。
+
 ## 1. 结论
 
 本次故障不是 HTTP DTO 或业务接口设计不兼容，而是桌面宿主方式改变后，启动生命周期、ASP.NET Core 控制器发现和本地运行资源没有一起完成集成。

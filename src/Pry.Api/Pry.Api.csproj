@@ -5,6 +5,6 @@
   <ItemGroup>
     <ProjectReference Include="../Pry.Core/Pry.Core.csproj" />
     <ProjectReference Include="../Pry.Contracts/Pry.Contracts.csproj" />
-    <Content Include="../Pry.App/Resources/**" Link="Resources/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../Pry.Resources/**" Link="Resources/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

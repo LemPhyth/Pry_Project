@@ -204,18 +204,37 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         await _gate.WaitAsync(token);
         try
         {
+            var previous = runtime.Preferences;
             var updated = await ApplyPreferencesAsync(runtime.Preferences, request.Preferences, token);
             updated = await ApplyAppearanceAsync(updated, request.Appearance, token);
             updated = ApplyModelSelection(updated, request.Models);
+            var reloadModels = RequiresModelReload(previous, updated);
             await sessions.ReconfigureAsync(async ct =>
             {
                 await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct);
-                await runtime.ReloadAsync(ct);
+                if (reloadModels) await runtime.ReloadAsync(ct);
+                else await runtime.ApplyPreferencesSnapshotAsync(updated, ct);
             }, token);
-            return new SaveSettingsResponse(ToResponse(runtime.Preferences), GetModels());
+            return new SaveSettingsResponse(ToResponse(runtime.Preferences), GetModels())
+            {
+                RuntimeAction = reloadModels ? "models_reloaded" : "settings_applied"
+            };
         }
         finally { _gate.Release(); }
     }
+
+    public static bool RequiresModelReload(UserPreferences previous, UserPreferences updated) =>
+        !string.Equals(previous.ActiveModelId, updated.ActiveModelId, StringComparison.Ordinal) ||
+        !string.Equals(previous.ActiveVisionModelId, updated.ActiveVisionModelId, StringComparison.Ordinal) ||
+        previous.EnableThinking != updated.EnableThinking ||
+        previous.ModelTuning != updated.ModelTuning ||
+        !DictionaryEqual(previous.ModelTunings, updated.ModelTunings) ||
+        !previous.CustomModels.SequenceEqual(updated.CustomModels);
+
+    private static bool DictionaryEqual<TKey, TValue>(IReadOnlyDictionary<TKey, TValue> left,
+        IReadOnlyDictionary<TKey, TValue> right) where TKey : notnull =>
+        left.Count == right.Count && left.All(item => right.TryGetValue(item.Key, out var value) &&
+            EqualityComparer<TValue>.Default.Equals(item.Value, value));
 
     public async Task<ClientPreferencesResponse> SaveUserProfileAsync(SaveUserProfileRequest request,
         CancellationToken token)

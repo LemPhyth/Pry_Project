@@ -146,3 +146,85 @@
 项目已经实现“后端是业务数据与模型运行权威、前端通过 API 操作”的核心目标。当前主要问题不是重新混入数据库或 AI 推理，而是**前端仍在复制少量后端策略判断，并且经典 UI 继续依赖 Core 领域模型**。
 
 建议将当前状态评定为：**逻辑分离合格，边界收口未完成**。完成 P1 和 P2-1 后，可提升为“前端职责基本清晰”；完成经典投影去 Core 化和新版窗口拆分后，才适合宣称两套 UI 都可以低成本独立替换。
+
+## 10. 后端修复后的复核附录
+
+复核日期：2026-09-07
+
+复核说明：原报告提交 `5b1d61b` 早于同日后端边界治理和显卡自动调优改动。本附录以当前 API 契约重新标记前端待办；前文历史证据保留。
+
+### 10.1 权威边界
+
+本项目以后端为业务、数据和运行策略的主要权威：
+
+- 后端负责持久化、事务、资源归属、最终校验、附件策略、模型选择、硬件分档、上下文降档、模型进程生命周期、回复规划和稳定错误码。
+- 前端负责窗口、布局、渲染、本地化文案、文件选择、录音采集、临时草稿、上传前提示，以及 API/SSE 状态展示。
+- 前端可以依据后端投影提前改善交互，但不得复制后端常量、推断是否应重载模型、调用 `nvidia-smi`、直接管理 `llama-server`，或将本地缓存作为业务权威。
+- 出现契约缺口时，先补后端 DTO/API/文档，再由前端消费；不得在前端建立第二套业务实现。
+
+### 10.2 前端必须整改
+
+#### FEA-001：新版附件入口消费媒体策略
+
+状态：已完成。新版窗口初始化时读取策略；策略不可用时禁止上传并提供可恢复提示，数量限制与大文件提醒均直接使用服务端投影。
+
+- 初始化或首次打开附件入口前调用 `GET /api/v1/media/policy`。
+- 使用 `maximumAttachmentsPerTurn` 在上传前限制数量。
+- 使用 `warningThresholdBytes` 提示大文件；`maximumBytes=null` 表示没有硬性文件大小上限，不得自行增加上限。
+- 请求失败时采用保守交互并显示可恢复错误，不能硬编码当前后端的 `6` 和 `10 MiB`。
+- 后端仍执行最终签名、类型、数量和资源归属校验。
+
+#### FEA-002：删除前端模型重载策略判断
+
+状态：已完成。经典与新版设置均统一调用聚合接口，前端不再比较字段推断模型是否重载，并使用 `runtimeAction` 展示保存结果。
+
+- `SettingsSaveService.CanUsePreferencesOnly` 和旧窗口按字段选择保存接口的逻辑属于后端策略复制。
+- 所有“保存全部设置”应调用 `PUT /api/v1/settings`。后端现在比较文字/视觉模型选择与模型调参：无模型变化时返回 `runtimeAction=settings_applied` 并保留现有模型进程；需要重载时返回 `models_reloaded`。
+- 删除 `CanUsePreferencesOnly`、相关字典比较和旧窗口保存分支；前端只使用成功响应刷新展示状态。
+
+#### FEA-003：按最后消息类型本地化会话副标题
+
+状态：已完成。正文优先，空正文的图片和表情分别显示本地化占位，四项投影为空时显示空会话提示；没有新增消息列表请求。
+
+后端不再返回 `[图片]`、`[表情]` 等展示文案。前端必须按以下顺序渲染：
+
+1. `lastMessagePreview` 非空：显示后端返回的实际正文摘要；
+2. 摘要为空且 `lastMessageKind=image`：显示前端本地化的“图片”；
+3. 摘要为空且 `lastMessageKind=sticker`：显示前端本地化的“表情”；
+4. `lastMessagePreview`、`lastMessageRole`、`lastMessageKind`、`lastMessageAt` 均为空：显示“还没有消息”。
+
+不得为生成副标题逐会话请求消息列表或恢复前端摘要缓存。当前由 `ConversationPreviewText` 统一处理展示语义，并覆盖图片、表情、正文和空会话测试。
+
+#### FEA-004：只消费后端显卡分档结果
+
+状态：新增可选展示能力，不阻塞基本聊天。
+
+`GET /api/v1/runtime/compute-devices` 已新增：
+
+- `totalMemoryMiB`
+- `freeMemoryMiB`
+- `performanceTier`（1–5）
+- `performanceTierId`
+- `recommendedContextSize`
+
+前端可显示这些字段和本地化档位说明，但不得维护独立显卡型号表、读取驱动工具、修改分档阈值或自行启动性能测试。实际模型运行结果继续读取 `GET /api/v1/runtime` 的 `requestedContextSize`、`effectiveContextSize`、`measuredTokensPerSecond` 和 `modelAdjustmentReason`。
+
+#### FEA-005：停止维护旧前端运行资源副本
+
+状态：已完成构建引用迁移。`Pry.App.csproj` 已改为从中立的 `src/Pry.Resources` 复制发布内容，前端代码没有读取旧目录。
+
+后端和桌面发布现在统一从 `src/Pry.Resources` 复制运行配置、内置角色和贴纸清单。`Pry.App/Resources` 不再是运行配置权威来源；前端不得将配置重新迁回该目录，也不得依赖其中的旧副本。
+
+### 10.3 后续维护项
+
+- 经典窗口逐步以 Contracts DTO 或前端 ViewModel 替代 Core 领域对象，不进行一次性大改。
+- 产品边界决定：`PryMessengerWindow` 继续协调草稿、消息时间线渲染、媒体预览和快捷键，这些属于窗口表现职责，不因文件规模机械拆分。消息历史、权威顺序和时间线持久化仍由后端负责；若以后出现可独立测试或复用的明确收益，再做局部提取。
+- `Pry.App` 内嵌 `Pry.Api` 仍是当前部署方式；窗口重建只能重建 UI，不得顺带停止或重启后端与模型进程。
+
+### 10.4 前端整改验收
+
+- 新版附件数量和大文件提醒完全来源于媒体策略响应。
+- 图片、表情和空会话的副标题分别正确显示，且没有 N+1 消息请求。
+- 前端不存在 `CanUsePreferencesOnly` 或同类模型重载推断；设置保存统一调用聚合接口并可展示 `runtimeAction`。
+- 前端没有 `nvidia-smi`、`Process.Start`、`LlamaServerManager`、SQLite 或后端资源目录访问。
+- 所有业务响应仍以 `Pry.Client`、`Pry.Contracts` 和 `docs/api-v1.md` 为唯一稳定调用面。

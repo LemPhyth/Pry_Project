@@ -17,6 +17,6 @@
     <ProjectReference Include="../Pry.Client/Pry.Client.csproj" />
     <ProjectReference Include="../Pry.Api/Pry.Api.csproj" />
     <AvaloniaResource Include="Assets/**" />
-    <Content Include="Resources/**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../Pry.Resources/**" Link="Resources/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

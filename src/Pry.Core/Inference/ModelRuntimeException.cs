@@ -20,6 +20,9 @@ public sealed class ModelRuntimeException(
              normalized.Contains("cudamalloc failed")))
             return new("cuda_out_of_memory", "GPU 显存不足，无法加载本地模型。请释放显存或降低 GPU 层数后重试。",
                 true, diagnostics);
+        if (normalized.Contains("out of memory") || normalized.Contains("failed to allocate") ||
+            normalized.Contains("cannot allocate memory") || normalized.Contains("bad_alloc"))
+            return new("memory_allocation_failed", "系统内存不足，无法按当前配置加载本地模型。", true, diagnostics);
         if (normalized.Contains("invalid model") || normalized.Contains("invalid gguf") ||
             normalized.Contains("failed to load model"))
             return new("invalid_model", "本地模型无效或与当前运行库不兼容。", false, diagnostics);

@@ -46,11 +46,13 @@ namespace Pry.Api
             builder.Services.AddSingleton(new MemoryDatabase(Path.Combine(Path.GetFullPath(dataDirectory), "memory.db")));
             builder.Services.AddSingleton<ConversationApplicationService>();
             builder.Services.AddSingleton<MemoryApplicationService>();
+            builder.Services.AddSingleton<ConversationFolderApplicationService>();
             builder.Services.AddSingleton<MediaAssetStore>();
             builder.Services.AddSingleton<ConfigurationApplicationService>();
             builder.Services.AddSingleton<StickerApplicationService>();
             builder.Services.AddSingleton<SpeechApplicationService>();
             builder.Services.AddSingleton<ModelProcessRegistry>();
+            builder.Services.AddSingleton<ModelPerformancePolicy>();
             builder.Services.AddSingleton<BackendRuntime>();
             builder.Services.AddSingleton<ConversationSessionService>();
             builder.Services.AddHostedService(sp => sp.GetRequiredService<BackendRuntime>());

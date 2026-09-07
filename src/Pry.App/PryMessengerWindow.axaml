@@ -22,6 +22,7 @@
     <Style Selector="ListBoxItem:selected"><Setter Property="Background" Value="#202A40"/></Style>
     <Style Selector="TextBox"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#263249"/><Setter Property="CornerRadius" Value="12"/></Style>
     <Style Selector="TextBox:focus"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#6C63FF"/></Style>
+    <Style Selector="Button.character-choice:focus"><Setter Property="Background" Value="#374663"/><Setter Property="BorderBrush" Value="#8B84FF"/><Setter Property="BorderThickness" Value="2"/></Style>
     <Style Selector="FlyoutPresenter.sticker-flyout"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="CornerRadius" Value="14"/></Style>
   </Window.Styles>
 
@@ -63,8 +64,8 @@
             </Button>
           </StackPanel>
           <StackPanel Grid.Row="2" Spacing="8">
-            <Button Classes="nav" HorizontalAlignment="Center" Click="ToggleSidebar_Click" ToolTip.Tip="收起会话栏"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE76B;" FontSize="18"/></Button>
-            <Button x:Name="SettingsNavButton" Classes="nav" HorizontalAlignment="Center" Click="OpenSettings_Click" ToolTip.Tip="设置">
+            <Button Classes="nav" HorizontalAlignment="Center" Click="ToggleSidebar_Click" ToolTip.Tip="收起会话栏（Ctrl+B）"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE76B;" FontSize="18"/></Button>
+            <Button x:Name="SettingsNavButton" Classes="nav" HorizontalAlignment="Center" Click="OpenSettings_Click" ToolTip.Tip="设置（Ctrl+,）">
               <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE713;" FontSize="18"/>
             </Button>
           </StackPanel>
@@ -78,7 +79,7 @@
               <TextBlock Text="消息" Foreground="#F5F7FC" FontSize="22" FontWeight="SemiBold"/>
               <TextBlock x:Name="ConversationCountText" Text="正在加载会话" Foreground="#77869C" FontSize="11"/>
             </StackPanel>
-            <Button Grid.Column="1" Classes="primary icon" Click="NewConversation_Click" ToolTip.Tip="新建对话"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE710;" FontSize="16"/></Button>
+            <Button x:Name="NewConversationButton" Grid.Column="1" Classes="primary icon" Click="NewConversation_Click" ToolTip.Tip="新建对话（Ctrl+N）"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE710;" FontSize="16"/></Button>
           </Grid>
           <Border Grid.Row="1" Margin="14,0,14,10" Padding="12,8" CornerRadius="12" Background="#0D1420" BorderBrush="#253148" BorderThickness="1">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
@@ -130,7 +131,7 @@
             <WrapPanel x:Name="AttachmentDraftPanel" Grid.Row="1" Grid.ColumnSpan="2" Margin="3,7,3,0" IsVisible="False"/>
             <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="5" Margin="2,8,0,0">
               <Button x:Name="AttachButton" Classes="icon" Click="Attach_Click" ToolTip.Tip="添加附件"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE723;" FontSize="16"/></Button>
-              <Button x:Name="StickerButton" Classes="icon" Click="Sticker_Click" ToolTip.Tip="选择表情"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE76E;" FontSize="16"/></Button>
+              <Button x:Name="StickerButton" Classes="icon" Click="Sticker_Click" ToolTip.Tip="选择表情（Ctrl+E）"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE76E;" FontSize="16"/></Button>
               <Button x:Name="VoiceButton" Classes="icon" Click="VoiceButton_Click" ToolTip.Tip="语音输入"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE720;" FontSize="16"/></Button>
             </StackPanel>
             <Button x:Name="SendButton" Grid.Row="2" Grid.Column="1" Classes="primary" Content="发送" Width="76" Height="38" Margin="0,8,0,0" Click="Send_Click"/>

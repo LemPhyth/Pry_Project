@@ -8,8 +8,10 @@ using Pry.Core.Models;
 
 namespace Pry.Api.Services;
 
-public sealed class ModelProcessRegistry(ILogger<ModelProcessRegistry> logger) : IAsyncDisposable
+public sealed class ModelProcessRegistry(ILogger<ModelProcessRegistry> logger, ModelPerformancePolicy policy) : IAsyncDisposable
 {
+    public ModelProcessRegistry(ILogger<ModelProcessRegistry> logger) : this(logger, new ModelPerformancePolicy()) { }
+
     private readonly ConcurrentDictionary<string, Lazy<Task<ModelHandle>>> _models = new(StringComparer.Ordinal);
 
     public Task<ModelHandle> GetAsync(string executablePath, ModelProfile profile, CancellationToken token)
@@ -33,22 +35,60 @@ public sealed class ModelProcessRegistry(ILogger<ModelProcessRegistry> logger) :
         if (profile.Provider == "local-llama")
         {
             profile = profile with { BaseUrl = WithFreePort(profile.BaseUrl), ApiKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)) };
-            server = new LlamaServerManager();
-            try { await server.StartAsync(executablePath, profile, token); }
-            catch (ModelRuntimeException ex)
+            ModelRuntimeException? lastFailure = null;
+            var device = await LlamaHardwareDetector.ResolveAsync(executablePath, profile.ComputeDevice, token);
+            var hardwareTier = policy.Classify(device);
+            foreach (var attemptedProfile in policy.CreateCandidates(profile, device))
             {
-                if (!string.IsNullOrWhiteSpace(ex.DiagnosticDetails))
-                    logger.LogError("Model {ModelId} failed with {ErrorCode}: {Diagnostics}", profile.Id, ex.Code,
-                        ex.DiagnosticDetails);
-                await server.DisposeAsync();
-                throw;
+                server = new LlamaServerManager();
+                try
+                {
+                    var metrics = await server.StartAsync(executablePath, attemptedProfile, token);
+                    if (policy.IsTooSlow(attemptedProfile, metrics))
+                        throw new ModelRuntimeException("context_performance_low",
+                            "当前上下文配置的生成速度过低，正在尝试更合适的档位。", true,
+                            $"Measured generation speed: {metrics.TokensPerSecond:F2} tokens/s at context {attemptedProfile.ContextSize}.");
+                    profile = attemptedProfile;
+                    if (profile.ContextSize != source.ContextSize)
+                        logger.LogWarning("Model {ModelId} started with reduced context {ContextSize} after the requested context could not be allocated",
+                            profile.Id, profile.ContextSize);
+                    var adjustmentReason = profile.ContextSize == source.ContextSize ? null : lastFailure?.Code ?? $"hardware_{hardwareTier.Id}";
+                    lastFailure = null;
+                    var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+                    var model = new OpenAiCompatibleChatModel(client, profile);
+                    logger.LogInformation("Model {ModelId} registered using {Provider}", profile.Id, profile.Provider);
+                    return new ModelHandle(model, server, client, source.ContextSize, profile.ContextSize,
+                        metrics.TokensPerSecond, adjustmentReason);
+                }
+                catch (ModelRuntimeException ex) when (policy.MayTryLowerContext(ex) && attemptedProfile.ContextSize > 4096)
+                {
+                    lastFailure = ex;
+                    logger.LogWarning("Model {ModelId} could not start with context {ContextSize} ({ErrorCode}); retrying with a smaller context",
+                        profile.Id, attemptedProfile.ContextSize, ex.Code);
+                    await server.DisposeAsync();
+                    server = null;
+                }
+                catch (ModelRuntimeException ex)
+                {
+                    if (!string.IsNullOrWhiteSpace(ex.DiagnosticDetails))
+                        logger.LogError("Model {ModelId} failed with {ErrorCode}: {Diagnostics}", profile.Id, ex.Code,
+                            ex.DiagnosticDetails);
+                    await server.DisposeAsync();
+                    throw;
+                }
+                catch
+                {
+                    await server.DisposeAsync();
+                    throw;
+                }
             }
-            catch { await server.DisposeAsync(); throw; }
+            if (lastFailure is not null || server is null)
+                throw lastFailure ?? new ModelRuntimeException("process_start_failed", "无法启动本地模型服务。", true);
         }
-        var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
-        var model = new OpenAiCompatibleChatModel(client, profile);
+        var remoteClient = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        var remoteModel = new OpenAiCompatibleChatModel(remoteClient, profile);
         logger.LogInformation("Model {ModelId} registered using {Provider}", profile.Id, profile.Provider);
-        return new ModelHandle(model, server, client);
+        return new ModelHandle(remoteModel, server, remoteClient, profile.ContextSize, profile.ContextSize, null, null);
     }
 
     private static string BuildKey(ModelProfile p) => string.Join('|', p.Provider, p.Id, p.ModelPath, p.MmprojPath,
@@ -77,9 +117,14 @@ public sealed class ModelProcessRegistry(ILogger<ModelProcessRegistry> logger) :
     }
 }
 
-public sealed class ModelHandle(IChatModel model, LlamaServerManager? server, HttpClient client) : IAsyncDisposable
+public sealed class ModelHandle(IChatModel model, LlamaServerManager? server, HttpClient client,
+    int requestedContextSize, int effectiveContextSize, double? measuredTokensPerSecond, string? adjustmentReason) : IAsyncDisposable
 {
     public IChatModel Model { get; } = model;
     public string ComputeDevice => server?.ActiveComputeDevice ?? "API";
+    public int RequestedContextSize { get; } = requestedContextSize;
+    public int EffectiveContextSize { get; } = effectiveContextSize;
+    public double? MeasuredTokensPerSecond { get; } = measuredTokensPerSecond;
+    public string? AdjustmentReason { get; } = adjustmentReason;
     public async ValueTask DisposeAsync() { if (server is not null) await server.DisposeAsync(); client.Dispose(); }
 }

@@ -12,16 +12,6 @@ namespace Pry.App.Tests;
 public sealed class SettingsSaveServiceTests
 {
     [Fact]
-    public void Layout_only_change_does_not_require_model_reload()
-    {
-        var before = new UserPreferences { ActiveModelId = "text", Theme = new ThemePreferences { MainWindowLayoutMode = MainWindowLayoutModes.Card } };
-        var after = before with { Theme = before.Theme with { MainWindowLayoutMode = MainWindowLayoutModes.Messenger } };
-
-        Assert.True(SettingsSaveService.CanUsePreferencesOnly(before, after));
-        Assert.False(SettingsSaveService.CanUsePreferencesOnly(before, after with { ActiveModelId = "other" }));
-    }
-
-    [Fact]
     public void Selected_model_name_tolerates_incomplete_backend_projection()
     {
         static ModelProfileResponse Model(string id, string name, bool selected = false) =>
@@ -45,6 +35,7 @@ public sealed class SettingsSaveServiceTests
         }, "room", _ => { }, TestContext.Current.CancellationToken);
         Assert.Empty(result.Models);
         Assert.Equal("server-model", result.Preferences.ActiveModelId);
+        Assert.Equal("settings_applied", result.RuntimeAction);
         Assert.Equal(new[] { "/api/v1/settings" }, handler.Paths);
         using var body = JsonDocument.Parse(handler.Bodies[0]);
         var appearance = body.RootElement.GetProperty("appearance");
@@ -109,7 +100,7 @@ public sealed class SettingsSaveServiceTests
         }
 
         private const string SuccessResponse = """
-            {"preferences":{"selectedCharacterId":null,"activeConversationId":"room","activeModelId":"server-model","activeVisionModelId":null,"activeSpeechModelId":null,"userProfile":{"displayName":"你","signature":""},"desktopPet":{"enabled":false,"alwaysOnTop":true,"scale":1},"shortcuts":{"send":"Enter","sendImmediately":"Ctrl+Enter","newLine":"Shift+Enter","cancelReply":"Escape","newConversation":"Ctrl+N","openStickers":"Ctrl+E","openCharacterEditor":"Ctrl+Shift+C"},"turnTaking":null,"theme":{"themeMode":"dark","accentColor":"#123456","useGlassEffects":true,"liveSidebarResize":false,"backgroundDimOpacity":0.3,"backgroundImageOpacity":1,"backgroundBlurMode":"none","backgroundBlurRadius":0,"avatarSize":48,"bubbleFontSize":14,"bubbleMaxWidth":620,"bubbleSpacing":10},"backgroundUrl":null,"userAvatarUrl":null},"models":[]}
+            {"preferences":{"selectedCharacterId":null,"activeConversationId":"room","activeModelId":"server-model","activeVisionModelId":null,"activeSpeechModelId":null,"userProfile":{"displayName":"你","signature":""},"desktopPet":{"enabled":false,"alwaysOnTop":true,"scale":1},"shortcuts":{"send":"Enter","sendImmediately":"Ctrl+Enter","newLine":"Shift+Enter","cancelReply":"Escape","newConversation":"Ctrl+N","openStickers":"Ctrl+E","openCharacterEditor":"Ctrl+Shift+C"},"turnTaking":null,"theme":{"themeMode":"dark","accentColor":"#123456","useGlassEffects":true,"liveSidebarResize":false,"backgroundDimOpacity":0.3,"backgroundImageOpacity":1,"backgroundBlurMode":"none","backgroundBlurRadius":0,"avatarSize":48,"bubbleFontSize":14,"bubbleMaxWidth":620,"bubbleSpacing":10},"backgroundUrl":null,"userAvatarUrl":null},"models":[],"runtimeAction":"settings_applied"}
             """;
     }
 }

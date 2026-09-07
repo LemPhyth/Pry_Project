@@ -50,8 +50,31 @@ public sealed class ReplyPlanner(MemoryDatabase database, PromptBuilder promptBu
     {
         try
         {
-            var result = JsonSerializer.Deserialize<RawPlan>(raw, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-            var messages = result?.Messages.Select((x, index) => new PlannedReplyMessage
+            var normalized = StripCodeFence(raw);
+            using var document = JsonDocument.Parse(normalized);
+            var root = document.RootElement;
+            var items = root.ValueKind == JsonValueKind.Array ? root
+                : root.ValueKind == JsonValueKind.Object && root.TryGetProperty("messages", out var messagesElement) &&
+                  messagesElement.ValueKind == JsonValueKind.Array ? messagesElement
+                : default;
+            if (items.ValueKind != JsonValueKind.Array) throw new JsonException("Reply plan has no message array.");
+            var rawMessages = new List<RawMessage>();
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String)
+                    rawMessages.Add(new RawMessage("text", item.GetString(), null));
+                else if (item.ValueKind == JsonValueKind.Object)
+                {
+                    var type = item.TryGetProperty("type", out var typeElement) && typeElement.ValueKind == JsonValueKind.String
+                        ? typeElement.GetString() ?? "text" : "text";
+                    var content = item.TryGetProperty("content", out var contentElement) && contentElement.ValueKind == JsonValueKind.String
+                        ? contentElement.GetString() : null;
+                    var stickerId = item.TryGetProperty("stickerId", out var stickerElement) && stickerElement.ValueKind == JsonValueKind.String
+                        ? stickerElement.GetString() : null;
+                    rawMessages.Add(new RawMessage(type, content, stickerId));
+                }
+            }
+            var messages = rawMessages.Select((x, index) => new PlannedReplyMessage
             {
                 Type = x.Type.Equals("sticker", StringComparison.OrdinalIgnoreCase) ? ReplyMessageType.Sticker : ReplyMessageType.Text,
                 Content = x.Content?.Trim(),
@@ -66,6 +89,16 @@ public sealed class ReplyPlanner(MemoryDatabase database, PromptBuilder promptBu
         return [new PlannedReplyMessage { Type = ReplyMessageType.Text, Content = visible, Sequence = 0 }];
     }
 
+    private static string StripCodeFence(string value)
+    {
+        var text = value.Trim();
+        if (!text.StartsWith("```", StringComparison.Ordinal)) return text;
+        var firstLineEnd = text.IndexOf('\n');
+        if (firstLineEnd >= 0) text = text[(firstLineEnd + 1)..];
+        if (text.EndsWith("```", StringComparison.Ordinal)) text = text[..^3];
+        return text.Trim();
+    }
+
     private static IReadOnlyList<PlannedReplyMessage> Merge(IReadOnlyList<PlannedReplyMessage> messages)
     {
         var text = string.Join("\n", messages.Where(x => x.Type == ReplyMessageType.Text).Select(x => x.Content));
@@ -76,6 +109,5 @@ public sealed class ReplyPlanner(MemoryDatabase database, PromptBuilder promptBu
         return result;
     }
 
-    private sealed record RawPlan(IReadOnlyList<RawMessage> Messages);
     private sealed record RawMessage(string Type, string? Content, string? StickerId);
 }

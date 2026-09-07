@@ -140,7 +140,7 @@
 
       <ScrollViewer Grid.Row="0" x:Name="ChatScroll" Classes="pry-chat-scroll"
                     ClipToBounds="True" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled">
-        <Border Padding="24,100,24,156">
+        <Border Padding="24,100,24,0">
           <StackPanel x:Name="MessagesPanel" Spacing="8" MaxWidth="1120" HorizontalAlignment="Stretch"/>
         </Border>
       </ScrollViewer>

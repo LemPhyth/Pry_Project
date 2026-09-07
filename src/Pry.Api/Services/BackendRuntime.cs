@@ -7,7 +7,7 @@ using Pry.Core.Models;
 namespace Pry.Api.Services;
 
 public sealed class BackendRuntime(IConfiguration configuration, ModelProcessRegistry registry,
-    ILogger<BackendRuntime> logger) : IHostedService
+    ILogger<BackendRuntime> logger, ModelPerformancePolicy? performancePolicy = null) : IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
@@ -15,6 +15,7 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
     private UserPreferences _preferences = new();
     private IReadOnlyList<CharacterDefinition> _characters = [];
     private RuntimeComponents? _components;
+    private ModelHandle? _activeTextHandle;
     private StickerCatalog? _stickers;
     private Exception? _error;
     private string _state = "starting";
@@ -50,7 +51,11 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
                 ModelState = _components is not null ? "ready" : _state == "loading_models" ? "loading" :
                     modelError is not null ? "failed" : "not_loaded",
                 ErrorCode = modelError?.Code ?? (_error is null ? null : "runtime_initialization_failed"),
-                Retryable = modelError?.Retryable ?? false
+                Retryable = modelError?.Retryable ?? false,
+                RequestedContextSize = _activeTextHandle?.RequestedContextSize,
+                EffectiveContextSize = _activeTextHandle?.EffectiveContextSize,
+                MeasuredTokensPerSecond = _activeTextHandle?.MeasuredTokensPerSecond,
+                ModelAdjustmentReason = _activeTextHandle?.AdjustmentReason
             };
         }
     }
@@ -69,7 +74,13 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
     {
         var settings = _settings ?? throw new InvalidOperationException("后端配置尚未就绪。");
         var devices = await LlamaHardwareDetector.ListDevicesAsync(ResolveAssetPath(settings.LlamaServerPath), cancellationToken: token);
-        return devices.Select(x => new ComputeDeviceResponse(x.Id, x.Name, x.IsIntegrated)).ToArray();
+        var policy = performancePolicy ?? new ModelPerformancePolicy();
+        return devices.Select(x =>
+        {
+            var tier = policy.Classify(x);
+            return new ComputeDeviceResponse(x.Id, x.Name, x.IsIntegrated, x.TotalMemoryMiB, x.FreeMemoryMiB,
+                tier.Level, tier.Id, tier.MaximumInitialContextSize);
+        }).ToArray();
     }
 
     public async Task ReloadAsync(CancellationToken token)
@@ -77,9 +88,21 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
         await _gate.WaitAsync(token);
         try
         {
-            _components = null; _settings = null; _characters = []; _preferences = new(); _error = null; _state = "starting";
+            _components = null; _activeTextHandle = null; _settings = null; _characters = []; _preferences = new(); _error = null; _state = "starting";
             await registry.ResetAsync();
             await LoadConfigurationAsync(token);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task ApplyPreferencesSnapshotAsync(UserPreferences preferences, CancellationToken token)
+    {
+        await _gate.WaitAsync(token);
+        try
+        {
+            _preferences = preferences;
+            _error = null;
+            _state = _components is null ? "ready" : _state;
         }
         finally { _gate.Release(); }
     }
@@ -89,7 +112,7 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
         await _gate.WaitAsync(token);
         try
         {
-            _components = null; _settings = null; _characters = []; _preferences = new(); _stickers = null; _error = null; _state = "starting";
+            _components = null; _activeTextHandle = null; _settings = null; _characters = []; _preferences = new(); _stickers = null; _error = null; _state = "starting";
             await LoadConfigurationAsync(token);
         }
         finally { _gate.Release(); }
@@ -112,6 +135,7 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
             if (!profiles.TryGetValue(textId, out var textProfile)) throw new InvalidOperationException($"找不到文字模型配置 {textId}。");
             var serverPath = ResolveAssetPath(_settings.LlamaServerPath);
             var textHandle = await registry.GetAsync(serverPath, textProfile, _lifetime.Token);
+            _activeTextHandle = textHandle;
             ModelHandle? visionHandle = null;
             if (ActiveVisionModelId is { } visionId)
             {
@@ -187,7 +211,11 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
         _settings = await JsonConfiguration.LoadAsync<AppSettings>(Path.Combine(resourceDirectory, "appsettings.json"), token);
         var dataDirectory = ResolveDataDirectory();
         var preferencesPath = Path.Combine(dataDirectory, "preferences.json");
-        if (File.Exists(preferencesPath)) _preferences = await JsonConfiguration.LoadAsync<UserPreferences>(preferencesPath, token);
+        if (File.Exists(preferencesPath))
+        {
+            _preferences = await JsonConfiguration.LoadAsync<UserPreferences>(preferencesPath, token);
+            _preferences = MigrateLegacyBundledModelDefaults(_preferences);
+        }
         _characters = await LoadCharactersAsync(resourceDirectory, dataDirectory, token);
         _stickers = new StickerCatalog(Path.Combine(resourceDirectory, "Stickers", "manifest.json"), Path.Combine(dataDirectory, "stickers"));
         await _stickers.LoadAsync(token);
@@ -196,6 +224,28 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
 
     private string ResolveDataDirectory() => Path.GetFullPath(configuration["Pry:DataDirectory"] ??
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion"));
+
+    private static UserPreferences MigrateLegacyBundledModelDefaults(UserPreferences preferences)
+    {
+        var tunings = preferences.ModelTunings.ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
+        Upgrade("qwen3-1.7b-local", 4096, 512, 32768, 32768, .6);
+        Upgrade("qwen3.5-9b-local", 4096, 512, 262144, 32768, 1.0);
+        Upgrade("qwen2.5-vl-3b-local", 4096, 384, 32768, 8192, null);
+        return preferences with { ModelTunings = tunings };
+
+        void Upgrade(string id, int oldContext, int oldOutput, int newContext, int newOutput, double? temperature)
+        {
+            if (!tunings.TryGetValue(id, out var tuning) ||
+                tuning.ContextSize != oldContext || tuning.MaxOutputTokens != oldOutput) return;
+            tunings[id] = tuning with
+            {
+                ContextSize = newContext,
+                MaxOutputTokens = newOutput,
+                Temperature = temperature ?? tuning.Temperature
+            };
+        }
+    }
+
     private static string ResolveResourceDirectory() => Path.Combine(AppContext.BaseDirectory, "Resources");
     private static string ResolveAssetPath(string path)
     {

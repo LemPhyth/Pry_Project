@@ -170,9 +170,8 @@ public sealed class MemoryDatabase(string databasePath)
                    (SELECT COUNT(*) FROM messages count_message WHERE count_message.conversation_id=c.id),
                    c.folder_id,c.is_pinned,
                    CASE
-                     WHEN last_message.sticker_id IS NOT NULL THEN '[表情]'
-                     WHEN last_message.image_path IS NOT NULL AND TRIM(last_message.content)='' THEN '[图片]'
-                     ELSE SUBSTR(REPLACE(REPLACE(TRIM(last_message.content), CHAR(13), ' '), CHAR(10), ' '),1,160)
+                     WHEN TRIM(last_message.content)<>'' THEN SUBSTR(REPLACE(REPLACE(TRIM(last_message.content), CHAR(13), ' '), CHAR(10), ' '),1,160)
+                     ELSE NULL
                    END,
                    last_message.role,
                    CASE WHEN last_message.sticker_id IS NOT NULL THEN 'sticker'
@@ -199,9 +198,8 @@ public sealed class MemoryDatabase(string databasePath)
                    (SELECT COUNT(*) FROM messages count_message WHERE count_message.conversation_id=c.id),
                    c.folder_id,c.is_pinned,
                    CASE
-                     WHEN last_message.sticker_id IS NOT NULL THEN '[表情]'
-                     WHEN last_message.image_path IS NOT NULL AND TRIM(last_message.content)='' THEN '[图片]'
-                     ELSE SUBSTR(REPLACE(REPLACE(TRIM(last_message.content), CHAR(13), ' '), CHAR(10), ' '),1,160)
+                     WHEN TRIM(last_message.content)<>'' THEN SUBSTR(REPLACE(REPLACE(TRIM(last_message.content), CHAR(13), ' '), CHAR(10), ' '),1,160)
+                     ELSE NULL
                    END,
                    last_message.role,
                    CASE WHEN last_message.sticker_id IS NOT NULL THEN 'sticker'

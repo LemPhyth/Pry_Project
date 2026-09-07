@@ -52,6 +52,18 @@ public sealed class ModelTuningSettingsEditorTests
         Assert.Equal("cpu", result[second.Id].ComputeDevice);
     }
 
+    [Fact]
+    public void Automatic_device_caps_default_context_to_backend_recommendation()
+    {
+        var profile = CreateProfile("one", .7, "auto-discrete") with { ContextSize = 262144 };
+        var devices = new[] { new ComputeDeviceChoice("auto-discrete", "自动", 32768), new ComputeDeviceChoice("cpu", "CPU") };
+
+        var editor = new ModelTuningSettingsEditor([profile], devices, profile.Id,
+            new Dictionary<string, ModelTuningPreferences>(), new SettingsUiFactory());
+
+        Assert.Equal(32768, editor.BuildDrafts()[profile.Id].ContextSize);
+    }
+
     private static ModelProfile CreateProfile(string id, double temperature, string device) => new()
     {
         Id = id,

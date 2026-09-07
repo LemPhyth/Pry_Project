@@ -20,8 +20,14 @@ public sealed record RuntimeStatusResponse(string State, string? TextModelId, st
     public string ModelState { get; init; } = "not_loaded";
     public string? ErrorCode { get; init; }
     public bool Retryable { get; init; }
+    public int? RequestedContextSize { get; init; }
+    public int? EffectiveContextSize { get; init; }
+    public double? MeasuredTokensPerSecond { get; init; }
+    public string? ModelAdjustmentReason { get; init; }
 }
-public sealed record ComputeDeviceResponse(string Id, string Name, bool IsIntegrated);
+public sealed record ComputeDeviceResponse(string Id, string Name, bool IsIntegrated, long? TotalMemoryMiB = null,
+    long? FreeMemoryMiB = null, int PerformanceTier = 1, string PerformanceTierId = "entry",
+    int RecommendedContextSize = 4096);
 public sealed record ConversationEvent(long Sequence, string Type, DateTimeOffset OccurredAt, object Data);
 public sealed record MediaAssetResponse(string Id, string Name, string ContentType, long Size, string Kind,
     DateTimeOffset CreatedAt, string DownloadUrl, IReadOnlyList<string> Warnings);
@@ -74,7 +80,10 @@ public sealed record UpdateAppearanceMediaRequest(string? BackgroundMediaId, boo
 public sealed record SaveSettingsRequest(UpdateClientPreferencesRequest Preferences,
     UpdateAppearanceMediaRequest Appearance, UpdateModelSelectionRequest Models);
 public sealed record SaveSettingsResponse(ClientPreferencesResponse Preferences,
-    IReadOnlyList<ModelProfileResponse> Models);
+    IReadOnlyList<ModelProfileResponse> Models)
+{
+    public string RuntimeAction { get; init; } = "settings_applied";
+}
 public sealed record SaveUserProfileRequest(UserProfilePreferences Profile, string? AvatarMediaId,
     bool ClearAvatar, ImageDisplayPreferences? AvatarDisplay);
 public sealed record SaveCustomModelRequest(string DisplayName, string Provider, string ModelName, string BaseUrl,

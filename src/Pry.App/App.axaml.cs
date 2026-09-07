@@ -144,13 +144,27 @@ public sealed partial class App : Application
     private async Task AskExitAsync(IClassicDesktopStyleApplicationLifetime desktop)
     {
         if (_mainWindow is null) return; _mainWindow.ShowFromTray();
+        if (_mainWindow is PryMessengerWindow messenger)
+        {
+            var result = await PryMessengerConfirmDialog.ShowAsync(messenger, "退出 Pry", "退出 Pry",
+                "退出会同时关闭当前内嵌后端和本地模型服务。",
+                [
+                    new("cancel", "取消"),
+                    new("exit", "退出", Destructive: true)
+                ], messenger.AccentColor);
+            if (result is null or "cancel") return;
+            await _mainWindow.PrepareForExitAsync(true);
+            await DisposeBackendAsync();
+            _trayIcon!.IsVisible = false; desktop.Shutdown();
+            return;
+        }
         var dialog = new Window { Title = "退出 Pry", Width = 540, Height = 280, Background = Avalonia.Media.Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        var stop = new Button { Content = "关闭模型服务并退出", Classes = { "primary" } }; var keep = new Button { Content = "保留模型服务并退出" }; var cancel = new Button { Content = "取消" }; var choice = -1;
-        stop.Click += (_, _) => { choice = 1; dialog.Close(); }; keep.Click += (_, _) => { choice = 0; dialog.Close(); }; cancel.Click += (_, _) => dialog.Close();
+        var exit = new Button { Content = "退出", Classes = { "primary" } }; var cancel = new Button { Content = "取消" }; var confirmed = false;
+        exit.Click += (_, _) => { confirmed = true; dialog.Close(); }; cancel.Click += (_, _) => dialog.Close();
         dialog.KeyDown += (_, args) =>
         {
             if (args.Key == Key.Escape) { args.Handled = true; dialog.Close(); }
-            else if (args.Key == Key.Enter) { args.Handled = true; choice = 1; dialog.Close(); }
+            else if (args.Key == Key.Enter) { args.Handled = true; confirmed = true; dialog.Close(); }
         };
         var message = new StackPanel
         {
@@ -158,14 +172,13 @@ public sealed partial class App : Application
             Children =
             {
                 new TextBlock { Text = "退出 Pry", FontSize = 17, FontWeight = Avalonia.Media.FontWeight.SemiBold },
-                new TextBlock { Text = "是否同时关闭后台本地模型服务？", FontWeight = Avalonia.Media.FontWeight.SemiBold },
-                new TextBlock { Text = "保留服务会继续占用内存，之后可由其他兼容客户端使用。", TextWrapping = Avalonia.Media.TextWrapping.Wrap }
+                new TextBlock { Text = "退出会同时关闭当前内嵌后端和本地模型服务。", FontWeight = Avalonia.Media.FontWeight.SemiBold }
             }
         };
         var messageCard = CreateDialogCard(message);
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Children = { cancel, keep, stop } };
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Children = { cancel, exit } };
         dialog.Content = CreateDialogSurface(PryMessengerWindow.CreateCompactDialogLayout(messageCard, actions));
-        await dialog.ShowDialog(_mainWindow.HostWindow); if (choice < 0) return; await _mainWindow.PrepareForExitAsync(choice == 1);
+        await dialog.ShowDialog(_mainWindow.HostWindow); if (!confirmed) return; await _mainWindow.PrepareForExitAsync(true);
         await DisposeBackendAsync();
         _trayIcon!.IsVisible = false; desktop.Shutdown();
     }

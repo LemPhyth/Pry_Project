@@ -124,6 +124,77 @@ public sealed class ApplicationServiceTests
     }
 
     [Fact]
+    public async Task Conversation_projection_returns_media_kind_without_localized_placeholder()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        await fixture.Database.EnsureConversationAsync("room", "character-a", TestContext.Current.CancellationToken);
+        await fixture.Database.AddMessageAsync("room", ChatRole.User, "", "media/asset.png",
+            TestContext.Current.CancellationToken);
+
+        var projection = Assert.Single(await fixture.Database.ListConversationsAsync(
+            cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Null(projection.LastMessagePreview);
+        Assert.Equal(ChatRole.User, projection.LastMessageRole);
+        Assert.Equal("image", projection.LastMessageKind);
+        Assert.NotNull(projection.LastMessageAt);
+    }
+
+    [Fact]
+    public void Model_performance_policy_only_retries_capacity_and_performance_failures()
+    {
+        var policy = new ModelPerformancePolicy();
+        var requested = new ModelProfile
+        {
+            Id = "test-model", DisplayName = "Test model", ContextSize = 262144, MaxOutputTokens = 32768
+        };
+
+        var largeDevice = new Pry.Core.Inference.LlamaComputeDevice(
+            "CUDA0", "NVIDIA GeForce RTX 5090", false, 32768, 30000);
+        Assert.Equal([262144, 131072, 65536, 32768, 16384, 8192, 4096],
+            policy.CreateCandidates(requested, largeDevice).Select(profile => profile.ContextSize));
+        Assert.True(policy.IsTooSlow(requested, new Pry.Core.Inference.LlamaServerStartupMetrics(4.5)));
+        Assert.True(policy.MayTryLowerContext(new Pry.Core.Inference.ModelRuntimeException(
+            "cuda_out_of_memory", "显存不足", true)));
+        Assert.Equal("memory_allocation_failed", Pry.Core.Inference.ModelRuntimeException
+            .FromProcessExit(1, "fatal: std::bad_alloc").Code);
+        Assert.False(policy.MayTryLowerContext(new Pry.Core.Inference.ModelRuntimeException(
+            "startup_timeout", "启动超时", true)));
+        Assert.Equal(1, policy.Classify(new Pry.Core.Inference.LlamaComputeDevice(
+            "CUDA0", "NVIDIA GeForce GTX 1050 Ti", false, 4096, 3900)).Level);
+        Assert.Equal(3, policy.Classify(new Pry.Core.Inference.LlamaComputeDevice(
+            "CUDA0", "NVIDIA GeForce RTX 4060", false, 8192, 8100)).Level);
+        Assert.Equal(5, policy.Classify(largeDevice).Level);
+    }
+
+    [Fact]
+    public void Settings_reload_decision_is_owned_by_backend_and_ignores_view_only_changes()
+    {
+        var before = new UserPreferences
+        {
+            ActiveModelId = "text", ActiveVisionModelId = "vision",
+            Theme = new ThemePreferences { MainWindowLayoutMode = MainWindowLayoutModes.Card }
+        };
+        var viewOnly = before with
+        {
+            Theme = before.Theme with { MainWindowLayoutMode = MainWindowLayoutModes.Messenger },
+            UserProfile = new UserProfilePreferences { DisplayName = "新名字" }
+        };
+
+        Assert.False(ConfigurationApplicationService.RequiresModelReload(before, viewOnly));
+        Assert.True(ConfigurationApplicationService.RequiresModelReload(before,
+            viewOnly with { ActiveModelId = "other" }));
+        Assert.True(ConfigurationApplicationService.RequiresModelReload(before,
+            viewOnly with
+            {
+                ModelTunings = new Dictionary<string, ModelTuningPreferences>
+                {
+                    ["text"] = new() { ContextSize = 8192 }
+                }
+            }));
+    }
+
+    [Fact]
     public async Task Backend_owns_message_branch_deletion_and_undo()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();

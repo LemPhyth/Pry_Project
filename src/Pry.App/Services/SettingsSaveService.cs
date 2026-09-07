@@ -27,7 +27,8 @@ public sealed class SettingsSaveService(PryBackendClient api, Func<string, strin
             candidate.ActiveModelId, candidate.ActiveVisionModelId, candidate.ActiveSpeechModelId,
             candidate.ModelTunings);
         var response = await api.SaveSettingsAsync(new SaveSettingsRequest(preferences, appearance, models), token);
-        return new SettingsSaveResult(ApplyServerProjection(candidate, response.Preferences), response.Models);
+        return new SettingsSaveResult(ApplyServerProjection(candidate, response.Preferences), response.Models,
+            response.RuntimeAction);
     }
 
     public static UpdateClientPreferencesRequest CreatePreferencesRequest(UserPreferences candidate, string conversationId)
@@ -44,16 +45,6 @@ public sealed class SettingsSaveService(PryBackendClient api, Func<string, strin
                 MainWindowLayoutMode = theme.MainWindowLayoutMode
             });
     }
-
-    public static bool CanUsePreferencesOnly(UserPreferences before, UserPreferences after) =>
-        before.ActiveModelId == after.ActiveModelId && before.ActiveVisionModelId == after.ActiveVisionModelId &&
-        before.ActiveSpeechModelId == after.ActiveSpeechModelId && DictionaryEqual(before.ModelTunings, after.ModelTunings) &&
-        before.Theme.BackgroundImagePath == after.Theme.BackgroundImagePath && before.Theme.UserAvatarPath == after.Theme.UserAvatarPath &&
-        before.Theme.BackgroundHistory.SequenceEqual(after.Theme.BackgroundHistory) && before.Theme.UserAvatarHistory.SequenceEqual(after.Theme.UserAvatarHistory) &&
-        DictionaryEqual(before.Theme.BackgroundDisplays, after.Theme.BackgroundDisplays) && DictionaryEqual(before.Theme.UserAvatarDisplays, after.Theme.UserAvatarDisplays);
-
-    private static bool DictionaryEqual<TKey, TValue>(IReadOnlyDictionary<TKey, TValue> left, IReadOnlyDictionary<TKey, TValue> right) where TKey : notnull =>
-        left.Count == right.Count && left.All(item => right.TryGetValue(item.Key, out var value) && EqualityComparer<TValue>.Default.Equals(item.Value, value));
 
     public static UserPreferences ApplyServerProjection(UserPreferences candidate, ClientPreferencesResponse response)
     {
@@ -103,4 +94,5 @@ public sealed class SettingsSaveService(PryBackendClient api, Func<string, strin
         : displays.GetValueOrDefault(path) ?? new ImageDisplayPreferences();
 }
 
-public sealed record SettingsSaveResult(UserPreferences Preferences, IReadOnlyList<ModelProfileResponse> Models);
+public sealed record SettingsSaveResult(UserPreferences Preferences, IReadOnlyList<ModelProfileResponse> Models,
+    string RuntimeAction);

@@ -44,7 +44,14 @@ public sealed class OpenAiCompatibleChatModel(HttpClient httpClient, ModelProfil
             ["max_tokens"] = profile.MaxOutputTokens,
             ["chat_template_kwargs"] = new { enable_thinking = profile.EnableThinking }
         };
-        if (options?.StructuredReplyPlan == true)
+        if (profile.TopP is { } topP) payload["top_p"] = topP;
+        if (profile.TopK is { } topK) payload["top_k"] = topK;
+        if (profile.MinP is { } minP) payload["min_p"] = minP;
+        if (profile.PresencePenalty is { } presencePenalty) payload["presence_penalty"] = presencePenalty;
+        if (profile.RepetitionPenalty is { } repetitionPenalty) payload["repetition_penalty"] = repetitionPenalty;
+        // llama.cpp's schema grammar can deadlock the final-content phase of reasoning models.
+        // The planning prompt still requests JSON; keep server-side schema enforcement for instruct models.
+        if (options?.StructuredReplyPlan == true && !profile.EnableThinking)
             payload["response_format"] = ReplyPlanResponseFormat.Value;
         request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
         using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
