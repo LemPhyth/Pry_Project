@@ -83,6 +83,9 @@ public sealed class ThemeAppearanceEditor
     public string? AccentColorText => _accent.Text;
     public bool LiveSidebarResize => _liveResize.IsChecked == true;
 
+    public static ThemePreferences ForCurrentWindow(ThemePreferences value, string currentLayoutMode) =>
+        value with { MainWindowLayoutMode = currentLayoutMode };
+
     public ThemePreferences BuildTheme(ThemePreferences source, ThemeImageDraft background, ThemeImageDraft avatar) =>
         SettingsDraftService.BuildTheme(source, new ThemeSettingsDraft
         {

@@ -1320,7 +1320,8 @@ public sealed partial class MainWindow : Window, IPryMainWindow
 
     private async Task OpenSettingsAsync()
     {
-        var settingsOriginalTheme = _preferences.Theme;
+        var settingsOriginalTheme = ThemeAppearanceEditor.ForCurrentWindow(
+            _preferences.Theme ?? new ThemePreferences(), MainWindowLayoutModes.Card);
         var detectedDevices = await _api.GetComputeDevicesAsync();
         var computeChoices = new List<ComputeDeviceChoice>
         {
@@ -1330,7 +1331,7 @@ public sealed partial class MainWindow : Window, IPryMainWindow
         computeChoices.AddRange(detectedDevices.Select(x => new ComputeDeviceChoice(x.Id, $"{x.Name}（{x.IsIntegrated switch { true => "核显", false => "独显/加速卡" }}）")));
         var settingsUi = new SettingsUiFactory();
         var turn = EffectiveTurnSettings();
-        var themePreferences = _preferences.Theme ?? new ThemePreferences();
+        var themePreferences = settingsOriginalTheme;
         var allModels = _builtInProfiles.Concat(_preferences.CustomModels).ToArray();
         var modelSelection = new ModelSelectionEditor(allModels,
             _builtInSpeechProfiles.Concat(_preferences.CustomSpeechModels).ToArray(),

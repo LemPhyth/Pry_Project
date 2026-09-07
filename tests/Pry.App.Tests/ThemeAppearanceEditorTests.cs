@@ -7,6 +7,17 @@ namespace Pry.App.Tests;
 public sealed class ThemeAppearanceEditorTests
 {
     [Fact]
+    public void Current_window_mode_overrides_stale_persisted_selection()
+    {
+        var stale = new ThemePreferences { MainWindowLayoutMode = MainWindowLayoutModes.Messenger };
+
+        var result = ThemeAppearanceEditor.ForCurrentWindow(stale, MainWindowLayoutModes.Card);
+
+        Assert.Equal(MainWindowLayoutModes.Card, result.MainWindowLayoutMode);
+        Assert.Equal(MainWindowLayoutModes.Messenger, stale.MainWindowLayoutMode);
+    }
+
+    [Fact]
     public void BuildTheme_preserves_controls_and_asset_drafts()
     {
         var source = new ThemePreferences
