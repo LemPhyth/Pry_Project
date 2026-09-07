@@ -26,6 +26,7 @@ public sealed class EmbeddedBackendEndpointTests
                 .ToArray();
 
             Assert.Contains("api/v1/runtime", routes);
+            Assert.Contains("api/v1/runtime/retry", routes);
             Assert.Contains("api/v1/runtime/compute-devices", routes);
             Assert.Contains("api/v1/preferences", routes);
         }

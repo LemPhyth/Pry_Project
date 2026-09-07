@@ -35,6 +35,14 @@ public sealed class ModelProcessRegistry(ILogger<ModelProcessRegistry> logger) :
             profile = profile with { BaseUrl = WithFreePort(profile.BaseUrl), ApiKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)) };
             server = new LlamaServerManager();
             try { await server.StartAsync(executablePath, profile, token); }
+            catch (ModelRuntimeException ex)
+            {
+                if (!string.IsNullOrWhiteSpace(ex.DiagnosticDetails))
+                    logger.LogError("Model {ModelId} failed with {ErrorCode}: {Diagnostics}", profile.Id, ex.Code,
+                        ex.DiagnosticDetails);
+                await server.DisposeAsync();
+                throw;
+            }
             catch { await server.DisposeAsync(); throw; }
         }
         var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };

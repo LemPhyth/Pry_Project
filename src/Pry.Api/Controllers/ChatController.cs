@@ -18,6 +18,13 @@ public sealed class ChatController(ConversationSessionService sessions, BackendR
     public Task<IReadOnlyList<ComputeDeviceResponse>> ComputeDevices(CancellationToken token) =>
         runtime.ListComputeDevicesAsync(token);
 
+    [HttpPost("runtime/retry")]
+    public async Task<RuntimeStatusResponse> RetryRuntime(CancellationToken token)
+    {
+        await sessions.ReconfigureAsync(runtime.ReloadAsync, token);
+        return runtime.Status;
+    }
+
     [HttpPost("conversations/{id}/turns")]
     public async Task<ActionResult<SubmitTurnResponse>> Submit(string id, SubmitTurnRequest request, CancellationToken token)
     {

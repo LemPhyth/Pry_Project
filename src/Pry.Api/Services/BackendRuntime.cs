@@ -10,6 +10,7 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
     ILogger<BackendRuntime> logger) : IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly CancellationTokenSource _lifetime = new();
     private AppSettings? _settings;
     private UserPreferences _preferences = new();
     private IReadOnlyList<CharacterDefinition> _characters = [];
@@ -31,10 +32,28 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
         }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        _lifetime.Cancel();
+        return Task.CompletedTask;
+    }
 
-    public RuntimeStatusResponse Status => new(_state, ActiveTextModelId, ActiveVisionModelId,
-        _error is null ? null : "运行时初始化失败，请查看本机服务日志");
+    public RuntimeStatusResponse Status
+    {
+        get
+        {
+            var modelError = FindModelError(_error);
+            return new RuntimeStatusResponse(_state, ActiveTextModelId, ActiveVisionModelId,
+                modelError?.SafeMessage ?? (_error is null ? null : "运行时初始化失败，请查看本机服务日志"))
+            {
+                ConfigurationState = _settings is null ? (_error is null ? "loading" : "failed") : "ready",
+                ModelState = _components is not null ? "ready" : _state == "loading_models" ? "loading" :
+                    modelError is not null ? "failed" : "not_loaded",
+                ErrorCode = modelError?.Code ?? (_error is null ? null : "runtime_initialization_failed"),
+                Retryable = modelError?.Retryable ?? false
+            };
+        }
+    }
     public string? ActiveTextModelId => _preferences.ActiveModelId ?? _preferences.ModelTuning.ActiveModelId ?? _settings?.ActiveModelId;
     public string? ActiveVisionModelId => _preferences.ActiveVisionModelId ?? _settings?.VisionModelId;
     public TurnTakingSettings TurnSettings => _preferences.TurnTakingOverride ?? _settings?.TurnTaking ?? new TurnTakingSettings();
@@ -78,24 +97,26 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
 
     public async Task<RuntimeComponents> GetComponentsAsync(CancellationToken token)
     {
-        if (_error is not null) throw new InvalidOperationException("后端运行时初始化失败。", _error);
+        if (_error is not null && _settings is null)
+            throw new InvalidOperationException("后端运行时初始化失败。", _error);
         if (_components is not null) return _components;
         await _gate.WaitAsync(token);
         try
         {
             if (_components is not null) return _components;
             if (_settings is null || _characters.Count == 0) throw new InvalidOperationException("后端配置尚未就绪。");
+            _error = null;
             _state = "loading_models";
             var profiles = _settings.Models.Concat(_preferences.CustomModels).Select(ResolveProfile).ToDictionary(x => x.Id, StringComparer.Ordinal);
             var textId = ActiveTextModelId ?? throw new InvalidOperationException("未配置文字模型。");
             if (!profiles.TryGetValue(textId, out var textProfile)) throw new InvalidOperationException($"找不到文字模型配置 {textId}。");
             var serverPath = ResolveAssetPath(_settings.LlamaServerPath);
-            var textHandle = await registry.GetAsync(serverPath, textProfile, token);
+            var textHandle = await registry.GetAsync(serverPath, textProfile, _lifetime.Token);
             ModelHandle? visionHandle = null;
             if (ActiveVisionModelId is { } visionId)
             {
                 if (visionId == textId) visionHandle = textHandle;
-                else if (profiles.TryGetValue(visionId, out var visionProfile)) visionHandle = await registry.GetAsync(serverPath, visionProfile, token);
+                else if (profiles.TryGetValue(visionId, out var visionProfile)) visionHandle = await registry.GetAsync(serverPath, visionProfile, _lifetime.Token);
             }
             var models = visionHandle is null || ReferenceEquals(visionHandle, textHandle)
                 ? new[] { textHandle.Model }
@@ -106,6 +127,16 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
         }
         catch (Exception ex) { _error = ex; _state = "failed"; throw; }
         finally { _gate.Release(); }
+    }
+
+    private static ModelRuntimeException? FindModelError(Exception? error)
+    {
+        while (error is not null)
+        {
+            if (error is ModelRuntimeException modelError) return modelError;
+            error = error.InnerException;
+        }
+        return null;
     }
 
     private ModelProfile ResolveProfile(ModelProfile profile)
