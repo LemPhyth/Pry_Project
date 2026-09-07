@@ -42,7 +42,13 @@ public sealed record ChatMessage(long Id, string ConversationId, ChatRole Role, 
 
 public sealed record ConversationRoom(string Id, string Title, string? CharacterId,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, int MessageCount,
-    string? FolderId = null, bool IsPinned = false);
+    string? FolderId = null, bool IsPinned = false)
+{
+    public string? LastMessagePreview { get; init; }
+    public ChatRole? LastMessageRole { get; init; }
+    public string? LastMessageKind { get; init; }
+    public DateTimeOffset? LastMessageAt { get; init; }
+}
 
 public sealed record ConversationFolder(string Id, string Name, DateTimeOffset CreatedAt);
 

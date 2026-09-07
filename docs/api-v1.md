@@ -44,6 +44,8 @@
 
 `limit` 会被限制到 1–200。结果按置顶优先、最近更新优先排序。
 
+每个会话同时返回服务端生成的最后消息投影：`lastMessagePreview`（单行、最多 160 字符）、`lastMessageRole`、`lastMessageKind`（`text`、`image` 或 `sticker`）和 `lastMessageAt`。空会话返回 `null`。图片或表情没有正文时使用安全占位文本。该投影由单次数据库查询生成；客户端不得为了填充会话副标题逐个请求消息列表。
+
 ### 查询单个会话
 
 `GET /api/v1/conversations/{id}`

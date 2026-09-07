@@ -113,6 +113,11 @@ public sealed class ApplicationServiceTests
         var message = await service.AddMessageAsync(conversation.Id, new CreateMessageRequest(ChatRole.User, "你好"), TestContext.Current.CancellationToken);
         Assert.Equal(ChatRole.User, message.Role);
         Assert.Single(await service.MessagesAsync(conversation.Id, 10, TestContext.Current.CancellationToken));
+        var listProjection = Assert.Single(await service.ListAsync(100, TestContext.Current.CancellationToken));
+        Assert.Equal("你好", listProjection.LastMessagePreview);
+        Assert.Equal(ChatRole.User, listProjection.LastMessageRole);
+        Assert.Equal("text", listProjection.LastMessageKind);
+        Assert.Equal(message.CreatedAt, listProjection.LastMessageAt);
 
         await service.DeleteAsync(conversation.Id, TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<ResourceNotFoundException>(() => service.GetAsync(conversation.Id, TestContext.Current.CancellationToken));

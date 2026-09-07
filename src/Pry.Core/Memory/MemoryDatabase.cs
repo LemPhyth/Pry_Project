@@ -166,16 +166,27 @@ public sealed class MemoryDatabase(string databasePath)
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT c.id,c.title,c.character_id,c.created_at,c.updated_at,COUNT(m.id),c.folder_id,c.is_pinned
-            FROM conversations c LEFT JOIN messages m ON m.conversation_id=c.id
-            GROUP BY c.id ORDER BY c.is_pinned DESC,c.updated_at DESC LIMIT $n
+            SELECT c.id,c.title,c.character_id,c.created_at,c.updated_at,
+                   (SELECT COUNT(*) FROM messages count_message WHERE count_message.conversation_id=c.id),
+                   c.folder_id,c.is_pinned,
+                   CASE
+                     WHEN last_message.sticker_id IS NOT NULL THEN '[表情]'
+                     WHEN last_message.image_path IS NOT NULL AND TRIM(last_message.content)='' THEN '[图片]'
+                     ELSE SUBSTR(REPLACE(REPLACE(TRIM(last_message.content), CHAR(13), ' '), CHAR(10), ' '),1,160)
+                   END,
+                   last_message.role,
+                   CASE WHEN last_message.sticker_id IS NOT NULL THEN 'sticker'
+                        WHEN last_message.image_path IS NOT NULL THEN 'image' ELSE 'text' END,
+                   last_message.created_at
+            FROM conversations c
+            LEFT JOIN messages last_message ON last_message.id=(
+                SELECT latest.id FROM messages latest WHERE latest.conversation_id=c.id ORDER BY latest.id DESC LIMIT 1)
+            ORDER BY c.is_pinned DESC,c.updated_at DESC LIMIT $n
             """;
         command.Parameters.AddWithValue("$n", count);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
-            result.Add(new ConversationRoom(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2),
-                DateTimeOffset.Parse(reader.GetString(3)), DateTimeOffset.Parse(reader.GetString(4)), Convert.ToInt32(reader.GetInt64(5)),
-                reader.IsDBNull(6) ? null : reader.GetString(6), reader.GetInt64(7) != 0));
+            result.Add(ReadConversationRoom(reader));
         return result;
     }
 
@@ -184,18 +195,40 @@ public sealed class MemoryDatabase(string databasePath)
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT c.id,c.title,c.character_id,c.created_at,c.updated_at,COUNT(m.id),c.folder_id,c.is_pinned
-            FROM conversations c LEFT JOIN messages m ON m.conversation_id=c.id
-            WHERE c.id=$id GROUP BY c.id
+            SELECT c.id,c.title,c.character_id,c.created_at,c.updated_at,
+                   (SELECT COUNT(*) FROM messages count_message WHERE count_message.conversation_id=c.id),
+                   c.folder_id,c.is_pinned,
+                   CASE
+                     WHEN last_message.sticker_id IS NOT NULL THEN '[表情]'
+                     WHEN last_message.image_path IS NOT NULL AND TRIM(last_message.content)='' THEN '[图片]'
+                     ELSE SUBSTR(REPLACE(REPLACE(TRIM(last_message.content), CHAR(13), ' '), CHAR(10), ' '),1,160)
+                   END,
+                   last_message.role,
+                   CASE WHEN last_message.sticker_id IS NOT NULL THEN 'sticker'
+                        WHEN last_message.image_path IS NOT NULL THEN 'image' ELSE 'text' END,
+                   last_message.created_at
+            FROM conversations c
+            LEFT JOIN messages last_message ON last_message.id=(
+                SELECT latest.id FROM messages latest WHERE latest.conversation_id=c.id ORDER BY latest.id DESC LIMIT 1)
+            WHERE c.id=$id
             """;
         command.Parameters.AddWithValue("$id", conversationId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
-            ? new ConversationRoom(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2),
-                DateTimeOffset.Parse(reader.GetString(3)), DateTimeOffset.Parse(reader.GetString(4)), Convert.ToInt32(reader.GetInt64(5)),
-                reader.IsDBNull(6) ? null : reader.GetString(6), reader.GetInt64(7) != 0)
+            ? ReadConversationRoom(reader)
             : null;
     }
+
+    private static ConversationRoom ReadConversationRoom(SqliteDataReader reader) =>
+        new(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2),
+            DateTimeOffset.Parse(reader.GetString(3)), DateTimeOffset.Parse(reader.GetString(4)),
+            Convert.ToInt32(reader.GetInt64(5)), reader.IsDBNull(6) ? null : reader.GetString(6), reader.GetInt64(7) != 0)
+        {
+            LastMessagePreview = reader.IsDBNull(8) ? null : reader.GetString(8),
+            LastMessageRole = reader.IsDBNull(9) ? null : Enum.Parse<ChatRole>(reader.GetString(9), true),
+            LastMessageKind = reader.IsDBNull(10) ? null : reader.GetString(10),
+            LastMessageAt = reader.IsDBNull(11) ? null : DateTimeOffset.Parse(reader.GetString(11))
+        };
 
     public async Task<bool> CharacterHasReferencesAsync(string characterId, CancellationToken cancellationToken = default)
     {
