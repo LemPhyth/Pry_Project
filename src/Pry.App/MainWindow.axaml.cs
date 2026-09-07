@@ -1483,8 +1483,18 @@ public sealed partial class MainWindow : Window, IPryMainWindow
             try
             {
                 RuntimeStatus.Text = "正在由后端切换模型…";
-                var saved = await new SettingsSaveService(_api, ImageContentType)
-                    .SaveAsync(candidate, _conversationId, warning => RuntimeStatus.Text = warning);
+                SettingsSaveResult saved;
+                if (SettingsSaveService.CanUsePreferencesOnly(_preferences, candidate))
+                {
+                    RuntimeStatus.Text = "正在保存界面设置…";
+                    var response = await _api.UpdatePreferencesAsync(SettingsSaveService.CreatePreferencesRequest(candidate, _conversationId));
+                    saved = new SettingsSaveResult(SettingsSaveService.ApplyServerProjection(candidate, response), await _api.GetModelsAsync());
+                }
+                else
+                {
+                    saved = await new SettingsSaveService(_api, ImageContentType)
+                        .SaveAsync(candidate, _conversationId, warning => RuntimeStatus.Text = warning);
+                }
                 _preferences = saved.Preferences;
                 _profiles = _builtInProfiles.Concat(saved.Preferences.CustomModels).ToArray();
                 ApplyTheme(); await ReloadActiveConversationAsync();

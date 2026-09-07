@@ -15,16 +15,7 @@ public sealed class SettingsSaveService(PryBackendClient api, Func<string, strin
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(candidate.ActiveModelId);
         var theme = candidate.Theme;
-        var preferences = new UpdateClientPreferencesRequest(
-            candidate.SelectedCharacterId, conversationId, candidate.UserProfile, candidate.DesktopPet,
-            candidate.Shortcuts, candidate.TurnTakingOverride,
-            new ClientThemePreferences(theme.ThemeMode, theme.AccentColor, theme.UseGlassEffects,
-                theme.LiveSidebarResize, theme.BackgroundDimOpacity, theme.BackgroundImageOpacity,
-                theme.BackgroundBlurMode, theme.BackgroundBlurRadius, theme.AvatarSize,
-                theme.BubbleFontSize, theme.BubbleMaxWidth, theme.BubbleSpacing)
-            {
-                MainWindowLayoutMode = theme.MainWindowLayoutMode
-            });
+        var preferences = CreatePreferencesRequest(candidate, conversationId);
 
         var backgroundId = await UploadAsync(theme.BackgroundImagePath, warning, token);
         var avatarId = await UploadAsync(theme.UserAvatarPath, warning, token);
@@ -38,6 +29,31 @@ public sealed class SettingsSaveService(PryBackendClient api, Func<string, strin
         var response = await api.SaveSettingsAsync(new SaveSettingsRequest(preferences, appearance, models), token);
         return new SettingsSaveResult(ApplyServerProjection(candidate, response.Preferences), response.Models);
     }
+
+    public static UpdateClientPreferencesRequest CreatePreferencesRequest(UserPreferences candidate, string conversationId)
+    {
+        var theme = candidate.Theme;
+        return new UpdateClientPreferencesRequest(
+            candidate.SelectedCharacterId, conversationId, candidate.UserProfile, candidate.DesktopPet,
+            candidate.Shortcuts, candidate.TurnTakingOverride,
+            new ClientThemePreferences(theme.ThemeMode, theme.AccentColor, theme.UseGlassEffects,
+                theme.LiveSidebarResize, theme.BackgroundDimOpacity, theme.BackgroundImageOpacity,
+                theme.BackgroundBlurMode, theme.BackgroundBlurRadius, theme.AvatarSize,
+                theme.BubbleFontSize, theme.BubbleMaxWidth, theme.BubbleSpacing)
+            {
+                MainWindowLayoutMode = theme.MainWindowLayoutMode
+            });
+    }
+
+    public static bool CanUsePreferencesOnly(UserPreferences before, UserPreferences after) =>
+        before.ActiveModelId == after.ActiveModelId && before.ActiveVisionModelId == after.ActiveVisionModelId &&
+        before.ActiveSpeechModelId == after.ActiveSpeechModelId && DictionaryEqual(before.ModelTunings, after.ModelTunings) &&
+        before.Theme.BackgroundImagePath == after.Theme.BackgroundImagePath && before.Theme.UserAvatarPath == after.Theme.UserAvatarPath &&
+        before.Theme.BackgroundHistory.SequenceEqual(after.Theme.BackgroundHistory) && before.Theme.UserAvatarHistory.SequenceEqual(after.Theme.UserAvatarHistory) &&
+        DictionaryEqual(before.Theme.BackgroundDisplays, after.Theme.BackgroundDisplays) && DictionaryEqual(before.Theme.UserAvatarDisplays, after.Theme.UserAvatarDisplays);
+
+    private static bool DictionaryEqual<TKey, TValue>(IReadOnlyDictionary<TKey, TValue> left, IReadOnlyDictionary<TKey, TValue> right) where TKey : notnull =>
+        left.Count == right.Count && left.All(item => right.TryGetValue(item.Key, out var value) && EqualityComparer<TValue>.Default.Equals(item.Value, value));
 
     public static UserPreferences ApplyServerProjection(UserPreferences candidate, ClientPreferencesResponse response)
     {

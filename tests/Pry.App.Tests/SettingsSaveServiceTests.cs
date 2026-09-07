@@ -12,6 +12,16 @@ namespace Pry.App.Tests;
 public sealed class SettingsSaveServiceTests
 {
     [Fact]
+    public void Layout_only_change_does_not_require_model_reload()
+    {
+        var before = new UserPreferences { ActiveModelId = "text", Theme = new ThemePreferences { MainWindowLayoutMode = MainWindowLayoutModes.Card } };
+        var after = before with { Theme = before.Theme with { MainWindowLayoutMode = MainWindowLayoutModes.Messenger } };
+
+        Assert.True(SettingsSaveService.CanUsePreferencesOnly(before, after));
+        Assert.False(SettingsSaveService.CanUsePreferencesOnly(before, after with { ActiveModelId = "other" }));
+    }
+
+    [Fact]
     public void Selected_model_name_tolerates_incomplete_backend_projection()
     {
         static ModelProfileResponse Model(string id, string name, bool selected = false) =>
