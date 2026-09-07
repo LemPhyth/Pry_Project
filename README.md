@@ -42,7 +42,7 @@ v0.0.2 提供两种 Windows x64 ZIP，都不包含模型权重，也不包含聊
 dotnet run --project src/Pry.Api/Pry.Api.csproj
 ```
 
-独立后端默认仅监听 `http://127.0.0.1:5078`，复用原有 `%LOCALAPPDATA%/PryCompanion/memory.db`。不要在桌面程序运行时再启动独立后端并同时操作同一数据目录。接口约定见 [API v1](docs/api-v1.md)，拆分边界与迁移顺序见 [后端架构](docs/backend-architecture.md)。
+独立后端默认仅监听 `http://127.0.0.1:5078`，复用原有 `%LOCALAPPDATA%/PryCompanion/memory.db`。不要在桌面程序运行时再启动独立后端并同时操作同一数据目录。接口约定见 [API v1](docs/api-v1.md)，拆分边界与迁移顺序见 [项目架构](docs/architecture.md)。
 
 跨进程 DTO 位于 `Pry.Contracts`，桌面端和未来桌宠共用的 HTTP/SSE 客户端位于 `Pry.Client`。迁移完成前请勿同时使用旧桌面业务路径和 API 修改同一会话。
 
@@ -83,3 +83,5 @@ Pry 的程序源代码及普通项目文档使用 [Apache License 2.0](LICENSE)�
 Apache License 2.0 **不适用于** Pry 的原创角色设计、立绘、头像、桌宠动画、Logo、音频及其他美术素材。原创素材版权归作者所有；个人可以按照 [原创素材许可](ASSETS_LICENSE.md) 和 [非商业二次创作政策](FAN_CONTENT_POLICY.md) 进行非商业二次创作。商业使用、原始素材再分发及其他超出许可范围的行为需要事先取得书面授权。
 
 模型、运行库、字体和第三方素材适用各自许可证，详情参见 [第三方声明](licenses/THIRD-PARTY-NOTICES.md)。
+
+版本变更见 [CHANGELOG](CHANGELOG.md)。
