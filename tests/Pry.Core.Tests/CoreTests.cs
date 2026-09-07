@@ -335,13 +335,13 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public async Task Bundled_sense_voice_model_can_run_offline()
+    public async Task Configured_sense_voice_model_can_run_offline()
     {
-        var root = new DirectoryInfo(AppContext.BaseDirectory);
-        while (root is not null && !Directory.Exists(Path.Combine(root.FullName, "models"))) root = root.Parent;
-        Assert.NotNull(root);
-        var modelDirectory = Path.Combine(root!.FullName, "models", "sensevoice-small-int8");
-        Assert.True(File.Exists(Path.Combine(modelDirectory, "model.int8.onnx")));
+        var modelDirectory = Environment.GetEnvironmentVariable("PRY_TEST_SENSEVOICE_MODEL_DIR");
+        if (string.IsNullOrWhiteSpace(modelDirectory) ||
+            !File.Exists(Path.Combine(modelDirectory, "model.int8.onnx")))
+            Assert.Skip("设置 PRY_TEST_SENSEVOICE_MODEL_DIR 后运行可选的 SenseVoice 本地模型集成测试。");
+
         var path = Path.Combine(Path.GetTempPath(), $"pry-silence-{Guid.NewGuid():N}.wav");
         try
         {
