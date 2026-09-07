@@ -21,7 +21,10 @@ public sealed class SettingsSaveService(PryBackendClient api, Func<string, strin
             new ClientThemePreferences(theme.ThemeMode, theme.AccentColor, theme.UseGlassEffects,
                 theme.LiveSidebarResize, theme.BackgroundDimOpacity, theme.BackgroundImageOpacity,
                 theme.BackgroundBlurMode, theme.BackgroundBlurRadius, theme.AvatarSize,
-                theme.BubbleFontSize, theme.BubbleMaxWidth, theme.BubbleSpacing));
+                theme.BubbleFontSize, theme.BubbleMaxWidth, theme.BubbleSpacing)
+            {
+                MainWindowLayoutMode = theme.MainWindowLayoutMode
+            });
 
         var backgroundId = await UploadAsync(theme.BackgroundImagePath, warning, token);
         var avatarId = await UploadAsync(theme.UserAvatarPath, warning, token);
@@ -63,7 +66,8 @@ public sealed class SettingsSaveService(PryBackendClient api, Func<string, strin
                 AvatarSize = serverTheme.AvatarSize,
                 BubbleFontSize = serverTheme.BubbleFontSize,
                 BubbleMaxWidth = serverTheme.BubbleMaxWidth,
-                BubbleSpacing = serverTheme.BubbleSpacing
+                BubbleSpacing = serverTheme.BubbleSpacing,
+                MainWindowLayoutMode = serverTheme.MainWindowLayoutMode
             }
         };
     }

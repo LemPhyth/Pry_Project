@@ -28,7 +28,11 @@ public sealed class SettingsSaveServiceTests
         var handler = new RecordingHandler();
         using var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/") };
         var service = new SettingsSaveService(new PryBackendClient(http), _ => "image/png");
-        var result = await service.SaveAsync(new UserPreferences { ActiveModelId = "text" }, "room", _ => { }, TestContext.Current.CancellationToken);
+        var result = await service.SaveAsync(new UserPreferences
+        {
+            ActiveModelId = "text",
+            Theme = new ThemePreferences { MainWindowLayoutMode = MainWindowLayoutModes.Card }
+        }, "room", _ => { }, TestContext.Current.CancellationToken);
         Assert.Empty(result.Models);
         Assert.Equal("server-model", result.Preferences.ActiveModelId);
         Assert.Equal(new[] { "/api/v1/settings" }, handler.Paths);
@@ -36,6 +40,7 @@ public sealed class SettingsSaveServiceTests
         var appearance = body.RootElement.GetProperty("appearance");
         Assert.True(appearance.GetProperty("clearBackground").GetBoolean());
         Assert.True(appearance.GetProperty("clearUserAvatar").GetBoolean());
+        Assert.Equal(MainWindowLayoutModes.Card, body.RootElement.GetProperty("preferences").GetProperty("theme").GetProperty("mainWindowLayoutMode").GetString());
     }
 
     [Fact]
