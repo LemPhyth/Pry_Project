@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$UseMirror
+    [switch]$UseMirror,
+    [switch]$RuntimeOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,7 +18,10 @@ $modelMirrorUrl = 'https://hf-mirror.com/ggml-org/Qwen3-1.7B-GGUF/resolve/main/Q
 $runtimeSha256 = 'fbbbc55e0eb2e1b07f9dcb9488616c98ed47d9003b90e15e7c8c7812c4307cd3'
 $modelSha256 = 'd2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5'
 
-New-Item -ItemType Directory -Force -Path $downloadDirectory, $runtimeDirectory, $modelDirectory | Out-Null
+New-Item -ItemType Directory -Force -Path $downloadDirectory, $runtimeDirectory | Out-Null
+if (-not $RuntimeOnly) {
+    New-Item -ItemType Directory -Force -Path $modelDirectory | Out-Null
+}
 
 function Test-ExpectedHash([string]$Path, [string]$Expected) {
     if (-not (Test-Path -LiteralPath $Path)) { return $false }
@@ -40,12 +44,18 @@ function Receive-VerifiedFile([string]$Url, [string]$Target, [string]$ExpectedHa
 }
 
 Receive-VerifiedFile $runtimeUrl $runtimeArchive $runtimeSha256
-$selectedModelUrl = if ($UseMirror) { $modelMirrorUrl } else { $modelPrimaryUrl }
-Receive-VerifiedFile $selectedModelUrl $modelPath $modelSha256
+if (-not $RuntimeOnly) {
+    $selectedModelUrl = if ($UseMirror) { $modelMirrorUrl } else { $modelPrimaryUrl }
+    Receive-VerifiedFile $selectedModelUrl $modelPath $modelSha256
+}
 
 Expand-Archive -LiteralPath $runtimeArchive -DestinationPath $runtimeDirectory -Force
 if (-not (Test-Path -LiteralPath (Join-Path $runtimeDirectory 'llama-server.exe'))) {
     throw '运行时解压后未找到 llama-server.exe。'
 }
 
-Write-Host '本地运行时和 Qwen3-1.7B Q4_K_M 已安装并通过校验。'
+if ($RuntimeOnly) {
+    Write-Host '本地 llama.cpp CPU 运行时已安装并通过校验。'
+} else {
+    Write-Host '本地运行时和 Qwen3-1.7B Q4_K_M 已安装并通过校验。'
+}

@@ -4,7 +4,7 @@
 
 目标平台：Windows x64
 
-发布形态：自包含 ZIP，解压后运行 `Pry.App.exe`
+发布形态：自包含 ZIP 与环境依赖 ZIP，均解压后运行 `Pry.App.exe`
 
 ## 结论
 
@@ -32,13 +32,19 @@ v0.0.2 的前后端**职责分离合格，但不是完全的进程、程序集�
 
 ## 发行包
 
-本次只公开无模型精简框架包：
+本次公开两种无模型 ZIP：
 
 - `Pry-v0.0.2-win-x64-lite.zip`
 - 包含自包含 .NET 桌面程序、内嵌 API、llama.cpp CUDA 运行必需文件、许可与说明。
 - 不包含模型权重、数据库、日志、密钥、用户素材或本机配置。
 - 解压后应用可以直接启动；本地聊天、图片理解和语音识别需按 `Resources/appsettings.json` 放置模型，或配置兼容服务。
-- 包内保留经 SHA-256 校验的模型下载脚本；需要预设模型时可依次运行 `scripts/install-local-runtime.ps1` 与 `scripts/download-models.ps1`。
+
+- `Pry-v0.0.2-win-x64-minimal.zip`
+- 不包含 .NET/ASP.NET Core、llama.cpp/CUDA 或模型，仅保留 Pry 程序和必要应用依赖。
+- 需要系统安装 Windows x64 的 .NET 10 ASP.NET Core Runtime；使用本地模型时再执行 `scripts/install-local-runtime.ps1`。
+- 使用在线 OpenAI-compatible 服务时可跳过本地推理环境安装。
+
+两种包内都保留经 SHA-256 校验的安装/下载脚本。`install-local-runtime.ps1 -RuntimeOnly` 可只安装已验证的 CPU llama.cpp，不下载入门模型。
 
 完整模型包暂不公开。当前预设权重合计约 11.38 GB，且单个 Qwen3.5 文件超过 6 GB；GitHub Release 每个附件必须小于 2 GiB。打包脚本保留显式 `-IncludeModels` 开关供本机校验，但默认且本次发布不会生成完整包。
 
@@ -55,4 +61,4 @@ git diff --check
 
 自动化基线：Release 构建 0 警告、0 错误；Core 17、API 16、Client 3、App 156，共 192 项测试通过。
 
-确认结果：ZIP 可完整列出并已生成 `SHA256SUMS.txt`；从独立解压目录启动后获得可响应窗口与随机回环 API 监听，退出后没有残留包内进程；包内没有模型和用户数据；程序文件版本为 `0.0.2.0`。
+确认结果：两个 ZIP 均可完整列出并已生成 `SHA256SUMS.txt`；自包含包和环境依赖包分别从独立解压目录启动后，都获得可响应窗口与随机回环 API 监听；隔离数据目录正常创建 `memory.db`；包内没有模型和用户数据；程序文件版本为 `0.0.2.0`。

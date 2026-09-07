@@ -12,10 +12,13 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $releaseRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot "artifacts/releases/v$Version"))
 $stagingRoot = Join-Path $releaseRoot 'staging'
-$publishRoot = Join-Path $stagingRoot 'publish'
+$selfContainedPublishRoot = Join-Path $stagingRoot 'publish-self-contained'
+$frameworkPublishRoot = Join-Path $stagingRoot 'publish-framework-dependent'
 $liteName = "Pry-v$Version-$RuntimeIdentifier-lite"
+$minimalName = "Pry-v$Version-$RuntimeIdentifier-minimal"
 $fullName = "Pry-v$Version-$RuntimeIdentifier-full"
 $liteRoot = Join-Path $stagingRoot $liteName
+$minimalRoot = Join-Path $stagingRoot $minimalName
 $fullRoot = Join-Path $stagingRoot $fullName
 
 function Assert-UnderArtifacts([string]$Path) {
@@ -71,7 +74,19 @@ function Add-ModelFile([string]$RelativePath, [string]$ExpectedSha256) {
     }
 }
 
-function Write-PackageMetadata([string]$PackageRoot, [string]$Variant, [object[]]$Models) {
+function Copy-PackageDocuments([string]$PackageRoot) {
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination $PackageRoot
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination $PackageRoot
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'NOTICE') -Destination $PackageRoot
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'ASSETS_LICENSE.md') -Destination $PackageRoot
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'FAN_CONTENT_POLICY.md') -Destination $PackageRoot
+    Copy-DirectoryContents (Join-Path $projectRoot 'licenses') (Join-Path $PackageRoot 'licenses')
+    New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot 'scripts') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts/install-local-runtime.ps1') -Destination (Join-Path $PackageRoot 'scripts')
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts/download-models.ps1') -Destination (Join-Path $PackageRoot 'scripts')
+}
+
+function Write-PackageMetadata([string]$PackageRoot, [string]$Variant, [bool]$SelfContained, [object[]]$Models) {
     $commit = (git -C $projectRoot rev-parse --short=12 HEAD).Trim()
     $manifest = [ordered]@{
         product = 'Pry'
@@ -79,7 +94,7 @@ function Write-PackageMetadata([string]$PackageRoot, [string]$Variant, [object[]
         runtimeIdentifier = $RuntimeIdentifier
         variant = $Variant
         sourceCommit = $commit
-        selfContained = $true
+        selfContained = $SelfContained
         generatedAtUtc = [DateTime]::UtcNow.ToString('O')
         models = $Models
     }
@@ -87,8 +102,10 @@ function Write-PackageMetadata([string]$PackageRoot, [string]$Variant, [object[]
 
     $variantText = if ($Variant -eq 'full') {
         '完整模型包：包含预设文字、视觉和语音模型，可离线使用。Qwen2.5-VL-3B 仅许可非商业用途，请阅读 licenses 目录。'
+    } elseif ($Variant -eq 'minimal') {
+        '环境依赖极简包：不包含 .NET、llama.cpp/CUDA 本地推理运行库或模型权重。请先安装 Windows x64 的 .NET 10 ASP.NET Core Runtime。使用本地模型时，再运行 .\scripts\install-local-runtime.ps1 安装 CPU 运行时和入门模型；自备模型时可使用 -RuntimeOnly。'
     } else {
-        '精简框架包：包含 Pry 与本地推理运行库，但不包含模型权重。应用可以启动；聊天、图片理解和语音识别需要自行安装模型，或配置兼容服务。可在 PowerShell 中依次运行 .\scripts\install-local-runtime.ps1 和 .\scripts\download-models.ps1 下载预设模型。'
+        '自包含运行库包：包含 Pry、.NET/ASP.NET Core 和 CUDA llama.cpp 本地推理运行库，但不包含模型权重。无需安装 .NET；本地聊天、图片理解和语音识别仍需自行安装模型，或配置兼容服务。'
     }
     @"
 Pry v$Version ($RuntimeIdentifier)
@@ -127,22 +144,21 @@ if (-not $SkipValidation) {
 Invoke-Checked 'dotnet' @(
     'publish', (Join-Path $projectRoot 'src/Pry.App/Pry.App.csproj'),
     '-c', 'Release', '-r', $RuntimeIdentifier, '--self-contained', 'true',
-    '-p:DebugType=None', '-p:DebugSymbols=false', '-o', $publishRoot
+    '-p:DebugType=None', '-p:DebugSymbols=false', '-o', $selfContainedPublishRoot
 )
 
-Copy-DirectoryContents $publishRoot $liteRoot
-Copy-InferenceRuntime (Join-Path $liteRoot 'runtime')
+Invoke-Checked 'dotnet' @(
+    'publish', (Join-Path $projectRoot 'src/Pry.App/Pry.App.csproj'),
+    '-c', 'Release', '-r', $RuntimeIdentifier, '--self-contained', 'false',
+    '-p:DebugType=None', '-p:DebugSymbols=false', '-o', $frameworkPublishRoot
+)
 
-foreach ($root in @($liteRoot)) {
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination $root
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'NOTICE') -Destination $root
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'ASSETS_LICENSE.md') -Destination $root
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'FAN_CONTENT_POLICY.md') -Destination $root
-    Copy-DirectoryContents (Join-Path $projectRoot 'licenses') (Join-Path $root 'licenses')
-    New-Item -ItemType Directory -Force -Path (Join-Path $root 'scripts') | Out-Null
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts/install-local-runtime.ps1') -Destination (Join-Path $root 'scripts')
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts/download-models.ps1') -Destination (Join-Path $root 'scripts')
-}
+Copy-DirectoryContents $selfContainedPublishRoot $liteRoot
+Copy-InferenceRuntime (Join-Path $liteRoot 'runtime')
+Copy-PackageDocuments $liteRoot
+
+Copy-DirectoryContents $frameworkPublishRoot $minimalRoot
+Copy-PackageDocuments $minimalRoot
 
 $modelSpecs = @(
     [ordered]@{ path = 'models/qwen3-1.7b-q4_k_m.gguf'; sha256 = 'd2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5' },
@@ -158,23 +174,22 @@ New-Item -ItemType Directory -Force -Path (Join-Path $liteRoot 'models') | Out-N
 '此版本不含模型。请按 Resources/appsettings.json 中的相对路径放置模型，或在应用设置中配置兼容服务。' |
     Set-Content -LiteralPath (Join-Path $liteRoot 'models/README.txt') -Encoding utf8
 
-Write-PackageMetadata $liteRoot 'lite' @()
+Write-PackageMetadata $liteRoot 'lite' $true @()
 $liteZip = New-Zip $liteName
-$archives = @($liteZip)
+
+New-Item -ItemType Directory -Force -Path (Join-Path $minimalRoot 'models') | Out-Null
+'此版本不含模型。请运行 scripts/install-local-runtime.ps1，或在应用设置中配置兼容服务。' |
+    Set-Content -LiteralPath (Join-Path $minimalRoot 'models/README.txt') -Encoding utf8
+Write-PackageMetadata $minimalRoot 'minimal' $false @()
+$minimalZip = New-Zip $minimalName
+$archives = @($liteZip, $minimalZip)
 
 if ($IncludeModels) {
-    Copy-DirectoryContents $publishRoot $fullRoot
+    Copy-DirectoryContents $selfContainedPublishRoot $fullRoot
     Copy-InferenceRuntime (Join-Path $fullRoot 'runtime')
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE') -Destination $fullRoot
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'NOTICE') -Destination $fullRoot
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'ASSETS_LICENSE.md') -Destination $fullRoot
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'FAN_CONTENT_POLICY.md') -Destination $fullRoot
-    Copy-DirectoryContents (Join-Path $projectRoot 'licenses') (Join-Path $fullRoot 'licenses')
-    New-Item -ItemType Directory -Force -Path (Join-Path $fullRoot 'scripts') | Out-Null
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts/install-local-runtime.ps1') -Destination (Join-Path $fullRoot 'scripts')
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'scripts/download-models.ps1') -Destination (Join-Path $fullRoot 'scripts')
+    Copy-PackageDocuments $fullRoot
     foreach ($model in $modelSpecs) { Add-ModelFile $model.path $model.sha256 }
-    Write-PackageMetadata $fullRoot 'full' $modelSpecs
+    Write-PackageMetadata $fullRoot 'full' $true $modelSpecs
     $archives += New-Zip $fullName
 }
 
@@ -187,6 +202,8 @@ $hashRows | Set-Content -LiteralPath (Join-Path $releaseRoot 'SHA256SUMS.txt') -
 [pscustomobject]@{
     LiteZip = $liteZip.FullName
     LiteBytes = $liteZip.Length
+    MinimalZip = $minimalZip.FullName
+    MinimalBytes = $minimalZip.Length
     FullZip = if ($IncludeModels) { $archives[-1].FullName } else { $null }
     FullBytes = if ($IncludeModels) { $archives[-1].Length } else { $null }
     Checksums = (Join-Path $releaseRoot 'SHA256SUMS.txt')

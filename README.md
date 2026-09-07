@@ -2,7 +2,7 @@
 
 这是一个 Windows 优先、可扩展到 Linux/Android 的本地虚拟陪伴助手最小原型。当前包含 Avalonia 桌面 UI、固定角色定义、SQLite 对话与长期记忆、Prompt Builder、OpenAI-compatible 流式模型接口、图片消息入口、可管理的表情包库，以及 Embedding、图片生成、语音识别、Live2D 和 Agent 工具占位接口。
 
-## 运行
+## 从源码运行
 
 ```powershell
 dotnet restore Pry.slnx
@@ -11,7 +11,30 @@ dotnet run --project src/Pry.App/Pry.App.csproj
 
 `Pry.App` 是普通使用时唯一需要启动的程序。它会在当前桌面进程中自动启动一个仅监听随机回环端口的内嵌后端，再由 `Pry.Client` 连接；不需要另外启动 `Pry.Api`。
 
-正式 ZIP 发行包解压后可直接双击 `Pry.App.exe`。名称带 `lite` 的精简包不含模型权重；应用可以启动，但本地聊天、图片理解和语音识别需要自行安装配置所列模型，或配置兼容服务。
+## 选择 Release 发行包
+
+v0.0.2 提供两种 Windows x64 ZIP，都不包含模型权重，也不包含聊天记录、用户素材、密钥或日志。
+
+| 发行包 | 包含内容 | 使用前需要 | 适合用户 |
+|---|---|---|---|
+| `Pry-v0.0.2-win-x64-lite.zip` | Pry、.NET/ASP.NET Core 运行时、CUDA llama.cpp 本地推理运行库 | 解压后直接启动；本地推理需另配模型 | 希望少安装环境、接受较大下载的用户 |
+| `Pry-v0.0.2-win-x64-minimal.zip` | Pry 程序与必要应用依赖 | [.NET 10 ASP.NET Core Runtime x64](https://dotnet.microsoft.com/download/dotnet/10.0)；本地推理再安装 llama.cpp 和模型 | 已有运行环境、使用在线兼容 API，或希望自行管理依赖的用户 |
+
+两种包解压后都从 `Pry.App.exe` 启动。`minimal` 启动时如提示缺少 `Microsoft.NETCore.App` 或 `Microsoft.AspNetCore.App` 10.x，请安装上表链接中 Windows x64 的 ASP.NET Core Runtime；不需要安装整套 .NET SDK。
+
+使用本地模型时，在解压目录打开 PowerShell：
+
+```powershell
+# 安装已验证的 CPU llama.cpp 运行时和 Qwen3-1.7B 入门模型
+.\scripts\install-local-runtime.ps1
+
+# 只安装 llama.cpp，模型由用户自行配置
+.\scripts\install-local-runtime.ps1 -RuntimeOnly
+```
+
+使用 OpenAI-compatible 在线服务时，可以跳过 llama.cpp 和本地模型安装，直接在应用设置中添加兼容服务。
+
+当前两种包都是“免安装 ZIP”，不是安装器。程序文件可随解压目录删除，用户数据仍统一保存在 `%LOCALAPPDATA%\PryCompanion`，以便更新版本时继承聊天记录。便携数据模式计划在后续版本设计。
 
 独立后端用于 API 调试或其他客户端接入，本身没有桌面窗口：
 
