@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Pry.App.PryMessengerWindow"
         Width="1180" Height="780" MinWidth="920" MinHeight="620"
-        Title="Pry" SystemDecorations="None" Background="#0C111B"
+        Title="Pry" Icon="/Assets/Pry.ico" SystemDecorations="None" Background="#0C111B"
         ExtendClientAreaToDecorationsHint="True" ExtendClientAreaChromeHints="NoChrome"
         KeyDown="Window_KeyDown">
   <Window.Styles>

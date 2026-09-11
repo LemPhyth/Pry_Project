@@ -4,6 +4,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using Microsoft.AspNetCore.Builder;
 using Pry.Api;
@@ -88,6 +89,7 @@ public sealed partial class App : Application
         var dialog = new Window
         {
             Title = "Pry 启动失败",
+            Icon = CreateApplicationIcon(),
             Width = 560,
             Height = 260,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
@@ -136,9 +138,14 @@ public sealed partial class App : Application
         open.Click += (_, _) => _mainWindow.ShowFromTray(); model.Click += async (_, _) => await ShowInfoAsync("模型链接信息", _mainWindow.ActiveModelLink);
         topmost.Click += (_, _) => { topmost.IsChecked = !topmost.IsChecked; _mainWindow.HostWindow.Topmost = topmost.IsChecked; }; exit.Click += async (_, _) => await AskExitAsync(desktop);
         var menu = new NativeMenu { Items = { open, model, new NativeMenuItemSeparator(), pet, topmost, new NativeMenuItemSeparator(), exit } };
-        var iconBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
-        _trayIcon = new TrayIcon { ToolTipText = "Pry 本地陪伴助手", Menu = menu, Icon = new WindowIcon(new MemoryStream(iconBytes)), IsVisible = true };
+        _trayIcon = new TrayIcon { ToolTipText = "Pry 本地陪伴助手", Menu = menu, Icon = CreateApplicationIcon(), IsVisible = true };
         _trayIcon.Clicked += (_, _) => _mainWindow.ShowFromTray(); TrayIcon.SetIcons(this, new TrayIcons { _trayIcon });
+    }
+
+    private static WindowIcon CreateApplicationIcon()
+    {
+        using var stream = AssetLoader.Open(new Uri("avares://Pry.App/Assets/Pry.ico"));
+        return new WindowIcon(stream);
     }
 
     private async Task AskExitAsync(IClassicDesktopStyleApplicationLifetime desktop)
