@@ -121,8 +121,9 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow
     private async Task ApplyBackgroundAsync()
     {
         AppBackgroundImage.Source = null; AppBackgroundImage.IsVisible = false;
+        DefaultBrandBackground.IsVisible = true;
         if (_preferences?.BackgroundUrl is not { Length: > 0 } url) return;
-        try { var content = await _api.DownloadAsync(url); AppBackgroundImage.Source = new Bitmap(new MemoryStream(content.Bytes)); AppBackgroundImage.Opacity = _preferences.Theme.BackgroundImageOpacity; AppBackgroundImage.IsVisible = true; } catch { }
+        try { var content = await _api.DownloadAsync(url); AppBackgroundImage.Source = new Bitmap(new MemoryStream(content.Bytes)); AppBackgroundImage.Opacity = _preferences.Theme.BackgroundImageOpacity; AppBackgroundImage.IsVisible = true; DefaultBrandBackground.IsVisible = false; } catch { }
     }
 
     private void ApplyChromeMaterial()

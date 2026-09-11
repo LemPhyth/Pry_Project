@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 
 namespace Pry.App;
 
@@ -24,6 +26,7 @@ internal sealed class PryMessengerConfirmDialog : Window
         ExtendClientAreaChromeHints = Avalonia.Platform.ExtendClientAreaChromeHints.NoChrome;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Background = Brush.Parse("#0E1623");
+        Icon = CreateApplicationIcon();
 
         var close = Button("×", Brushes.Transparent, Brush.Parse("#D7DFEC"));
         close.Width = 40; close.Height = 40; close.Padding = new Thickness(0); close.FontSize = 17;
@@ -34,7 +37,19 @@ internal sealed class PryMessengerConfirmDialog : Window
             Child = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(18, 0, 5, 0),
-                Children = { new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, close }
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal, Spacing = 9, VerticalAlignment = VerticalAlignment.Center,
+                        Children =
+                        {
+                            CreateLogoImage(22),
+                            new TextBlock { Text = title, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }
+                        }
+                    },
+                    close
+                }
             }
         };
         Grid.SetColumn(close, 1);
@@ -81,4 +96,16 @@ internal sealed class PryMessengerConfirmDialog : Window
         Content = text, Background = background, Foreground = foreground, BorderThickness = new Thickness(0),
         CornerRadius = new CornerRadius(11), Padding = new Thickness(16, 9), MinHeight = 38
     };
+
+    private static Image CreateLogoImage(double size)
+    {
+        using var stream = AssetLoader.Open(new Uri("avares://Pry.App/Assets/P_logo_2048.png"));
+        return new Image { Width = size, Height = size, Stretch = Stretch.Uniform, Source = new Bitmap(stream) };
+    }
+
+    private static WindowIcon CreateApplicationIcon()
+    {
+        using var stream = AssetLoader.Open(new Uri("avares://Pry.App/Assets/Pry.ico"));
+        return new WindowIcon(stream);
+    }
 }

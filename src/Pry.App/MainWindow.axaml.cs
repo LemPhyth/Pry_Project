@@ -8,6 +8,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
@@ -540,6 +541,7 @@ public sealed partial class MainWindow : Window, IPryMainWindow
         SidebarGlassTint.Background = Brush.Parse(panelColor); HeaderGlassTint.Background = Brush.Parse(panelColor); ComposerGlassTint.Background = Brush.Parse(panelColor);
         ConversationList.Background = Brushes.Transparent; MainSidebarSplitter.Background = Brushes.Transparent;
         ChatBackgroundImage.IsVisible = hasBackground;
+        DefaultBrandBackground.IsVisible = !hasBackground;
         ChatBackgroundImage.Opacity = Math.Clamp(theme.BackgroundImageOpacity, 0, 1);
         ChatBackgroundDim.IsVisible = hasBackground;
         ChatBackgroundDim.Opacity = Math.Clamp(theme.BackgroundDimOpacity, 0, .85);
@@ -655,7 +657,18 @@ public sealed partial class MainWindow : Window, IPryMainWindow
         }
         var glassEnabled = hasBackground && theme.UseGlassEffects;
         var tint = glassEnabled ? Brush.Parse(light ? "#5CE3EBF1" : "#5C17212B") : Brush.Parse(light ? "#E3EBF1" : "#17212B");
-        var chromeTitle = new TextBlock { Text = "Pry", FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        var chromeTitleText = new TextBlock { Text = "Pry", FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
+        var chromeTitle = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                CreateBrandLogoImage(22),
+                chromeTitleText
+            }
+        };
         var minimize = new Button { Content = "—", Width = 30, Height = 26, MinWidth = 0, Padding = new Thickness(0) };
         var maximize = new Button { Content = "□", Width = 30, Height = 26, MinWidth = 0, Padding = new Thickness(0) };
         var close = new Button { Content = "×", Width = 30, Height = 26, MinWidth = 0, Padding = new Thickness(0) };
@@ -717,13 +730,21 @@ public sealed partial class MainWindow : Window, IPryMainWindow
             dialog.TransparencyLevelHint = theme.BackgroundBlurRadius > .5
                 ? [WindowTransparencyLevel.Blur, WindowTransparencyLevel.Transparent]
                 : [WindowTransparencyLevel.Transparent];
-            chromeTitle.Text = dialog.Title ?? "Pry";
+            chromeTitleText.Text = dialog.Title ?? "Pry";
         };
         root.AddHandler(PointerPressedEvent, (_, args) =>
         {
             if (TopLevel.GetTopLevel(root) is Window dialog) TryBeginWindowResize(dialog, root, args);
         }, RoutingStrategies.Tunnel, handledEventsToo: true);
         return root;
+    }
+
+    private static Image CreateBrandLogoImage(double size)
+    {
+        using var stream = AssetLoader.Open(new Uri("avares://Pry.App/Assets/P_logo_2048.png"));
+        var image = new Image { Width = size, Height = size, Stretch = Stretch.Uniform, Source = new Bitmap(stream) };
+        RenderOptions.SetBitmapInterpolationMode(image, BitmapInterpolationMode.HighQuality);
+        return image;
     }
 
     private void ApplyUiSizing(ThemePreferences theme)

@@ -6,6 +6,9 @@
         DragDrop.AllowDrop="True"
         DragDrop.DragOver="Window_DragOver" DragDrop.Drop="Window_Drop">
   <Grid x:Name="ThemeCanvas" Background="{DynamicResource PryCanvasBrush}" RowDefinitions="Auto,*">
+    <Image x:Name="DefaultBrandBackground" Grid.RowSpan="2" Source="/Assets/P_logo_2048.png"
+           Width="420" Height="420" Opacity="0.075" Stretch="Uniform" IsHitTestVisible="False"
+           HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapInterpolationMode="HighQuality"/>
     <Image x:Name="ChatBackgroundImage" Grid.RowSpan="2" IsVisible="False" Stretch="UniformToFill"/>
     <Border x:Name="ChatBackgroundDim" Grid.RowSpan="2" Background="#0E1621" Opacity="0.34" IsHitTestVisible="False"/>
 
@@ -14,9 +17,8 @@
             PointerPressed="WindowChrome_PointerPressed">
       <Grid ColumnDefinitions="*,Auto" Margin="12,0,5,0">
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Border Width="22" Height="22" CornerRadius="11" Background="{DynamicResource PryAccentBrush}">
-            <TextBlock Text="P" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource PryAccentTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
+          <Image Width="23" Height="23" Source="/Assets/P_logo_2048.png" Stretch="Uniform"
+                 RenderOptions.BitmapInterpolationMode="HighQuality"/>
           <TextBlock Text="Pry" FontWeight="SemiBold" VerticalAlignment="Center"/>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
