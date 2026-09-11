@@ -1,6 +1,16 @@
-# Pry 本地虚拟陪伴助手原型
+# Pry 本地虚拟陪伴助手
 
-这是一个 Windows 优先、可扩展到 Linux/Android 的本地虚拟陪伴助手最小原型。当前包含 Avalonia 桌面 UI、固定角色定义、SQLite 对话与长期记忆、Prompt Builder、OpenAI-compatible 流式模型接口、图片消息入口、可管理的表情包库，以及 Embedding、图片生成、语音识别、Live2D 和 Agent 工具占位接口。
+Pry 是一个 Windows 优先、本地优先的虚拟陪伴应用。当前版本提供 Messenger 与经典卡片两套 Avalonia 桌面界面、SQLite 对话与长期记忆、可编辑角色卡、附件和表情包、OpenAI-compatible 流式模型、本地 llama.cpp 文字/图片理解以及本地或在线语音识别。
+
+## 当前状态
+
+- 当前正式版本为 `v0.0.2`，项目已从最小原型进入可分发预览阶段。
+- 业务数据、模型生命周期和服务端策略由内嵌 `Pry.Api` 负责；桌面端通过 `Pry.Client` 使用 HTTP/JSON/SSE，不直接读写 SQLite 或管理模型进程。
+- Messenger 与经典窗口的集中人工验收已经完成，不再把历史上的笼统“待人工验收”视为当前阻塞项。后续发现的视觉、DPI、交互或设备问题会按独立可复现缺陷处理。
+- 当前开发版已经接入正式 Pry 图标；现有 v0.0.2 下载包早于该改动，下一补丁版本重新打包后才会携带新图标。
+- 尚未完成的主要工程项是统一下一发行基线、正式安装器与签名、长对话虚拟化、诊断导出和桌宠渲染。
+
+当前任务和发行基线见 `PROJECT_PLAN.md`。开发者应先阅读 [前后端文档索引](docs/README.md)；已经发生过的集成故障及防复发规则见 [工程踩坑记录](docs/engineering-pitfalls.md)。
 
 ## 从源码构建
 
@@ -82,7 +92,7 @@ Remove-Item Env:Pry__DataDirectory
 | `tests` | xUnit 自动化测试 |
 | `scripts` | 仓库校验、环境安装和 Release 打包 |
 
-详细边界见 [项目架构](docs/architecture.md)，HTTP 约定见 [API v1](docs/api-v1.md)。
+所有前后端开发从 [文档索引](docs/README.md) 开始；详细边界见 [项目架构](docs/architecture.md)，HTTP 约定见 [API v1](docs/api-v1.md)。
 
 ## 选择 Release 发行包
 
@@ -139,7 +149,7 @@ dotnet run --project src/Pry.Api/Pry.Api.csproj
 
 独立后端默认仅监听 `http://127.0.0.1:5078`，复用原有 `%LOCALAPPDATA%/PryCompanion/memory.db`。不要在桌面程序运行时再启动独立后端并同时操作同一数据目录。接口约定见 [API v1](docs/api-v1.md)，拆分边界与迁移顺序见 [项目架构](docs/architecture.md)。
 
-跨进程 DTO 位于 `Pry.Contracts`，桌面端和未来桌宠共用的 HTTP/SSE 客户端位于 `Pry.Client`。迁移完成前请勿同时使用旧桌面业务路径和 API 修改同一会话。
+跨边界 DTO 位于 `Pry.Contracts`，桌面端和未来桌宠共用的 HTTP/SSE 客户端位于 `Pry.Client`。当前桌面业务读写已经统一通过 API；不得重新引入客户端直写 SQLite 或配置文件的路径。
 
 应用数据保存在 `%LOCALAPPDATA%/PryCompanion/memory.db`。角色定义和模型配置位于输出目录的 `Resources` 中；正式角色内容尚需作者填写。
 
@@ -157,11 +167,12 @@ dotnet run --project src/Pry.Api/Pry.Api.csproj
 
 ## 当前边界
 
-- 已实现：桌面聊天界面、流式请求、图片上传、SQLite 历史、简单长期记忆、角色定义校验、模型能力路由。
-- 已实现：内置与用户表情包目录、导入/编辑/删除、受约束的模型自主选择协议，以及与 Live2D 共用的情绪表现指令。
-- 接口已预留：Embedding、图片生成、语音识别、Live2D、Agent 工具。
-- 开发者可在本机安装模型、SenseVoice/sherpa-onnx 语音识别和 CUDA llama.cpp 运行时；这些大型本机文件不进入 Git。
-- 尚未包含：正式安装器和最终角色美术素材。
+- 已实现：两套桌面窗口、流式聊天、消息分支与撤销、附件、角色卡、长期记忆、表情包、主题、快捷键和用户资料。
+- 已实现：本地/在线文字模型、独立视觉模型或原生多模态模型、本地/在线语音识别、模型进程复用与故障恢复。
+- 当前部署仍是 `Pry.App` 单进程内嵌 `Pry.Api`；普通用户只启动 `Pry.App.exe`。退出桌面程序会同时关闭内嵌后端及其拥有的模型进程。
+- API 只支持本机回环单用户模式。任何局域网或公网访问都必须先增加认证、授权、TLS、限流和来源策略。
+- 开发者可在本机安装模型、SenseVoice/sherpa-onnx 和 CPU/CUDA llama.cpp；这些大型本机文件不进入 Git。
+- 尚未完成：正式安装器和签名、长对话虚拟化、诊断导出、完整桌宠渲染及最终角色美术素材。
 
 ## 许可与素材权利
 
