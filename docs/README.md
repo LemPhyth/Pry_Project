@@ -12,6 +12,8 @@
 | [`api-v1.md`](api-v1.md) | 路径、Method、DTO、状态码、错误和 SSE | 稳定接口契约 |
 | [`gpu-autotuning.md`](gpu-autotuning.md) | 设备投影、上下文档位和降档策略 | 模型性能策略 |
 | [`sticker-library.md`](sticker-library.md) | 表情资源、稳定 ID 和表现约束 | 表情包格式 |
+| [`upstream-license-compatibility.md`](upstream-license-compatibility.md) | 五个上游项目的许可实测、Pry 代码许可（GPL-3.0-only）与照搬白名单、留痕程序 | 许可与复用边界的权威文本；谁可抄源码文本、谁只可作机制参考以此为准 |
+| [`research/README.md`](research/README.md) | 五个成熟开源项目的源码研究资料包入口与证据边界 | 机制参考；开工前必读，照搬边界以 `upstream-license-compatibility.md` 为准 |
 | [`engineering-pitfalls.md`](engineering-pitfalls.md) | 已发生故障、根因和防复发规则 | 集成与排障经验 |
 | [`CHANGELOG.md`](../CHANGELOG.md) | 面向用户和开发者的版本变化 | 已发布及待发布变更 |
 

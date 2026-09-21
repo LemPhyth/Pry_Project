@@ -1,6 +1,6 @@
 # Third-party notices
 
-Pry depends on third-party software and can optionally be used with separately downloaded runtimes and model weights. Each component remains subject to its own license; Pry's Apache-2.0 license does not replace those terms.
+Pry depends on third-party software and can optionally be used with separately downloaded runtimes and model weights. Each component remains subject to its own license; Pry's GPL-3.0-only code license does not replace those terms.
 
 ## Direct application dependencies
 
@@ -45,3 +45,27 @@ Copies of the licenses currently bundled for optional components are stored besi
 The complete Qwen Research and FunASR model license texts are stored beside this notice. Apache-2.0 is included at the package root and with Qwen3-1.7B; the llama.cpp MIT text is also stored beside this notice. NVIDIA's current CUDA Toolkit EULA is linked above and applies to its redistributable DLLs.
 
 The v0.0.2 public package does not contain model weights. Any future package that contains Qwen2.5-VL-3B is restricted to non-commercial distribution under its model license.
+
+
+## Upstream code reused in Pry
+
+Pry borrows architecture and mechanisms from researched projects. Verbatim or
+line-by-line code reuse is restricted to the authorized list in
+`docs/upstream-license-compatibility.md` §4.4 (author decision 2026-09-21):
+
+| Upstream | License | Code reuse |
+|---|---|---|
+| `Mai-with-u/MaiBot` (MaiCore) | GPL-3.0 | ✅ allowed (this project is GPL-3.0-only); check the per-directory LICENSE of the exact path before porting |
+| `satorijs/satori` | MIT | ✅ allowed with the copyright/notice text retained under `licenses/upstream/` |
+| `AstrBotDevs/AstrBot` | AGPL-3.0 | ❌ mechanism reference only — AGPL code cannot be placed under a GPL-3.0-only work |
+| `KroMiose/nekro-agent` | custom "Nekro Agent 开源协议 V1.1" | ❌ mechanism and market research only |
+| `menglimi/astrbot_plugin_private_companion` | none published | ❌ mechanism and market research only |
+
+Every file that is copied or ported must carry a provenance header naming
+`<repo>@<commit>:<path>`, retain the upstream copyright notice, and have its
+upstream license text stored under `licenses/upstream/<repo>_<commit>/`.
+Release packaging must include that directory.
+
+| Pry file | Upstream source (`repo@commit:path`) | Type | Verified |
+|---|---|---|---|
+| _(none yet — first port adds a row here)_ | | | |
