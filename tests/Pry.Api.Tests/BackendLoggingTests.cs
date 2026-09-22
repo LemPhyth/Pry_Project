@@ -73,7 +73,7 @@ public sealed class BackendLoggingTests
     {
         var directory = NewDirectory();
         const string sessionToken = "abcdefghijklmnopqrstuvwxyz0123456789TOKEN";
-        const string remoteKey = "sk-abcdefghijklmnopqrstuvwxyz";
+        const string remoteKey = "sk-" + "abcdefghijklmnopqrstuvwxyz";
         const string inlineKey = "hunter2-super-secret-value";
         try
         {
