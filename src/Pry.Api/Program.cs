@@ -6,6 +6,7 @@ await app.RunAsync();
 
 namespace Pry.Api
 {
+    using Logging;
     using Middleware;
     using Services;
     using Pry.Core.Memory;
@@ -19,7 +20,7 @@ namespace Pry.Api
             configure?.Invoke(builder);
             var listenUrl = builder.Configuration["Pry:Url"] ?? "http://127.0.0.1:5078";
             if (!Uri.TryCreate(listenUrl, UriKind.Absolute, out var listenUri) || !listenUri.IsLoopback)
-                throw new InvalidOperationException("Pry.Api 在认证实现前只允许监听回环地址。");
+                throw new InvalidOperationException("本地后端只允许监听回环地址；对外暴露需要 PLAT-005 之外的认证与传输层方案。");
             builder.WebHost.UseUrls(listenUrl);
             builder.Services.AddProblemDetails();
             builder.Services.AddControllers()
@@ -40,11 +41,14 @@ namespace Pry.Api
                     return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(problem);
                 };
             });
-            var dataDirectory = builder.Configuration["Pry:DataDirectory"];
-            if (string.IsNullOrWhiteSpace(dataDirectory))
-                dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion");
-            builder.Services.AddSingleton(new MemoryDatabase(Path.Combine(Path.GetFullPath(dataDirectory), "memory.db")));
+            var dataDirectory = RuntimeDescriptorService.ResolveDataDirectory(builder.Configuration);
+            // 持久层的日志器由宿主注入（PLAT-006）：Core 只开口，去哪里由这里决定。
+            builder.Services.AddSingleton(provider => new MemoryDatabase(Path.Combine(dataDirectory, "memory.db"),
+                provider.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()
+                    .CreateLogger<MemoryDatabase>()));
+            builder.Services.AddSingleton<BackendSessionToken>();
             builder.Services.AddSingleton<ConversationApplicationService>();
+            builder.Services.AddSingleton<ConversationReadService>();
             builder.Services.AddSingleton<MemoryApplicationService>();
             builder.Services.AddSingleton<ConversationFolderApplicationService>();
             builder.Services.AddSingleton<MediaAssetStore>();
@@ -52,18 +56,51 @@ namespace Pry.Api
             builder.Services.AddSingleton<StickerApplicationService>();
             builder.Services.AddSingleton<SpeechApplicationService>();
             builder.Services.AddSingleton<ModelProcessRegistry>();
+            builder.Services.AddSingleton<EmbeddingProcessRegistry>();
             builder.Services.AddSingleton<ModelPerformancePolicy>();
+            builder.Services.AddSingleton<LocalModelDiscoveryService>();
             builder.Services.AddSingleton<BackendRuntime>();
             builder.Services.AddSingleton<ConversationSessionService>();
+            builder.Services.AddSingleton<CharacterInteractionProfileService>();
+            builder.Services.AddSingleton(TimeProvider.System);
+            builder.Services.AddSingleton<CompanionOperationCoordinator>();
+            builder.Services.AddSingleton<ProactivePolicyService>();
+            builder.Services.AddSingleton<CompanionActivityService>();
+            builder.Services.AddSingleton<IProactiveMessageGenerator, ProactiveMessageGenerator>();
+            builder.Services.AddSingleton<ProactiveScheduler>();
+            builder.Services.AddSingleton<MemoryEmbeddingService>();
             builder.Services.AddHostedService(sp => sp.GetRequiredService<BackendRuntime>());
+            builder.Services.AddHostedService(sp => sp.GetRequiredService<MemoryEmbeddingService>());
+            builder.Services.AddHostedService(sp => sp.GetRequiredService<ProactiveScheduler>());
             builder.Services.AddHostedService<MediaCleanupService>();
+            builder.Services.AddHostedService<ProtocolEventCleanupService>();
+            builder.Services.AddHostedService<RuntimeDescriptorService>();
             builder.Services.AddHealthChecks();
-            builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options => options.MultipartBodyLengthLimit = long.MaxValue);
+            // 上传天花板（PLAT-006）：与 MediaController 端点特性同值。特性管这一个端点，
+            // 全局 FormOptions 兜住其它表单解析路径，两侧都留出 multipart 余量。
+            builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+                options.MultipartBodyLengthLimit = MediaUploadLimits.CeilingRequestBodyBytes);
+            // 本机滚动日志与敏感字段过滤器（PLAT-006）。注册成 ILoggerProvider 而不是 AddProvider，
+            // 测试里的 ClearProviders() 才照样能把它摘掉。
+            var logRedactor = new LogRedactor();
+            builder.Services.AddSingleton(logRedactor);
+            builder.Services.AddSingleton<ILoggerProvider>(_ => new RollingFileLoggerProvider(
+                RollingFileLogOptions.Read(builder.Configuration, dataDirectory), logRedactor));
             var app = builder.Build();
+            // 会话令牌一旦出现在异常原文里就会被写出去，所以登记发生在第一个请求之前。
+            logRedactor.RegisterSecret(app.Services.GetRequiredService<BackendSessionToken>().Value);
+            // 令牌门排在协商之前：未授权的探测不该先学到服务端的协议版本与能力清单。
+            app.UseMiddleware<SessionTokenMiddleware>();
+            app.UseMiddleware<ProtocolNegotiationMiddleware>();
             app.UseMiddleware<ApiExceptionMiddleware>();
             app.MapHealthChecks("/health");
             app.MapControllers();
             await app.Services.GetRequiredService<MemoryDatabase>().InitializeAsync(token);
+            // 上个进程遗留的未投递计划只清账、绝不重放：重启后不会重复发出旧消息。
+            var swept = await Pry.Core.Runtime.ConversationRuntime.RecoverStalePlansAsync(
+                new Pry.Api.Runtime.DatabaseRuntimeStore(app.Services.GetRequiredService<MemoryDatabase>()), token);
+            if (swept.Count > 0) app.Services.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()
+                .CreateLogger("Pry.Api.Runtime").LogInformation("已作废 {Count} 个上次进程遗留的投递计划", swept.Count);
             return app;
         }
     }

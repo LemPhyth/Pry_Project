@@ -7,7 +7,9 @@ using Pry.Core.Models;
 namespace Pry.Api.Services;
 
 public sealed partial class ConfigurationApplicationService(IConfiguration configuration, BackendRuntime runtime,
-    ConversationSessionService sessions, MediaAssetStore media, MemoryDatabase database)
+    ConversationSessionService sessions, MediaAssetStore media, MemoryDatabase database,
+    MemoryEmbeddingService? embeddings = null, CharacterInteractionProfileService? interactionProfiles = null,
+    CompanionOperationCoordinator? operations = null)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -29,6 +31,7 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
 
     public async Task DeleteCharacterAsync(string id, CancellationToken token)
     {
+        using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
         await _gate.WaitAsync(token);
         try
         {
@@ -43,7 +46,11 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
             if (fallback is null)
                 throw new ResourceConflictException("character", id, "至少需要保留一张可用角色卡。");
             var backup = path + $".deleting-{Guid.NewGuid():N}";
+            var interactionPath = interactionProfiles?.GetOverridePath(id);
+            var interactionBackup = interactionPath is not null && File.Exists(interactionPath)
+                ? interactionPath + $".deleting-{Guid.NewGuid():N}" : null;
             File.Move(path, backup);
+            if (interactionBackup is not null) File.Move(interactionPath!, interactionBackup);
             try
             {
                 await sessions.ReconfigureAsync(async ct =>
@@ -54,10 +61,13 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
                     await runtime.RefreshContentAsync(ct);
                 }, token);
                 File.Delete(backup);
+                if (interactionBackup is not null) File.Delete(interactionBackup);
             }
             catch
             {
                 if (File.Exists(backup) && !File.Exists(path)) File.Move(backup, path);
+                if (interactionBackup is not null && File.Exists(interactionBackup) && !File.Exists(interactionPath!))
+                    File.Move(interactionBackup, interactionPath!);
                 throw;
             }
         }
@@ -66,19 +76,99 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
 
     public ClientPreferencesResponse GetPreferences() => ToResponse(runtime.Preferences);
 
+    public async Task<EmbeddingStatusResponse> UpdateEmbeddingSelectionAsync(UpdateEmbeddingSettingsRequest request,
+        CancellationToken token)
+    {
+        string? modelId = null;
+        if (request.Enabled)
+        {
+            modelId = ContractValidation.Required(request.ModelId, "modelId", 128);
+            var profile = runtime.ModelProfiles.FirstOrDefault(item => item.Id == modelId);
+            if (profile is null || !profile.Capabilities.Embeddings || !runtime.IsModelAvailable(profile))
+                throw new ApiValidationException("modelId", "模型不存在、文件不可用或不支持 Embedding");
+        }
+        await _gate.WaitAsync(token);
+        try
+        {
+            var updated = runtime.Preferences with { ActiveEmbeddingModelId = modelId };
+            await JsonConfiguration.SaveAsync(PreferencesPath, updated, token);
+            await runtime.ApplyPreferencesSnapshotAsync(updated, token);
+            return embeddings is null
+                ? new EmbeddingStatusResponse(modelId is not null, modelId is null ? "disabled" : "idle", modelId, 0, 0, null, null, false)
+                : await embeddings.GetStatusAsync(token);
+        }
+        finally { _gate.Release(); }
+    }
+
     public IReadOnlyList<ModelProfileResponse> GetModels() => runtime.ModelProfiles.Select(profile =>
     {
         var tuning = runtime.Preferences.ModelTunings.TryGetValue(profile.Id, out var value) ? value : null;
         var effective = ApplyTuning(profile, tuning);
-        return new ModelProfileResponse(profile.Id, profile.DisplayName, profile.Provider, profile.ModelName,
+        var response = new ModelProfileResponse(profile.Id, profile.DisplayName, profile.Provider, profile.ModelName,
             profile.Capabilities, effective.ContextSize, effective.MaxOutputTokens, effective.Temperature,
             effective.GpuLayers, effective.ComputeDevice, effective.EnableThinking,
             profile.Id == runtime.ActiveTextModelId, profile.Id == runtime.ActiveVisionModelId,
             runtime.Preferences.CustomModels.Any(x => x.Id == profile.Id));
+        var tags = runtime.Preferences.ModelTags.TryGetValue(profile.Id, out var userTags) ? userTags : profile.Tags;
+        return response with
+        {
+            Source = ModelSource(profile), Available = runtime.IsModelAvailable(profile), Tags = tags,
+            SelectedForEmbedding = profile.Id == runtime.ActiveEmbeddingModelId
+        };
     }).ToArray();
+
+    public async Task<ModelScanResponse> ScanModelsAsync(CancellationToken token)
+    {
+        await _gate.WaitAsync(token);
+        try
+        {
+            var result = await runtime.ScanModelsAsync(token);
+            return new ModelScanResponse(result.FoundCount, result.AddedCount, GetModels());
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<ModelProfileResponse> UpdateModelTagsAsync(string id, UpdateModelTagsRequest request,
+        CancellationToken token)
+    {
+        ValidateId(id);
+        _ = runtime.ModelProfiles.FirstOrDefault(x => x.Id == id) ?? throw new ResourceNotFoundException("model", id);
+        var tags = NormalizeTags(request.Tags);
+        await _gate.WaitAsync(token);
+        try
+        {
+            var overrides = runtime.Preferences.ModelTags.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal);
+            overrides[id] = tags;
+            var updated = runtime.Preferences with { ModelTags = overrides };
+            await JsonConfiguration.SaveAsync(PreferencesPath, updated, token);
+            await runtime.ApplyPreferencesSnapshotAsync(updated, token);
+            return GetModels().Single(x => x.Id == id);
+        }
+        finally { _gate.Release(); }
+    }
 
     public Task<ModelProfileResponse> CreateCustomModelAsync(SaveCustomModelRequest request, CancellationToken token) =>
         SaveCustomModelAsync($"custom-{Guid.NewGuid():N}", request, true, token);
+
+    public Task<ModelProfileResponse> CreateNetworkModelAsync(SaveNetworkModelRequest request, CancellationToken token) =>
+        SaveCustomModelAsync($"custom-{Guid.NewGuid():N}", ToCustomRequest(request), true, token);
+
+    public Task<ModelProfileResponse> UpdateNetworkModelAsync(string id, SaveNetworkModelRequest request,
+        CancellationToken token)
+    {
+        ValidateId(id);
+        if (!runtime.Preferences.CustomModels.Any(x => x.Id == id && x.Provider == "openai-compatible"))
+            throw new ResourceNotFoundException("network_model", id);
+        return SaveCustomModelAsync(id, ToCustomRequest(request), false, token);
+    }
+
+    public async Task DeleteNetworkModelAsync(string id, CancellationToken token)
+    {
+        ValidateId(id);
+        if (!runtime.Preferences.CustomModels.Any(x => x.Id == id && x.Provider == "openai-compatible"))
+            throw new ResourceNotFoundException("network_model", id);
+        await DeleteCustomModelAsync(id, token);
+    }
 
     public Task<SpeechModelResponse> CreateSpeechModelAsync(SaveSpeechModelRequest request, CancellationToken token) =>
         SaveSpeechModelAsync($"speech-{Guid.NewGuid():N}", request, true, token);
@@ -127,13 +217,14 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         try
         {
             if (!runtime.Preferences.CustomModels.Any(x => x.Id == id)) throw new ResourceNotFoundException("custom_model", id);
-            if (id == runtime.ActiveTextModelId || id == runtime.ActiveVisionModelId)
-                throw new ApiValidationException("id", "不能删除当前选中的模型，请先切换模型");
+            if (id == runtime.ActiveTextModelId || id == runtime.ActiveVisionModelId || id == runtime.ActiveEmbeddingModelId)
+                throw new ResourceConflictException("model", id, "不能删除当前选中的模型，请先切换或停用该模型。");
             var updated = runtime.Preferences with { CustomModels = runtime.Preferences.CustomModels.Where(x => x.Id != id).ToArray() };
             await sessions.ReconfigureAsync(async ct =>
             {
                 await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct); await runtime.ReloadAsync(ct);
             }, token);
+            if (embeddings is not null) await embeddings.ResetAsync();
         }
         finally { _gate.Release(); }
     }
@@ -150,6 +241,7 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
                 await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct);
                 await runtime.ReloadAsync(ct);
             }, token);
+            if (embeddings is not null) await embeddings.ResetAsync();
             return GetModels();
         }
         finally { _gate.Release(); }
@@ -215,6 +307,7 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
                 if (reloadModels) await runtime.ReloadAsync(ct);
                 else await runtime.ApplyPreferencesSnapshotAsync(updated, ct);
             }, token);
+            if (reloadModels && embeddings is not null) await embeddings.ResetAsync();
             return new SaveSettingsResponse(ToResponse(runtime.Preferences), GetModels())
             {
                 RuntimeAction = reloadModels ? "models_reloaded" : "settings_applied"
@@ -332,7 +425,10 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
             MainWindowLayoutMode = value.Theme.MainWindowLayoutMode
         },
         string.IsNullOrWhiteSpace(value.Theme.BackgroundImagePath) ? null : "/api/v1/appearance/background",
-        string.IsNullOrWhiteSpace(value.Theme.UserAvatarPath) ? null : "/api/v1/appearance/user-avatar");
+        string.IsNullOrWhiteSpace(value.Theme.UserAvatarPath) ? null : "/api/v1/appearance/user-avatar")
+    {
+        ActiveEmbeddingModelId = value.ActiveEmbeddingModelId
+    };
 
     private static ThemePreferences ApplyTheme(ThemePreferences current, ClientThemePreferences value) => current with
     {
@@ -406,11 +502,13 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
     private UserPreferences ApplyModelSelection(UserPreferences current, UpdateModelSelectionRequest request)
     {
         var profiles = runtime.ModelProfiles.ToDictionary(x => x.Id, StringComparer.Ordinal);
-        if (!profiles.TryGetValue(request.ActiveModelId, out var text) || !text.Capabilities.Text)
-            throw new ApiValidationException("activeModelId", "文字模型不存在或不支持文字输入");
+        if (!profiles.TryGetValue(request.ActiveModelId, out var text) || !text.Capabilities.Text ||
+            (current.DiscoveredModels.Any(x => x.Id == text.Id) && !runtime.IsModelAvailable(text)))
+            throw new ApiValidationException("activeModelId", "文字模型不存在、文件不可用或不支持文字输入");
         if (request.ActiveVisionModelId is { } visionId &&
-            (!profiles.TryGetValue(visionId, out var vision) || !vision.Capabilities.Vision))
-            throw new ApiValidationException("activeVisionModelId", "视觉模型不存在或不支持图片输入");
+            (!profiles.TryGetValue(visionId, out var vision) || !vision.Capabilities.Vision ||
+             (current.DiscoveredModels.Any(x => x.Id == vision.Id) && !runtime.IsModelAvailable(vision))))
+            throw new ApiValidationException("activeVisionModelId", "视觉模型不存在、文件不可用或不支持图片输入");
         if (request.ActiveSpeechModelId is { } speechId && !runtime.SpeechProfiles.Any(x => x.Id == speechId))
             throw new ApiValidationException("activeSpeechModelId", "语音模型不存在");
         var tunings = (request.ModelTunings ?? current.ModelTunings)
@@ -546,6 +644,9 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
                 modelPath = ValidateGguf(request.LocalModelPath ?? (existing?.Provider == provider ? existing.ModelPath : null), "localModelPath", required: true);
                 mmprojPath = ValidateGguf(request.LocalMmprojPath ?? (existing?.Provider == provider ? existing.MmprojPath : null), "localMmprojPath", required: false);
             }
+            var capabilities = ValidateCapabilities(request.Capabilities);
+            if (provider == "local-llama" && capabilities.Vision && string.IsNullOrWhiteSpace(mmprojPath))
+                throw new ApiValidationException("localMmprojPath", "本地视觉模型必须配置可用的 mmproj GGUF 文件");
             var tuning = new ModelTuningPreferences { ContextSize = request.ContextSize, MaxOutputTokens = request.MaxOutputTokens,
                 Temperature = request.Temperature, GpuLayers = request.GpuLayers, ComputeDevice = request.ComputeDevice,
                 EnableThinking = request.EnableThinking };
@@ -554,10 +655,12 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
             {
                 Id = id, DisplayName = ContractValidation.Required(request.DisplayName, "displayName", 150),
                 Provider = provider, ModelName = ContractValidation.Required(request.ModelName, "modelName", 200),
-                BaseUrl = baseUrl, ModelPath = modelPath, MmprojPath = mmprojPath, Capabilities = request.Capabilities,
+                BaseUrl = baseUrl, ModelPath = modelPath, MmprojPath = mmprojPath, Capabilities = capabilities,
                 ContextSize = request.ContextSize, MaxOutputTokens = request.MaxOutputTokens, Temperature = request.Temperature,
                 GpuLayers = request.GpuLayers, ComputeDevice = Limit(request.ComputeDevice, "computeDevice", 200),
-                EnableThinking = request.EnableThinking
+                EnableThinking = request.EnableThinking,
+                Tags = NormalizeTags(request.Tags ?? existing?.Tags ??
+                    (provider == "openai-compatible" ? ["network", "openai-compatible"] : ["local", "gguf", "custom"]))
             };
             var models = runtime.Preferences.CustomModels.Where(x => x.Id != id).Append(profile).ToArray();
             var updated = runtime.Preferences with { CustomModels = models };
@@ -565,10 +668,16 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
             {
                 await JsonConfiguration.SaveAsync(PreferencesPath, updated, ct); await runtime.ReloadAsync(ct);
             }, token);
+            if (embeddings is not null) await embeddings.ResetAsync();
             return GetModels().Single(x => x.Id == id);
         }
         finally { _gate.Release(); }
     }
+
+    private static SaveCustomModelRequest ToCustomRequest(SaveNetworkModelRequest request) => new(
+        request.DisplayName, "openai-compatible", request.ModelName, request.BaseUrl, null, null,
+        request.Capabilities, request.ContextSize, request.MaxOutputTokens, request.Temperature,
+        request.GpuLayers, request.ComputeDevice, request.EnableThinking) { Tags = request.Tags };
 
     private async Task<SpeechModelResponse> SaveSpeechModelAsync(string id, SaveSpeechModelRequest request,
         bool creating, CancellationToken token)
@@ -641,6 +750,34 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         if (stream.Read(header) != 4 || System.Text.Encoding.ASCII.GetString(header) != "GGUF")
             throw new ApiValidationException(field, "文件头不是有效的 GGUF");
         return Path.GetFullPath(value);
+    }
+
+    private string ModelSource(ModelProfile profile)
+    {
+        if (runtime.Preferences.DiscoveredModels.Any(x => x.Id == profile.Id)) return "local";
+        if (runtime.Preferences.CustomModels.Any(x => x.Id == profile.Id))
+            return profile.Provider == "openai-compatible" ? "network" : "custom-local";
+        return "built-in";
+    }
+
+    private static IReadOnlyList<string> NormalizeTags(IEnumerable<string>? values)
+    {
+        var tags = (values ?? []).Select(x => x?.Trim() ?? "").Where(x => x.Length > 0)
+            .Select(x => x.ToLowerInvariant()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (tags.Length > 20) throw new ApiValidationException("tags", "标签数量不能超过 20 个");
+        if (tags.Any(x => x.Length > 32 || x.Any(char.IsControl)))
+            throw new ApiValidationException("tags", "单个标签长度不能超过 32，且不能包含控制字符");
+        return tags;
+    }
+
+    private static ModelCapabilities ValidateCapabilities(ModelCapabilities? value)
+    {
+        if (value is null) throw new ApiValidationException("capabilities", "必须声明模型能力");
+        if (!value.Text && !value.Vision && !value.Embeddings && !value.ImageGeneration && !value.ToolCalling)
+            throw new ApiValidationException("capabilities", "至少需要声明一种模型能力");
+        if (value.Vision && !value.Text)
+            throw new ApiValidationException("capabilities.vision", "视觉对话模型必须同时支持文本输入");
+        return value;
     }
 
     private string DataDirectory => Path.GetFullPath(configuration["Pry:DataDirectory"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion"));

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Pry.Contracts;
 using Pry.Api.Services;
@@ -7,10 +6,9 @@ using Pry.Core.Models;
 namespace Pry.Api.Controllers;
 
 [ApiController, Route("api/v1")]
-public sealed class ChatController(ConversationSessionService sessions, BackendRuntime runtime) : ControllerBase
+public sealed class ChatController(ConversationSessionService sessions, BackendRuntime runtime,
+    IConfiguration configuration) : ControllerBase
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     [HttpGet("runtime")]
     public RuntimeStatusResponse RuntimeStatus() => runtime.Status;
 
@@ -65,11 +63,14 @@ public sealed class ChatController(ConversationSessionService sessions, BackendR
         Response.ContentType = "text/event-stream";
         Response.Headers.CacheControl = "no-cache";
         Response.Headers.Connection = "keep-alive";
-        await foreach (var item in sessions.EventsAsync(id, after, token))
+        // 心跳只允许在"密于一秒、疏于客户端存活窗口一半"之间调节：更密会让注释帧变成忙等，
+        // 更疏会让安静会话被客户端误判成断连，而客户端窗口不会跟着单个服务端配置缩小。
+        var configuredHeartbeat = configuration.GetValue("Pry:EventHeartbeatMs", PryProtocol.HeartbeatIntervalMs);
+        var heartbeat = TimeSpan.FromMilliseconds(
+            Math.Clamp(configuredHeartbeat, 1_000, PryProtocol.LivenessTimeoutMs / 2));
+        await foreach (var frame in SseEventStream.FramesAsync(sessions.EventsAsync(id, after, token), heartbeat, token))
         {
-            await Response.WriteAsync($"id: {item.Sequence}\n", token);
-            await Response.WriteAsync($"event: {item.Type}\n", token);
-            await Response.WriteAsync($"data: {JsonSerializer.Serialize(item, JsonOptions)}\n\n", token);
+            await Response.WriteAsync(frame, token);
             await Response.Body.FlushAsync(token);
         }
     }

@@ -5,5 +5,7 @@
     <PackageReference Include="xunit.v3" Version="3.2.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
     <ProjectReference Include="../../src/Pry.Api/Pry.Api.csproj" />
+    <!-- 只有进程级发现用例（PLT-003）需要读端类型；产品侧 Pry.Api 仍然不引用 Pry.Client。 -->
+    <ProjectReference Include="../../src/Pry.Client/Pry.Client.csproj" />
   </ItemGroup>
 </Project>

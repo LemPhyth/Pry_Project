@@ -19,7 +19,11 @@ public sealed partial class App : Application
     private WebApplication? _backend;
     private HttpClient? _backendHttpClient;
 
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+        Pry.App.Services.PryVisualTheme.Apply(new Pry.Core.Models.ThemePreferences());
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -37,15 +41,10 @@ public sealed partial class App : Application
     {
         try
         {
-            var backendUrl = $"http://127.0.0.1:{ReserveLoopbackPort()}";
-            _backend = await BackendApplication.BuildAsync(
-                configure: builder => builder.Configuration["Pry:Url"] = backendUrl);
-            await _backend.StartAsync();
-            _backendHttpClient = new HttpClient
-            {
-                BaseAddress = new Uri(backendUrl + "/"),
-                Timeout = Timeout.InfiniteTimeSpan
-            };
+            // 独立进程模式优先：本机已有别的 Pry 实例在跑后端时接上它，而不是再起一个宿主争同一份数据目录。
+            // 发现只认 runtime.json 里的端口与令牌，界面层没有备用端口；文件缺席、进程已退出或连不上
+            // 都回落到内嵌，那条路径由 Kestrel 自己选端口（:0）再读回来。
+            _backendHttpClient = await RuntimeDiscovery.TryConnectAsync() ?? await StartEmbeddedBackendAsync();
             await CreateMainWindowAsync(desktop);
             CreateTrayIcon(desktop);
             _mainWindow!.HostWindow.Show();
@@ -57,13 +56,23 @@ public sealed partial class App : Application
         }
     }
 
+    private async Task<HttpClient> StartEmbeddedBackendAsync()
+    {
+        // 端口交给 Kestrel 自己选（:0）再读回来。先占一个空闲端口再让后端去绑会留一个窗口：
+        // 别的进程可以在那个窗口里抢走同一个端口，于是发现文件写的是一个连不上的入口。
+        _backend = await BackendApplication.BuildAsync(
+            configure: builder => builder.Configuration["Pry:Url"] = "http://127.0.0.1:0");
+        await _backend.StartAsync();
+        // 同进程内嵌时读同一个服务对象，不读 runtime.json：那份文件是给独立进程用的发现入口。
+        return _backend.CreateBackendHttpClient();
+    }
+
     private async Task CreateMainWindowAsync(IClassicDesktopStyleApplicationLifetime desktop)
     {
         var api = new PryBackendClient(_backendHttpClient ?? throw new InvalidOperationException("本地 API 客户端尚未建立。"));
         var preferences = await api.GetPreferencesAsync();
-        _mainWindow = preferences.Theme.MainWindowLayoutMode == Pry.Core.Models.MainWindowLayoutModes.Card
-            ? new MainWindow(api)
-            : new PryMessengerWindow(api);
+        // Both historical layout preferences open the new unified companion workspace.
+        _mainWindow = new PryMessengerWindow(api);
         switch (_mainWindow)
         {
             case PryMessengerWindow messenger: messenger.RestartRequested += () => RestartFrontendAsync(desktop); break;
@@ -139,6 +148,12 @@ public sealed partial class App : Application
         topmost.Click += (_, _) => { topmost.IsChecked = !topmost.IsChecked; _mainWindow.HostWindow.Topmost = topmost.IsChecked; }; exit.Click += async (_, _) => await AskExitAsync(desktop);
         var menu = new NativeMenu { Items = { open, model, new NativeMenuItemSeparator(), pet, topmost, new NativeMenuItemSeparator(), exit } };
         _trayIcon = new TrayIcon { ToolTipText = "Pry 本地陪伴助手", Menu = menu, Icon = CreateApplicationIcon(), IsVisible = true };
+        if (_mainWindow is PryMessengerWindow messenger)
+            messenger.UnreadChanged += count =>
+            {
+                if (_trayIcon is not null) _trayIcon.ToolTipText = count > 0 ? $"Pry · {count} 条未读消息" : "Pry 本地陪伴助手";
+                open.Header = count > 0 ? $"打开聊天窗口（{count} 条未读）" : "打开聊天窗口";
+            };
         _trayIcon.Clicked += (_, _) => _mainWindow.ShowFromTray(); TrayIcon.SetIcons(this, new TrayIcons { _trayIcon });
     }
 
@@ -148,13 +163,18 @@ public sealed partial class App : Application
         return new WindowIcon(stream);
     }
 
+    /// <summary>接上别人的后端时，退出这一扇窗口不会关掉那个进程——提示必须说清事实，否则用户会以为模型服务已经停了。</summary>
+    private string ExitNotice => _backend is not null
+        ? "退出会同时关闭当前内嵌后端和本地模型服务。"
+        : "本机另一个 Pry 实例正在运行后端；退出只会断开本窗口的连接，那个后端与它的模型服务会继续运行。";
+
     private async Task AskExitAsync(IClassicDesktopStyleApplicationLifetime desktop)
     {
         if (_mainWindow is null) return; _mainWindow.ShowFromTray();
         if (_mainWindow is PryMessengerWindow messenger)
         {
             var result = await PryMessengerConfirmDialog.ShowAsync(messenger, "退出 Pry", "退出 Pry",
-                "退出会同时关闭当前内嵌后端和本地模型服务。",
+                ExitNotice,
                 [
                     new("cancel", "取消"),
                     new("exit", "退出", Destructive: true)
@@ -179,7 +199,7 @@ public sealed partial class App : Application
             Children =
             {
                 new TextBlock { Text = "退出 Pry", FontSize = 17, FontWeight = Avalonia.Media.FontWeight.SemiBold },
-                new TextBlock { Text = "退出会同时关闭当前内嵌后端和本地模型服务。", FontWeight = Avalonia.Media.FontWeight.SemiBold }
+                new TextBlock { Text = ExitNotice, FontWeight = Avalonia.Media.FontWeight.SemiBold }
             }
         };
         var messageCard = CreateDialogCard(message);
@@ -198,10 +218,4 @@ public sealed partial class App : Application
 
     private static Border CreateDialogCard(Control content) => new() { Background = Avalonia.Media.Brush.Parse("#182235"), BorderBrush = Avalonia.Media.Brush.Parse("#34495E"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(13), Padding = new Thickness(18), Child = content };
     private static Control CreateDialogSurface(Control content) => new Grid { Background = Avalonia.Media.Brush.Parse("#101827"), Children = { content } };
-
-    private static int ReserveLoopbackPort()
-    {
-        using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-        listener.Start(); return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-    }
 }

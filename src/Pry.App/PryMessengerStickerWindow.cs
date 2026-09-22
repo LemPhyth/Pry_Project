@@ -7,6 +7,7 @@ using Avalonia.Platform.Storage;
 using Pry.Client;
 using Pry.Contracts;
 using Pry.Core.Models;
+using Pry.App.Services;
 
 namespace Pry.App;
 
@@ -18,34 +19,36 @@ internal sealed class PryMessengerStickerWindow : UserControl
     private readonly TextBox _emotions = new() { Watermark = "情绪标签，用逗号分隔" };
     private readonly ComboBox _role = new() { ItemsSource = new[] { "reaction", "message", "backchannel" } };
     private readonly CheckBox _backchannel = new() { Content = "允许作为倾听反馈" };
-    private readonly TextBlock _status = new() { Foreground = Brush.Parse("#8492A8"), TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock _status = new() { Foreground = Pry.App.Services.PryVisualTheme.Get("Muted"), TextWrapping = TextWrapping.Wrap };
     private StickerResponse? _selected;
 
     public PryMessengerStickerWindow(PryBackendClient api)
     {
-        _api = api; Background = Brush.Parse("#101827");
-        var import = MakeButton("＋ 导入表情", ImportAsync, true); var save = MakeButton("保存更改", SaveAsync, true); var remove = MakeButton("删除", DeleteAsync); var close = MakeButton("完成", () => CloseRequested?.Invoke());
+        _api = api; Background = Pry.App.Services.PryVisualTheme.Get("Canvas");
+        var import = MakeButton("导入表情", ImportAsync); var save = MakeButton("保存更改", SaveAsync, true); var remove = MakeButton("删除", DeleteAsync); var close = MakeButton("完成", () => CloseRequested?.Invoke());
         _list.SelectionChanged += (_, _) => Select((_list.SelectedItem as ListBoxItem)?.Tag as StickerResponse);
-        var libraryTitle = new TextBlock { Text = "表情库", FontSize = 20, FontWeight = FontWeight.SemiBold };
-        var libraryHint = new TextBlock { Text = "选择表情后可在右侧编辑", Foreground = Brush.Parse("#78879C"), FontSize = 11 };
+        var libraryTitle = PryUi.Heading("表情库");
+        var libraryHint = PryUi.Hint("选择表情后编辑");
         var libraryHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { new StackPanel { Spacing = 3, Children = { libraryTitle, libraryHint } }, import } }; Grid.SetColumn(import, 1);
-        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 14, Margin = new Thickness(20), Children = { libraryHeader, _list } }; Grid.SetRow(_list, 1);
-        var form = new StackPanel { Margin = new Thickness(20), Spacing = 11, Children =
+        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 16, Margin = new Thickness(24), Children = { libraryHeader, _list } }; Grid.SetRow(_list, 1);
+        var form = new StackPanel { Margin = new Thickness(24), Spacing = 16, MaxWidth = 800, Children =
         {
-            new TextBlock { Text = "表情详情", FontSize = 21, FontWeight = FontWeight.SemiBold },
-            new TextBlock { Text = "名称", Foreground = Brush.Parse("#8492A8"), FontSize = 11 }, _name,
-            new TextBlock { Text = "情绪标签", Foreground = Brush.Parse("#8492A8"), FontSize = 11 }, _emotions,
-            new TextBlock { Text = "使用场景", Foreground = Brush.Parse("#8492A8"), FontSize = 11 }, _role, _backchannel, _status,
-            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { remove, save, close } }
+            PryUi.Heading("表情详情"), PryUi.Field("名称", _name),
+            PryUi.Field("情绪标签", _emotions), PryUi.Field("使用场景", _role), _backchannel
         }};
-        var root = new Grid { ColumnDefinitions = new ColumnDefinitions("360,*"), Children = { left, new Border { Background = Brush.Parse("#131D2E"), BorderBrush = Brush.Parse("#263249"), BorderThickness = new Thickness(1,0,0,0), Child = form } } }; Grid.SetColumn(root.Children[1], 1); Content = root;
+        remove.Classes.Add("danger");
+        var actions = PryUi.Actions(remove, save, close); actions.HorizontalAlignment = HorizontalAlignment.Right;
+        var footer = PryUi.Footer(new StackPanel { Spacing = 8, Children = { _status, actions } });
+        var detail = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), Children = { new ScrollViewer { Content = form }, footer } };
+        Grid.SetRow(footer, 1);
+        var root = new Grid { ColumnDefinitions = new ColumnDefinitions("320,*"), Children = { left, new Border { Background = PryVisualTheme.Get("Canvas"), BorderBrush = PryVisualTheme.Get("Border"), BorderThickness = new Thickness(1,0,0,0), Child = detail } } }; Grid.SetColumn(root.Children[1], 1); Content = root;
         AttachedToVisualTree += async (_, _) => await ReloadAsync();
     }
 
     public bool Changed { get; private set; }
     public event Action? CloseRequested;
     private static Button MakeButton(string text, Action action) { var button = new Button { Content = text }; button.Click += (_, _) => action(); return button; }
-    private static Button MakeButton(string text, Func<Task> action, bool primary = false) { var button = new Button { Content = text, Background = primary ? Brush.Parse("#6C63FF") : null }; button.Click += async (_, _) => await action(); return button; }
+    private static Button MakeButton(string text, Func<Task> action, bool primary = false) { var button = new Button { Content = text }; if (primary) button.Classes.Add("primary"); button.Click += async (_, _) => await action(); return button; }
     private async Task ReloadAsync()
     {
         try
@@ -59,13 +62,13 @@ internal sealed class PryMessengerStickerWindow : UserControl
     private ListBoxItem CreateStickerItem(StickerResponse sticker)
     {
         var image = new Image { Width = 62, Height = 62, Stretch = Stretch.Uniform };
-        var preview = new Border { Width = 72, Height = 72, CornerRadius = new CornerRadius(14), Background = Brush.Parse("#0D1420"), Padding = new Thickness(5), Child = image };
+        var preview = new Border { Width = 72, Height = 72, CornerRadius = new CornerRadius(12), Background = Pry.App.Services.PryVisualTheme.Get("Panel"), Padding = new Thickness(4), Child = image };
         var source = sticker.Source == StickerSource.BuiltIn ? "内置表情" : "我的表情";
         var tags = sticker.Emotions.Count == 0 ? source : $"{source} · {string.Join(" · ", sticker.Emotions.Take(2))}";
         var text = new StackPanel { Spacing = 5, VerticalAlignment = VerticalAlignment.Center, Children =
         {
             new TextBlock { Text = string.IsNullOrWhiteSpace(sticker.Name) ? "未命名表情" : sticker.Name, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis },
-            new TextBlock { Text = tags, Foreground = Brush.Parse("#78879C"), FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis }
+            new TextBlock { Text = tags, Foreground = PryVisualTheme.Get("Muted"), FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis }
         }};
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12, Margin = new Thickness(8), Children = { preview, text } }; Grid.SetColumn(text, 1);
         var item = new ListBoxItem { Tag = sticker, Content = row, Padding = new Thickness(0), Margin = new Thickness(0, 0, 0, 6) };

@@ -1,168 +1,155 @@
-<Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="Pry.App.PryMessengerWindow"
-        Width="1180" Height="780" MinWidth="920" MinHeight="620"
-        Title="Pry" Icon="/Assets/Pry.ico" SystemDecorations="None" Background="#0C111B"
-        ExtendClientAreaToDecorationsHint="True" ExtendClientAreaChromeHints="NoChrome"
-        KeyDown="Window_KeyDown">
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Pry.App.PryMessengerWindow" Width="1180" Height="800" MinWidth="860" MinHeight="620"
+        Title="Pry · 陪伴空间" Icon="/Assets/Pry.ico" SystemDecorations="None"
+        Background="{DynamicResource PryCanvasBrush}" ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome" KeyDown="Window_KeyDown">
   <Window.Styles>
+    <Style Selector="FlyoutPresenter"><Setter Property="Background" Value="{DynamicResource PryCardBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource PryBorderBrush}"/><Setter Property="CornerRadius" Value="12"/></Style>
     <Style Selector="Button.nav">
-      <Setter Property="Width" Value="48"/><Setter Property="Height" Value="48"/>
-      <Setter Property="Padding" Value="0"/><Setter Property="CornerRadius" Value="15"/>
-      <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="#91A0B5"/>
-      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="MinWidth" Value="72"/><Setter Property="Height" Value="36"/>
+      <Setter Property="Padding" Value="16,0"/><Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource PryMutedBrush}"/>
     </Style>
-    <Style Selector="Button.nav:pointerover"><Setter Property="Background" Value="#192235"/><Setter Property="Foreground" Value="#F5F7FF"/></Style>
-    <Style Selector="Button.nav.active"><Setter Property="Background" Value="#6C63FF"/><Setter Property="Foreground" Value="White"/></Style>
-    <Style Selector="Button.icon"><Setter Property="Width" Value="38"/><Setter Property="Height" Value="38"/><Setter Property="Padding" Value="0"/><Setter Property="CornerRadius" Value="11"/></Style>
-    <Style Selector="Button.window-control"><Setter Property="Width" Value="40"/><Setter Property="Height" Value="40"/><Setter Property="Padding" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="CornerRadius" Value="0"/></Style>
-    <Style Selector="Button.window-control:pointerover"><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="#FFFFFF"/></Style>
-    <Style Selector="Button.primary"><Setter Property="Background" Value="#6C63FF"/><Setter Property="Foreground" Value="White"/><Setter Property="CornerRadius" Value="11"/></Style>
-    <Style Selector="ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,2"/><Setter Property="CornerRadius" Value="14"/></Style>
-    <Style Selector="ListBoxItem:selected"><Setter Property="Background" Value="#202A40"/></Style>
-    <Style Selector="TextBox"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#263249"/><Setter Property="CornerRadius" Value="12"/></Style>
-    <Style Selector="TextBox:focus"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#6C63FF"/></Style>
-    <Style Selector="Button.character-choice:focus"><Setter Property="Background" Value="#374663"/><Setter Property="BorderBrush" Value="#8B84FF"/><Setter Property="BorderThickness" Value="2"/></Style>
-    <Style Selector="FlyoutPresenter.sticker-flyout"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/><Setter Property="CornerRadius" Value="14"/></Style>
+    <Style Selector="Button.nav.active"><Setter Property="Background" Value="{DynamicResource PrySelectionBrush}"/><Setter Property="Foreground" Value="{DynamicResource PryTextBrush}"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="Button#HistoryButton.active"><Setter Property="Background" Value="{DynamicResource PrySelectionBrush}"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="Button.icon"><Setter Property="Width" Value="36"/><Setter Property="Height" Value="36"/><Setter Property="Padding" Value="0"/><Setter Property="Background" Value="Transparent"/></Style>
+    <Style Selector="Button.window-control"><Setter Property="Width" Value="40"/><Setter Property="Height" Value="36"/><Setter Property="Padding" Value="0"/><Setter Property="CornerRadius" Value="4"/><Setter Property="Background" Value="Transparent"/></Style>
+    <Style Selector="ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,4"/><Setter Property="CornerRadius" Value="8"/></Style>
+    <Style Selector="TextBox"><Setter Property="Background" Value="{DynamicResource PryCardBrush}"/><Setter Property="Foreground" Value="{DynamicResource PryTextBrush}"/><Setter Property="CornerRadius" Value="8"/></Style>
+    <Style Selector="TextBox:focus"><Setter Property="BorderBrush" Value="{DynamicResource PryFocusBrush}"/></Style>
+    <Style Selector="Button.character-choice:focus"><Setter Property="BorderBrush" Value="{DynamicResource PryFocusBrush}"/><Setter Property="BorderThickness" Value="2"/></Style>
+    <Style Selector="FlyoutPresenter.sticker-flyout"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="0"/></Style>
   </Window.Styles>
-
-  <Grid RowDefinitions="42,*">
-    <Image x:Name="DefaultBrandBackground" Grid.RowSpan="2" Source="/Assets/P_logo_2048.png"
-           Width="420" Height="420" Opacity="0.075" Stretch="Uniform" IsHitTestVisible="False"
-           HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapInterpolationMode="HighQuality"/>
-    <Image x:Name="AppBackgroundImage" Grid.RowSpan="2" Stretch="UniformToFill" IsVisible="False" RenderOptions.BitmapInterpolationMode="HighQuality"/>
-    <Border x:Name="TitleBarSurface" Grid.Row="0" Background="#ED0F1522" BorderBrush="#202A3C" BorderThickness="0,0,0,1" PointerPressed="TitleBar_PointerPressed">
-      <Grid ColumnDefinitions="*,Auto" Margin="16,0,7,0">
-        <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-          <Image Width="23" Height="23" Source="/Assets/P_logo_2048.png" Stretch="Uniform" RenderOptions.BitmapInterpolationMode="HighQuality"/>
-          <TextBlock Text="Pry" Foreground="#F4F6FC" FontWeight="SemiBold" VerticalAlignment="Center"/>
-          <Border Width="1" Height="15" Background="#2A3549" Margin="4,0"/>
-          <TextBlock x:Name="HeaderConnectionText" Text="正在连接本地服务" Foreground="#7F8CA1" FontSize="11" VerticalAlignment="Center"/>
+  <Grid RowDefinitions="64,*">
+    <Border x:Name="TitleBarSurface" BorderBrush="{DynamicResource PryBorderBrush}" BorderThickness="0,0,0,1"
+            Background="{DynamicResource PryPanelBrush}" PointerPressed="TitleBar_PointerPressed">
+      <Grid ColumnDefinitions="*,Auto,*" Margin="24,0,8,0">
+        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <Border Width="32" Height="32" Background="#F2ECF7" CornerRadius="8" Padding="4">
+            <Image Source="/Assets/P_logo_2048.png" Stretch="Uniform" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+          </Border>
+          <TextBlock Text="Pry" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
         </StackPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
-          <Button Classes="window-control" Content="—" Click="Minimize_Click"/>
-          <Button Classes="window-control" Content="□" Click="Maximize_Click"/>
-          <Button Classes="window-control" Content="×" Click="Close_Click"/>
+        <Border x:Name="NavigationSurface" Grid.Column="1" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button x:Name="ChatsNavButton" Classes="nav active" Content="陪伴" Click="ShowChats_Click" ToolTip.Tip="对话空间（Ctrl+1）"/>
+            <Button x:Name="CharactersNavButton" Classes="nav" Content="角色" Click="ShowCharacters_Click" ToolTip.Tip="角色资料（Ctrl+2）"/>
+            <Button x:Name="MemoriesNavButton" Classes="nav" Content="记忆" Click="ShowMemories_Click" ToolTip.Tip="长期记忆（Ctrl+3）"/>
+          </StackPanel>
+        </Border>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="4">
+          <Button x:Name="SettingsNavButton" Classes="nav" MinWidth="56" Content="设置" Click="OpenSettings_Click" ToolTip.Tip="设置（Ctrl+,）"/>
+          <Border Width="1" Height="20" Background="{DynamicResource PryBorderBrush}" Margin="8,0"/>
+          <Button Classes="window-control" Content="—" Click="Minimize_Click" ToolTip.Tip="最小化"/>
+          <Button Classes="window-control" Content="□" Click="Maximize_Click" ToolTip.Tip="最大化或还原"/>
+          <Button Classes="window-control" Content="×" Click="Close_Click" ToolTip.Tip="关闭到托盘"/>
         </StackPanel>
       </Grid>
     </Border>
-
-    <Grid x:Name="MainLayout" Grid.Row="1">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="76"/>
-        <ColumnDefinition Width="306" MinWidth="238" MaxWidth="460"/>
-        <ColumnDefinition Width="*"/>
-      </Grid.ColumnDefinitions>
-      <Border x:Name="NavigationSurface" Grid.Column="0" Background="#F20D1420" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
-        <Grid RowDefinitions="Auto,*,Auto" Margin="0,18,0,14">
-          <Button x:Name="ChatsNavButton" Classes="nav active" HorizontalAlignment="Center" Click="ShowChats_Click" ToolTip.Tip="消息">
-            <PathIcon Width="21" Height="21" Data="M3,4 L21,4 L21,17 L14,17 L9,21 L9,17 L3,17 Z"/>
-          </Button>
-          <StackPanel Grid.Row="1" Spacing="9" Margin="0,18,0,0">
-            <Button x:Name="CharactersNavButton" Classes="nav" HorizontalAlignment="Center" Click="ShowCharacters_Click" ToolTip.Tip="角色">
-              <PathIcon Width="21" Height="21" Data="M12,3 A4,4 0 1 1 12,11 A4,4 0 0 1 12,3 Z M5,21 C5,16 8,13 12,13 C16,13 19,16 19,21 Z"/>
-            </Button>
-            <Button x:Name="MemoriesNavButton" Classes="nav" HorizontalAlignment="Center" Click="ShowMemories_Click" ToolTip.Tip="记忆">
-              <PathIcon Width="21" Height="21" Data="M5,3 L19,3 L19,21 L12,17 L5,21 Z"/>
-            </Button>
-          </StackPanel>
-          <StackPanel Grid.Row="2" Spacing="8">
-            <Button Classes="nav" HorizontalAlignment="Center" Click="ToggleSidebar_Click" ToolTip.Tip="收起会话栏（Ctrl+B）"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE76B;" FontSize="18"/></Button>
-            <Button x:Name="SettingsNavButton" Classes="nav" HorizontalAlignment="Center" Click="OpenSettings_Click" ToolTip.Tip="设置（Ctrl+,）">
-              <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE713;" FontSize="18"/>
-            </Button>
-          </StackPanel>
+    <Grid x:Name="MainLayout" Grid.Row="1" ColumnDefinitions="0,*">
+      <Grid Grid.ColumnSpan="2" ClipToBounds="True" IsHitTestVisible="False">
+        <Image x:Name="DefaultBrandBackground" IsVisible="False"/>
+        <Image x:Name="AppBackgroundImage" Stretch="UniformToFill" IsVisible="False" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+        <Border x:Name="ChatBackdropVeil" Background="{DynamicResource PryCanvasBrush}" Opacity="0"/>
+      </Grid>
+      <Border x:Name="ConversationSurface" Grid.Column="0" IsVisible="False" ClipToBounds="True"
+              Background="{DynamicResource PryPanelBrush}" BorderBrush="{DynamicResource PryBorderBrush}" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16,24,16,16">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+            <StackPanel Spacing="4">
+              <TextBlock Text="过往对话" FontSize="18" FontWeight="SemiBold"/>
+              <TextBlock x:Name="ConversationCountText" FontSize="12" Foreground="{DynamicResource PryMutedBrush}"/>
+            </StackPanel>
+            <Button Grid.Column="1" Classes="icon" Content="×" Click="ToggleSidebar_Click" ToolTip.Tip="收起历史"/>
+          </Grid>
+          <TextBox x:Name="ConversationSearchBox" Grid.Row="1" Watermark="搜索对话标题" Margin="0,0,0,16"
+                   TextChanged="ConversationSearch_TextChanged" Padding="12,8"/>
+          <Grid Grid.Row="2">
+            <ListBox x:Name="ConversationList" Background="Transparent" SelectionChanged="ConversationList_SelectionChanged"/>
+            <StackPanel x:Name="ConversationEmptyState" IsVisible="False" Spacing="12" Margin="8,32" VerticalAlignment="Top">
+              <TextBlock Text="这里还没有对话" FontWeight="SemiBold"/>
+              <TextBlock Text="开始一段新的交流，之后可以从这里继续。" TextWrapping="Wrap" Foreground="{DynamicResource PryMutedBrush}" FontSize="12"/>
+              <Button Content="开始新对话" Click="NewConversation_Click"/>
+            </StackPanel>
+          </Grid>
+          <TextBlock Grid.Row="3" Text="右键对话可重命名、置顶或整理" FontSize="12" TextWrapping="Wrap"
+                     Foreground="{DynamicResource PryMutedBrush}" Margin="0,16,0,0"/>
         </Grid>
       </Border>
-
-      <Border x:Name="ConversationSurface" Grid.Column="1" Background="#EC111927" BorderBrush="#202A3C" BorderThickness="0,0,1,0">
-        <Grid RowDefinitions="Auto,Auto,*">
-          <Grid Margin="18,18,14,12" ColumnDefinitions="*,Auto" ColumnSpacing="6">
-            <StackPanel Spacing="2">
-              <TextBlock Text="消息" Foreground="#F5F7FC" FontSize="22" FontWeight="SemiBold"/>
-              <TextBlock x:Name="ConversationCountText" Text="正在加载会话" Foreground="#77869C" FontSize="11"/>
-            </StackPanel>
-            <Button x:Name="NewConversationButton" Grid.Column="1" Classes="primary icon" Click="NewConversation_Click" ToolTip.Tip="新建对话（Ctrl+N）"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE710;" FontSize="16"/></Button>
+      <Grid x:Name="ChatSurface" Grid.Column="1" RowDefinitions="Auto,*,Auto" Background="Transparent">
+        <Border x:Name="ChatHeaderSurface" Padding="0" Margin="24,16,24,8">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+            <Button x:Name="HistoryButton" Content="历史对话" Click="ToggleSidebar_Click" VerticalAlignment="Center" ToolTip.Tip="展开或收起历史（Ctrl+B）"/>
+            <Border Grid.Column="1" MaxWidth="400" HorizontalAlignment="Center" Background="{DynamicResource PryCardBrush}" CornerRadius="16" Padding="16,8">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+              <Button x:Name="InteractionButton" Padding="0" CornerRadius="24" Background="Transparent" Click="Interaction_Click" ToolTip.Tip="角色互动；双击戳一戳">
+              <Border x:Name="CharacterAvatar" Width="48" Height="48" CornerRadius="24"
+                      Background="{DynamicResource PrySelectionBrush}" ClipToBounds="True" VerticalAlignment="Center">
+                <Grid>
+                  <TextBlock x:Name="CharacterAvatarFallback" Text="P" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  <Image x:Name="CharacterAvatarImage" IsVisible="False" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/>
+                </Grid>
+              </Border>
+              </Button>
+              <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                <TextBlock x:Name="CharacterNameText" Text="Pry" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="ConversationTitleText" Text="新的对话" FontSize="12" Foreground="{DynamicResource PryMutedBrush}" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+              <Button Grid.Column="2" Content="切换" Classes="nav" MinWidth="48" Padding="8,0" Click="NewConversation_Click" VerticalAlignment="Center" ToolTip.Tip="切换角色"/>
+            </Grid>
+            </Border>
+            <Button x:Name="NewConversationButton" Grid.Column="2" Content="新对话" Click="NewConversation_Click" VerticalAlignment="Center" ToolTip.Tip="新建对话（Ctrl+N）"/>
           </Grid>
-          <Border Grid.Row="1" Margin="14,0,14,10" Padding="12,8" CornerRadius="12" Background="#0D1420" BorderBrush="#253148" BorderThickness="1">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
-              <TextBlock Text="⌕" Foreground="#7C8AA0" FontSize="18" VerticalAlignment="Center"/>
-              <TextBox Grid.Column="1" x:Name="ConversationSearchBox" Watermark="搜索当前会话" Background="Transparent" BorderThickness="0" Padding="0" MinHeight="28" VerticalContentAlignment="Center" VerticalAlignment="Center" TextChanged="ConversationSearch_TextChanged"/>
+        </Border>
+        <Grid Grid.Row="1" ClipToBounds="True">
+          <ScrollViewer x:Name="MessageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="MessagePanel" MaxWidth="760" Margin="32,24,32,24" Spacing="16" HorizontalAlignment="Stretch"/>
+          </ScrollViewer>
+          <Border HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource PryCardBrush}" CornerRadius="16" IsVisible="{Binding #MessageEmptyState.IsVisible}">
+          <StackPanel x:Name="MessageEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16" MaxWidth="440" Margin="32">
+            <TextBlock Text="此刻，留一点时间给自己。" FontSize="28" LineHeight="40" FontWeight="SemiBold" TextWrapping="Wrap" HorizontalAlignment="Center"/>
+            <TextBlock Text="无论是今天的小事，还是还没想好的心情，&#10;都可以从这里慢慢说起。" FontSize="15" LineHeight="26" TextAlignment="Center" Foreground="{DynamicResource PryMutedBrush}"/>
+          </StackPanel>
+          </Border>
+          <Button x:Name="NewMessagesButton" IsVisible="False" Content="有新消息 · 查看" Click="NewMessages_Click" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="16"/>
+        </Grid>
+          <Border x:Name="ComposerSurface" Grid.Row="2" Margin="32,8,32,24" MaxWidth="760" HorizontalAlignment="Stretch" Background="{DynamicResource PryCardBrush}"
+                  BorderBrush="{DynamicResource PryBorderBrush}" BorderThickness="1" CornerRadius="16" Padding="16,12">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto">
+              <Grid Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                <TextBlock x:Name="ConversationStatusText" Text="等待连接" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource PryMutedBrush}" VerticalAlignment="Center"/>
+                <Button x:Name="CancelReplyButton" Grid.Column="1" IsVisible="False" Content="停止回复" Click="CancelReply_Click"/>
+              </Grid>
+              <TextBox x:Name="ComposerTextBox" Grid.Row="1" Grid.ColumnSpan="2" Watermark="把想说的话留在这里…"
+                       AcceptsReturn="True" TextWrapping="Wrap" MinHeight="52" MaxHeight="150" Padding="0,4"
+                       BorderThickness="0" Background="Transparent" KeyDown="Composer_KeyDown"/>
+              <WrapPanel x:Name="AttachmentDraftPanel" Grid.Row="2" Grid.ColumnSpan="2" Margin="0,8,0,0" IsVisible="False"/>
+              <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                <Button x:Name="AttachButton" Classes="icon" Click="Attach_Click" ToolTip.Tip="添加附件"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE723;" FontSize="18"/></Button>
+                <Button x:Name="StickerButton" Classes="icon" Click="Sticker_Click" ToolTip.Tip="选择表情（Ctrl+E）"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE76E;" FontSize="18"/></Button>
+                <Button x:Name="VoiceButton" Classes="icon" Click="VoiceButton_Click" ToolTip.Tip="语音输入"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE720;" FontSize="18"/></Button>
+              </StackPanel>
+              <Button x:Name="SendButton" Grid.Row="3" Grid.Column="1" Classes="primary" Content="发送" MinWidth="80" Height="36" Margin="0,8,0,0" Click="Send_Click"/>
+              <TextBlock x:Name="HeaderConnectionText" Grid.Row="4" Grid.ColumnSpan="2" Margin="0,8,0,0" Text="正在连接本地服务" FontSize="12" Foreground="{DynamicResource PryMutedBrush}"/>
             </Grid>
           </Border>
-          <Grid Grid.Row="2">
-            <ListBox x:Name="ConversationList" Margin="10,0,10,12" Background="Transparent" SelectionChanged="ConversationList_SelectionChanged"/>
-            <StackPanel x:Name="ConversationEmptyState" IsVisible="False" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
-              <TextBlock Text="还没有对话" Foreground="#D8DEEA" FontSize="16" HorizontalAlignment="Center"/>
-              <TextBlock Text="创建一个房间，开始和 Pry 私聊" Foreground="#718096" FontSize="11"/>
-              <Button Classes="primary" Content="开始新对话" Click="NewConversation_Click"/>
-            </StackPanel>
-          </Grid>
-        </Grid>
-      </Border>
-
-      <GridSplitter Grid.Column="1" Width="7" HorizontalAlignment="Right" Background="#26354D" Opacity="0.72" ResizeDirection="Columns" Cursor="SizeWestEast"/>
-
-      <Grid x:Name="ChatSurface" Grid.Column="2" Background="#E60E1623" RowDefinitions="74,*,Auto">
-        <Border x:Name="ChatHeaderSurface" Grid.Row="0" Background="#D9111927" BorderBrush="#202A3C" BorderThickness="0,0,0,1">
-          <Grid Margin="20,0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-            <Border x:Name="CharacterAvatar" Width="52" Height="52" CornerRadius="17" Background="#6C63FF" ClipToBounds="True" VerticalAlignment="Center">
-              <Grid><TextBlock x:Name="CharacterAvatarFallback" Text="P" Foreground="White" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image x:Name="CharacterAvatarImage" IsVisible="False" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/></Grid>
-            </Border>
-            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-              <TextBlock x:Name="CharacterNameText" Text="Pry" Foreground="#F4F6FC" FontSize="17" FontWeight="SemiBold"/>
-              <TextBlock x:Name="ConversationStatusText" Text="等待连接" Foreground="#7F8EA5" FontSize="11"/>
-            </StackPanel>
-            <Button x:Name="CancelReplyButton" Grid.Column="2" IsVisible="False" Content="停止回复" Click="CancelReply_Click" VerticalAlignment="Center"/>
-          </Grid>
-        </Border>
-
-        <Grid Grid.Row="1">
-          <ScrollViewer x:Name="MessageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel x:Name="MessagePanel" Margin="28,24,28,28" Spacing="13" MaxWidth="920" HorizontalAlignment="Stretch"/>
-          </ScrollViewer>
-          <StackPanel x:Name="MessageEmptyState" Spacing="9" HorizontalAlignment="Center" VerticalAlignment="Center">
-            <Image Width="70" Height="70" Source="/Assets/P_logo_2048.png" Stretch="Uniform" RenderOptions.BitmapInterpolationMode="HighQuality"/>
-            <TextBlock Text="一段新的私聊" Foreground="#E7EBF4" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-            <TextBlock Text="消息只保存在你的本地设备" Foreground="#74839A" FontSize="11"/>
-          </StackPanel>
-        </Grid>
-
-        <Border x:Name="ComposerSurface" Grid.Row="2" Margin="18,0,18,18" Padding="10" CornerRadius="17" Background="#D9111927" BorderBrush="#28354D" BorderThickness="1">
-          <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
-            <TextBox x:Name="ComposerTextBox" Grid.ColumnSpan="2" Watermark="给 Pry 发消息…" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="62" MaxHeight="150" Padding="13,10" KeyDown="Composer_KeyDown"/>
-            <WrapPanel x:Name="AttachmentDraftPanel" Grid.Row="1" Grid.ColumnSpan="2" Margin="3,7,3,0" IsVisible="False"/>
-            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="5" Margin="2,8,0,0">
-              <Button x:Name="AttachButton" Classes="icon" Click="Attach_Click" ToolTip.Tip="添加附件"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE723;" FontSize="16"/></Button>
-              <Button x:Name="StickerButton" Classes="icon" Click="Sticker_Click" ToolTip.Tip="选择表情（Ctrl+E）"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE76E;" FontSize="16"/></Button>
-              <Button x:Name="VoiceButton" Classes="icon" Click="VoiceButton_Click" ToolTip.Tip="语音输入"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE720;" FontSize="16"/></Button>
-            </StackPanel>
-            <Button x:Name="SendButton" Grid.Row="2" Grid.Column="1" Classes="primary" Content="发送" Width="76" Height="38" Margin="0,8,0,0" Click="Send_Click"/>
-          </Grid>
-        </Border>
-
-        <Border x:Name="LoadingOverlay" Grid.RowSpan="3" Background="#B20C111B">
-          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-            <ProgressBar IsIndeterminate="True" Width="180" Height="4"/>
-            <TextBlock x:Name="LoadingText" Text="正在启动 Pry…" Foreground="#C9D1E1" HorizontalAlignment="Center"/>
+        <Border x:Name="LoadingOverlay" Grid.RowSpan="3" Background="{DynamicResource PryCanvasBrush}">
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
+            <ProgressBar IsIndeterminate="True" Width="160" Height="3"/>
+            <TextBlock x:Name="LoadingText" Text="正在打开陪伴空间…" Foreground="{DynamicResource PryMutedBrush}" HorizontalAlignment="Center"/>
           </StackPanel>
         </Border>
       </Grid>
-
-      <Border x:Name="WorkspacePage" Grid.Column="1" Grid.ColumnSpan="2" IsVisible="False" Background="#101827" ZIndex="20">
-        <Grid RowDefinitions="64,*">
-          <Border BorderBrush="#263249" BorderThickness="0,0,0,1">
-            <Grid Margin="18,0" ColumnDefinitions="Auto,*" ColumnSpacing="12">
-              <Button Classes="icon" Background="Transparent" BorderThickness="0" Click="CloseWorkspacePage_Click"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE72B;" FontSize="16"/></Button>
-              <TextBlock x:Name="WorkspacePageTitle" Grid.Column="1" FontSize="19" FontWeight="SemiBold" VerticalAlignment="Center"/>
-            </Grid>
-          </Border>
+      <Border x:Name="WorkspacePage" Grid.ColumnSpan="2" IsVisible="False" Background="{DynamicResource PryCanvasBrush}" ZIndex="20">
+        <Grid RowDefinitions="80,*">
+          <Grid ColumnDefinitions="*,Auto" Margin="32,0">
+            <TextBlock x:Name="WorkspacePageTitle" FontSize="26" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Content="回到对话" Classes="nav" Click="CloseWorkspacePage_Click" VerticalAlignment="Center"/>
+          </Grid>
           <ContentControl x:Name="WorkspacePageContent" Grid.Row="1"/>
         </Grid>
       </Border>
-
     </Grid>
-
     <Border Grid.RowSpan="2" Width="6" HorizontalAlignment="Left" Background="Transparent" Cursor="SizeWestEast" PointerPressed="ResizeLeft_PointerPressed" ZIndex="100"/>
     <Border Grid.RowSpan="2" Width="6" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast" PointerPressed="ResizeRight_PointerPressed" ZIndex="100"/>
     <Border Grid.RowSpan="2" Height="6" VerticalAlignment="Top" Background="Transparent" Cursor="SizeNorthSouth" PointerPressed="ResizeTop_PointerPressed" ZIndex="100"/>

@@ -24,18 +24,19 @@ internal sealed class PryMessengerCharacterWindow : UserControl
     private readonly TextBox _rules = Area("行为规则，每行一条");
     private readonly TextBox _facts = Area("世界设定，每行一条");
     private readonly TextBox _legacyPrompt = Area("完整 System Prompt（原样作为角色设定）", 260, 32000);
-    private readonly StackPanel _structuredPanel = new() { Spacing = 9 };
-    private readonly StackPanel _legacyPanel = new() { Spacing = 9, IsVisible = false };
-    private readonly TextBlock _status = new() { Foreground = Brush.Parse("#8492A8"), TextWrapping = TextWrapping.Wrap };
+    private readonly StackPanel _structuredPanel = new() { Spacing = 16 };
+    private readonly StackPanel _legacyPanel = new() { Spacing = 16, IsVisible = false };
+    private readonly TextBlock _status = new() { Foreground = Pry.App.Services.PryVisualTheme.Get("Muted"), TextWrapping = TextWrapping.Wrap };
     private readonly Image _avatarPreview = new() { Width = 72, Height = 72, Stretch = Stretch.UniformToFill, IsVisible = false };
     private CharacterResponse? _selected;
     private string? _avatarMediaId;
     private bool _clearAvatar;
     private CharacterPromptMode _promptMode = CharacterPromptMode.Structured;
+    private readonly ContentControl _interactionHost = new();
 
     public PryMessengerCharacterWindow(PryBackendClient api)
     {
-        _api = api; Background = Brush.Parse("#101827");
+        _api = api; Background = Pry.App.Services.PryVisualTheme.Get("Canvas");
         var add = MakeButton("新建角色", NewCharacter);
         var chooseAvatar = MakeButton("选择头像", ChooseAvatarAsync);
         var clearAvatar = MakeButton("移除头像", ClearAvatar);
@@ -48,27 +49,49 @@ internal sealed class PryMessengerCharacterWindow : UserControl
             if ((_list.SelectedItem as ListBoxItem)?.Tag is CharacterSummaryResponse item) await LoadCharacterAsync(item.Id);
         };
         _list.DoubleTapped += (_, _) => { if ((_list.SelectedItem as ListBoxItem)?.Tag is CharacterSummaryResponse item) CharacterActivated?.Invoke(item); };
-        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 12, Margin = new Thickness(18), Children = { add, _list } };
+        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*"), RowSpacing = 12, Margin = new Thickness(24), Children = { add, _list } };
         Grid.SetRow(_list, 1);
         var structured = MakeButton("结构化", () => SetPromptMode(CharacterPromptMode.Structured));
-        var legacy = MakeButton("Legacy", () => SetPromptMode(CharacterPromptMode.Legacy));
-        _structuredPanel.Children.Add(_userName); _structuredPanel.Children.Add(_identity); _structuredPanel.Children.Add(_personality);
-        _structuredPanel.Children.Add(_speech); _structuredPanel.Children.Add(_rules); _structuredPanel.Children.Add(_facts);
-        _legacyPanel.Children.Add(new TextBlock { Text = "完整 System Prompt", FontWeight = FontWeight.SemiBold });
-        _legacyPanel.Children.Add(new TextBlock { Text = "内容原样作为角色设定；应用只追加记忆、当前状态和回复格式要求。", Foreground = Brush.Parse("#8492A8"), TextWrapping = TextWrapping.Wrap });
-        _legacyPanel.Children.Add(_legacyPrompt);
-        var form = new StackPanel { Spacing = 9, Margin = new Thickness(20), Children =
+        var legacy = MakeButton("完整提示词", () => SetPromptMode(CharacterPromptMode.Legacy));
+        void FieldGroup(Panel parent, string title, Control control)
         {
-            new TextBlock { Text = "角色卡", FontSize = 22, FontWeight = FontWeight.SemiBold },
-            new Border { Width = 76, Height = 76, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(22), Background = Brush.Parse("#26344D"), ClipToBounds = true, Child = _avatarPreview },
+            parent.Children.Add(new TextBlock { Text = title, FontSize = 13, Foreground = Pry.App.Services.PryVisualTheme.Get("Muted"), Margin = new Thickness(0, 8, 0, 0) });
+            parent.Children.Add(control);
+        }
+        FieldGroup(_structuredPanel, "角色对你的称呼", _userName);
+        FieldGroup(_structuredPanel, "身份与背景", _identity);
+        FieldGroup(_structuredPanel, "性格", _personality);
+        FieldGroup(_structuredPanel, "说话方式", _speech);
+        FieldGroup(_structuredPanel, "行为边界", _rules);
+        FieldGroup(_structuredPanel, "世界设定", _facts);
+        _legacyPanel.Children.Add(new TextBlock { Text = "完整 System Prompt", FontWeight = FontWeight.SemiBold });
+        _legacyPanel.Children.Add(new TextBlock { Text = "内容原样作为角色设定；应用只追加记忆、当前状态和回复格式要求。", Foreground = Pry.App.Services.PryVisualTheme.Get("Muted"), TextWrapping = TextWrapping.Wrap });
+        _legacyPanel.Children.Add(_legacyPrompt);
+        var form = new StackPanel { Spacing = 16, Margin = new Thickness(24), MaxWidth = 800, Children =
+        {
+            new TextBlock { Text = "角色资料", FontSize = 18, FontWeight = FontWeight.SemiBold },
+            new TextBlock { Text = "在这里定义你希望相伴的角色。", Foreground = Pry.App.Services.PryVisualTheme.Get("Muted") },
+            new Border { Width = 76, Height = 76, HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(16), Background = Pry.App.Services.PryVisualTheme.Get("Selection"), ClipToBounds = true, Child = _avatarPreview },
             new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { chooseAvatar, clearAvatar } },
-            _name, _cardName,
+            new TextBlock { Text = "角色名称", FontSize = 13 }, _name,
+            new TextBlock { Text = "卡片名称", FontSize = 13 }, _cardName,
             new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { structured, legacy } },
-            _structuredPanel, _legacyPanel, _greeting, _status,
-            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { remove, saveAndUse, save, close } }
+            _structuredPanel, _legacyPanel,
+            new TextBlock { Text = "初次问候", FontSize = 13, Foreground = Pry.App.Services.PryVisualTheme.Get("Muted") }, _greeting,
+            _interactionHost
         }};
-        var right = new ScrollViewer { Content = form };
-        var root = new Grid { ColumnDefinitions = new ColumnDefinitions("280,*"), Children = { left, new Border { BorderBrush = Brush.Parse("#263249"), BorderThickness = new Thickness(1,0,0,0), Child = right } } };
+        var actions = new WrapPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Children = { saveAndUse, save, close } };
+        foreach (var action in actions.Children) action.Margin = new Thickness(8, 0, 0, 0);
+        remove.Foreground = Pry.App.Services.PryVisualTheme.Get("Error");
+        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("Auto,Auto"), Margin = new Thickness(24, 12), RowSpacing = 8 };
+        Grid.SetColumnSpan(_status, 2); footer.Children.Add(_status);
+        Grid.SetRow(remove, 1); footer.Children.Add(remove);
+        Grid.SetRow(actions, 1); Grid.SetColumn(actions, 1); footer.Children.Add(actions);
+        var right = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
+        right.Children.Add(new ScrollViewer { Content = form });
+        var footerSurface = new Border { Background = Pry.App.Services.PryVisualTheme.Get("Panel"), Child = footer };
+        Grid.SetRow(footerSurface, 1); right.Children.Add(footerSurface);
+        var root = new Grid { ColumnDefinitions = new ColumnDefinitions("240,*"), Children = { left, new Border { BorderBrush = Pry.App.Services.PryVisualTheme.Get("Border"), BorderThickness = new Thickness(1,0,0,0), Child = right } } };
         Grid.SetColumn(root.Children[1], 1); Content = root;
         AttachedToVisualTree += async (_, _) => await ReloadAsync();
     }
@@ -79,7 +102,7 @@ internal sealed class PryMessengerCharacterWindow : UserControl
     private static TextBox Field(string watermark) => new() { Watermark = watermark, MaxLength = 200 };
     private static TextBox Area(string watermark, int minHeight = 62, int maxLength = 4000) => new() { Watermark = watermark, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = minHeight, MaxLength = maxLength };
     private static Button MakeButton(string text, Action action) { var button = new Button { Content = text }; button.Click += (_, _) => action(); return button; }
-    private static Button MakeButton(string text, Func<Task> action, bool primary = false) { var button = new Button { Content = text, Background = primary ? Brush.Parse("#6C63FF") : null }; button.Click += async (_, _) => await action(); return button; }
+    private static Button MakeButton(string text, Func<Task> action, bool primary = false) { var button = new Button { Content = text }; if (primary) button.Classes.Add("primary"); button.Click += async (_, _) => await action(); return button; }
 
     private async Task ReloadAsync(string? selectId = null)
     {
@@ -97,6 +120,7 @@ internal sealed class PryMessengerCharacterWindow : UserControl
         try
         {
             _selected = await _api.GetCharacterAsync(id); _avatarMediaId = null; _clearAvatar = false;
+            _interactionHost.Content = new InteractionProfilePanel(_api, id);
             _name.Text = _selected.Name; _cardName.Text = _selected.CardName; _userName.Text = _selected.UserName;
             _identity.Text = _selected.Identity; _personality.Text = _selected.Personality; _speech.Text = _selected.SpeechStyle;
             _greeting.Text = _selected.Greeting; _rules.Text = string.Join(Environment.NewLine, _selected.BehavioralRules); _facts.Text = string.Join(Environment.NewLine, _selected.WorldFacts);
@@ -110,6 +134,7 @@ internal sealed class PryMessengerCharacterWindow : UserControl
     private void NewCharacter()
     {
         _selected = null; _avatarMediaId = null; _clearAvatar = false; _list.SelectedItem = null;
+        _interactionHost.Content = new TextBlock { Text = "先保存角色，再配置互动" };
         foreach (var box in new[] { _name, _cardName, _identity, _personality, _speech, _greeting, _rules, _facts, _legacyPrompt }) box.Text = "";
         _avatarPreview.Source = null; _avatarPreview.IsVisible = false; SetPromptMode(CharacterPromptMode.Structured);
         _userName.Text = "你"; _status.Text = "正在创建新的角色卡"; _name.Focus();
@@ -160,7 +185,7 @@ internal sealed class PryMessengerCharacterWindow : UserControl
 
     private ListBoxItem CreateCharacterItem(CharacterSummaryResponse item)
     {
-        var row = new ListBoxItem { Tag = item, Padding = new Thickness(11), Margin = new Thickness(0,0,0,4), Content = new StackPanel { Spacing = 3, Children = { new TextBlock { Text = item.Name, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = item.CardName, FontSize = 10, Foreground = Brush.Parse("#718198") } } } };
+        var row = new ListBoxItem { Tag = item, Padding = new Thickness(12), Margin = new Thickness(0,0,0,4), Content = new StackPanel { Spacing = 3, Children = { new TextBlock { Text = item.Name, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = item.CardName, FontSize = 13, Foreground = Pry.App.Services.PryVisualTheme.Get("Muted") } } } };
         var edit = new MenuItem { Header = "编辑角色" }; edit.Click += async (_, _) => { _list.SelectedItem = row; await LoadCharacterAsync(item.Id); };
         var remove = new MenuItem { Header = "删除角色" }; remove.Click += async (_, _) => { await LoadCharacterAsync(item.Id); await DeleteAsync(); };
         row.ContextMenu = new ContextMenu { ItemsSource = new[] { edit, remove } };

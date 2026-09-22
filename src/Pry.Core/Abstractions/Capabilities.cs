@@ -16,6 +16,12 @@ public interface IEmbeddingProvider
     Task<float[]> EncodeAsync(string text, CancellationToken cancellationToken = default);
 }
 
+public interface IMemoryRetriever
+{
+    Task<IReadOnlyList<MemoryRecord>> SearchMemoriesAsync(string characterId, string query, int count = 6,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IImageGenerationProvider
 {
     string ModelId { get; }

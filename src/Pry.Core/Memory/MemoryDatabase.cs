@@ -1,9 +1,11 @@
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pry.Core.Models;
 
 namespace Pry.Core.Memory;
 
-public sealed class MemoryDatabase(string databasePath)
+public sealed partial class MemoryDatabase(string databasePath, ILogger? logger = null) : Pry.Core.Abstractions.IMemoryRetriever
 {
     private readonly string _connectionString = new SqliteConnectionStringBuilder
     {
@@ -12,10 +14,16 @@ public sealed class MemoryDatabase(string databasePath)
         Cache = SqliteCacheMode.Shared
     }.ToString();
 
+    /// <summary>宿主注入的日志器（PLAT-006）。Core 只提供注入口，不决定日志去哪里；
+    /// 默认 <see cref="NullLogger"/>，所以未接线的调用方——包括全部现存测试——行为不变。</summary>
+    private readonly ILogger _logger = logger ?? NullLogger.Instance;
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        var started = Environment.TickCount64;
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(databasePath))!);
         await using var connection = await OpenAsync(cancellationToken);
+        var versionBefore = await ReadSchemaVersionAsync(connection, cancellationToken);
         var sql = """
             PRAGMA journal_mode=WAL;
             PRAGMA foreign_keys=ON;
@@ -28,6 +36,7 @@ public sealed class MemoryDatabase(string databasePath)
               content TEXT NOT NULL,
               image_path TEXT NULL,
               sticker_id TEXT NULL,
+              source TEXT NOT NULL DEFAULT 'legacy',
               created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS ix_messages_conversation ON messages(conversation_id, id DESC);
@@ -44,6 +53,21 @@ public sealed class MemoryDatabase(string databasePath)
               created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS ix_conversations_updated ON conversations(updated_at DESC);
+            CREATE TABLE IF NOT EXISTS interaction_commands(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              conversation_id TEXT NOT NULL,
+              idempotency_key TEXT NOT NULL,
+              character_id TEXT NOT NULL,
+              action_id TEXT NOT NULL,
+              message_id INTEGER NULL,
+              outcome TEXT NOT NULL,
+              expression_intent TEXT NULL,
+              created_at TEXT NOT NULL,
+              UNIQUE(conversation_id,idempotency_key),
+              FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS ix_interaction_commands_cooldown
+              ON interaction_commands(conversation_id,action_id,created_at DESC);
             INSERT OR IGNORE INTO conversations(id,title,created_at,updated_at)
             SELECT m.conversation_id,
               COALESCE(NULLIF((SELECT u.content FROM messages u WHERE u.conversation_id=m.conversation_id AND u.role='user' AND u.content<>'' ORDER BY u.id LIMIT 1),''),'旧对话'),
@@ -61,6 +85,17 @@ public sealed class MemoryDatabase(string databasePath)
               FOREIGN KEY(source_message_id) REFERENCES messages(id) ON DELETE SET NULL
             );
             CREATE INDEX IF NOT EXISTS ix_memories_character ON memories(character_id, importance DESC);
+            CREATE TABLE IF NOT EXISTS memory_embeddings(
+              memory_id INTEGER NOT NULL,
+              model_id TEXT NOT NULL,
+              dimensions INTEGER NOT NULL,
+              vector BLOB NOT NULL,
+              content_fingerprint TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              PRIMARY KEY(memory_id, model_id),
+              FOREIGN KEY(memory_id) REFERENCES memories(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS ix_memory_embeddings_model ON memory_embeddings(model_id, memory_id);
             CREATE TABLE IF NOT EXISTS reply_plans(
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               conversation_id TEXT NOT NULL,
@@ -94,26 +129,44 @@ public sealed class MemoryDatabase(string databasePath)
         command.CommandText = sql;
         await command.ExecuteNonQueryAsync(cancellationToken);
         await EnsureColumnAsync(connection, "messages", "sticker_id", "TEXT NULL", cancellationToken);
+        await EnsureColumnAsync(connection, "messages", "source", "TEXT NOT NULL DEFAULT 'legacy'", cancellationToken);
         await EnsureColumnAsync(connection, "memories", "updated_at", "TEXT NULL", cancellationToken);
         await EnsureColumnAsync(connection, "memories", "last_used_at", "TEXT NULL", cancellationToken);
         await EnsureColumnAsync(connection, "conversations", "folder_id", "TEXT NULL", cancellationToken);
         await EnsureColumnAsync(connection, "conversations", "is_pinned", "INTEGER NOT NULL DEFAULT 0", cancellationToken);
         await UpgradeMemoryIndexAsync(connection, cancellationToken);
+        await InitializeProactivePoliciesAsync(connection, cancellationToken);
+        await InitializeReadStateAsync(connection, cancellationToken);
+        await InitializeRuntimeStateAsync(connection, cancellationToken);
+        await InitializeProtocolEventsAsync(connection, cancellationToken);
+        await SetSchemaVersionAsync(connection, SchemaVersion, cancellationToken);
+        // 版本、表与列名是标识符不是内容；这里不写文件名也不写任何用户数据（PLAT-006 "secrets 不进日志"）。
+        _logger.LogInformation("持久层就绪：schema {VersionBefore} → {SchemaVersion}，用时 {ElapsedMilliseconds} 毫秒",
+            versionBefore, SchemaVersion, Environment.TickCount64 - started);
     }
 
+    /// <summary>
+    /// 数据库结构的唯一写侧编号。任何断言版本的测试必须读这个常量，不得再写第二个字面量——
+    /// 同一工作区里两份硬编码值一旦不同就自相矛盾，而 QA 只能判其中之一。
+    /// 编号的分配权归 PLAT-003（§5.0 冻结中）：这里只是将既有推进登记为单点，不据此宣告 v8→v9 的迁移注册表方案已裁定。
+    /// </summary>
+    public const int SchemaVersion = 9;
+
     public async Task<long> AddMessageAsync(string conversationId, ChatRole role, string content,
-        string? imagePath, CancellationToken cancellationToken = default, string? stickerId = null)
+        string? imagePath, CancellationToken cancellationToken = default, string? stickerId = null,
+        string? source = null)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "INSERT INTO messages(conversation_id, role, content, image_path, sticker_id, created_at) VALUES($c,$r,$t,$i,$s,$at); SELECT last_insert_rowid();";
+        command.CommandText = "INSERT INTO messages(conversation_id, role, content, image_path, sticker_id, source, created_at) VALUES($c,$r,$t,$i,$s,$source,$at); SELECT last_insert_rowid();";
         command.Parameters.AddWithValue("$c", conversationId);
         command.Parameters.AddWithValue("$r", role.ToString().ToLowerInvariant());
         command.Parameters.AddWithValue("$t", content);
         command.Parameters.AddWithValue("$i", (object?)imagePath ?? DBNull.Value);
         command.Parameters.AddWithValue("$s", (object?)stickerId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$source", source ?? (role == ChatRole.User ? MessageSources.UserInput : MessageSources.ModelReply));
         command.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
         var id = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
         await using var room = connection.CreateCommand();
@@ -130,6 +183,120 @@ public sealed class MemoryDatabase(string databasePath)
         await room.ExecuteNonQueryAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return id;
+    }
+
+    public async Task<InteractionCommandWriteResult> ExecuteInteractionCommandAsync(string conversationId,
+        string characterId, string actionId, string idempotencyKey, string? responseText, string outcome,
+        string? expressionIntent, int cooldownSeconds, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = connection.BeginTransaction(deferred: false);
+        await using (var existing = connection.CreateCommand())
+        {
+            existing.Transaction = transaction;
+            existing.CommandText = """
+                SELECT character_id,action_id,message_id,outcome,created_at,expression_intent
+                FROM interaction_commands WHERE conversation_id=$conversation AND idempotency_key=$key
+                """;
+            existing.Parameters.AddWithValue("$conversation", conversationId);
+            existing.Parameters.AddWithValue("$key", idempotencyKey);
+            await using var reader = await existing.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                var storedCharacter = reader.GetString(0); var storedAction = reader.GetString(1);
+                var result = new InteractionCommandWriteResult(
+                    storedCharacter == characterId && storedAction == actionId
+                        ? InteractionCommandWriteStatus.Replayed : InteractionCommandWriteStatus.IdempotencyConflict,
+                    storedAction, storedCharacter, reader.IsDBNull(2) ? null : reader.GetInt64(2), reader.GetString(3),
+                    DateTimeOffset.Parse(reader.GetString(4)), null, reader.IsDBNull(5) ? null : reader.GetString(5));
+                await transaction.CommitAsync(cancellationToken);
+                return result;
+            }
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (cooldownSeconds > 0)
+        {
+            await using var cooldown = connection.CreateCommand();
+            cooldown.Transaction = transaction;
+            cooldown.CommandText = "SELECT created_at FROM interaction_commands WHERE conversation_id=$conversation AND action_id=$action ORDER BY id DESC LIMIT 1";
+            cooldown.Parameters.AddWithValue("$conversation", conversationId);
+            cooldown.Parameters.AddWithValue("$action", actionId);
+            var raw = await cooldown.ExecuteScalarAsync(cancellationToken);
+            if (raw is string value)
+            {
+                var retryAt = DateTimeOffset.Parse(value).AddSeconds(cooldownSeconds);
+                if (retryAt > now)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                    return new InteractionCommandWriteResult(InteractionCommandWriteStatus.Cooldown, actionId,
+                        characterId, null, outcome, now, retryAt, expressionIntent);
+                }
+            }
+        }
+
+        long? messageId = null;
+        if (responseText is not null)
+        {
+            await using var message = connection.CreateCommand();
+            message.Transaction = transaction;
+            message.CommandText = """
+                INSERT INTO messages(conversation_id,role,content,image_path,sticker_id,source,created_at)
+                VALUES($conversation,'assistant',$content,NULL,NULL,$source,$at); SELECT last_insert_rowid();
+                """;
+            message.Parameters.AddWithValue("$conversation", conversationId);
+            message.Parameters.AddWithValue("$content", responseText);
+            message.Parameters.AddWithValue("$source", MessageSources.InteractionPreset);
+            message.Parameters.AddWithValue("$at", now.ToString("O"));
+            messageId = Convert.ToInt64(await message.ExecuteScalarAsync(cancellationToken));
+            await using var room = connection.CreateCommand();
+            room.Transaction = transaction;
+            room.CommandText = "UPDATE conversations SET updated_at=$at WHERE id=$conversation";
+            room.Parameters.AddWithValue("$at", now.ToString("O"));
+            room.Parameters.AddWithValue("$conversation", conversationId);
+            await room.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                INSERT INTO interaction_commands(conversation_id,idempotency_key,character_id,action_id,message_id,
+                  outcome,expression_intent,created_at)
+                VALUES($conversation,$key,$character,$action,$message,$outcome,$expression,$at)
+                """;
+            command.Parameters.AddWithValue("$conversation", conversationId);
+            command.Parameters.AddWithValue("$key", idempotencyKey);
+            command.Parameters.AddWithValue("$character", characterId);
+            command.Parameters.AddWithValue("$action", actionId);
+            command.Parameters.AddWithValue("$message", (object?)messageId ?? DBNull.Value);
+            command.Parameters.AddWithValue("$outcome", outcome);
+            command.Parameters.AddWithValue("$expression", (object?)expressionIntent ?? DBNull.Value);
+            command.Parameters.AddWithValue("$at", now.ToString("O"));
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return new InteractionCommandWriteResult(InteractionCommandWriteStatus.Created, actionId, characterId,
+            messageId, outcome, now, null, expressionIntent);
+    }
+
+    public async Task<InteractionCommandWriteResult?> GetInteractionCommandAsync(string conversationId,
+        string idempotencyKey, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT character_id,action_id,message_id,outcome,created_at,expression_intent
+            FROM interaction_commands WHERE conversation_id=$conversation AND idempotency_key=$key
+            """;
+        command.Parameters.AddWithValue("$conversation", conversationId);
+        command.Parameters.AddWithValue("$key", idempotencyKey);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new InteractionCommandWriteResult(InteractionCommandWriteStatus.Replayed, reader.GetString(1),
+                reader.GetString(0), reader.IsDBNull(2) ? null : reader.GetInt64(2), reader.GetString(3),
+                DateTimeOffset.Parse(reader.GetString(4)), null, reader.IsDBNull(5) ? null : reader.GetString(5))
+            : null;
     }
 
     public async Task<IReadOnlyList<string>> GetReferencedImagePathsAsync(
@@ -176,7 +343,9 @@ public sealed class MemoryDatabase(string databasePath)
                    last_message.role,
                    CASE WHEN last_message.sticker_id IS NOT NULL THEN 'sticker'
                         WHEN last_message.image_path IS NOT NULL THEN 'image' ELSE 'text' END,
-                   last_message.created_at
+                   last_message.created_at, last_message.id, c.last_read_message_id,
+                   (SELECT COUNT(*) FROM messages unread WHERE unread.conversation_id=c.id
+                    AND unread.role='assistant' AND unread.id>c.last_read_message_id)
             FROM conversations c
             LEFT JOIN messages last_message ON last_message.id=(
                 SELECT latest.id FROM messages latest WHERE latest.conversation_id=c.id ORDER BY latest.id DESC LIMIT 1)
@@ -204,7 +373,9 @@ public sealed class MemoryDatabase(string databasePath)
                    last_message.role,
                    CASE WHEN last_message.sticker_id IS NOT NULL THEN 'sticker'
                         WHEN last_message.image_path IS NOT NULL THEN 'image' ELSE 'text' END,
-                   last_message.created_at
+                   last_message.created_at, last_message.id, c.last_read_message_id,
+                   (SELECT COUNT(*) FROM messages unread WHERE unread.conversation_id=c.id
+                    AND unread.role='assistant' AND unread.id>c.last_read_message_id)
             FROM conversations c
             LEFT JOIN messages last_message ON last_message.id=(
                 SELECT latest.id FROM messages latest WHERE latest.conversation_id=c.id ORDER BY latest.id DESC LIMIT 1)
@@ -225,7 +396,10 @@ public sealed class MemoryDatabase(string databasePath)
             LastMessagePreview = reader.IsDBNull(8) ? null : reader.GetString(8),
             LastMessageRole = reader.IsDBNull(9) ? null : Enum.Parse<ChatRole>(reader.GetString(9), true),
             LastMessageKind = reader.IsDBNull(10) ? null : reader.GetString(10),
-            LastMessageAt = reader.IsDBNull(11) ? null : DateTimeOffset.Parse(reader.GetString(11))
+            LastMessageAt = reader.IsDBNull(11) ? null : DateTimeOffset.Parse(reader.GetString(11)),
+            LastMessageId = reader.IsDBNull(12) ? null : reader.GetInt64(12),
+            LastReadMessageId = reader.GetInt64(13),
+            UnreadCount = reader.GetInt64(14)
         };
 
     public async Task<bool> CharacterHasReferencesAsync(string characterId, CancellationToken cancellationToken = default)
@@ -330,7 +504,7 @@ public sealed class MemoryDatabase(string databasePath)
     public async Task<ChatMessage?> GetPreviousUserMessageAsync(string conversationId, long beforeMessageId, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken); await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id,role,content,created_at,image_path,sticker_id FROM messages WHERE conversation_id=$c AND id<$id AND role='user' ORDER BY id DESC LIMIT 1";
+        command.CommandText = "SELECT id,role,content,created_at,image_path,sticker_id,source FROM messages WHERE conversation_id=$c AND id<$id AND role='user' ORDER BY id DESC LIMIT 1";
         command.Parameters.AddWithValue("$c", conversationId); command.Parameters.AddWithValue("$id", beforeMessageId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken); if (!await reader.ReadAsync(cancellationToken)) return null;
         return ReadChatMessage(reader, conversationId);
@@ -348,13 +522,14 @@ public sealed class MemoryDatabase(string databasePath)
         var result = new List<ChatMessage>();
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id, role, content, created_at, image_path, sticker_id FROM messages WHERE conversation_id=$c ORDER BY id DESC LIMIT $n";
+        command.CommandText = "SELECT id, role, content, created_at, image_path, sticker_id, source FROM messages WHERE conversation_id=$c ORDER BY id DESC LIMIT $n";
         command.Parameters.AddWithValue("$c", conversationId);
         command.Parameters.AddWithValue("$n", count);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
             result.Add(new ChatMessage(reader.GetInt64(0), conversationId, Enum.Parse<ChatRole>(reader.GetString(1), true),
-                reader.GetString(2), DateTimeOffset.Parse(reader.GetString(3)), reader.IsDBNull(4) ? null : reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5)));
+                reader.GetString(2), DateTimeOffset.Parse(reader.GetString(3)), reader.IsDBNull(4) ? null : reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5),
+                Source: reader.GetString(6)));
         result.Reverse();
         return result;
     }
@@ -407,7 +582,7 @@ public sealed class MemoryDatabase(string databasePath)
     public async Task<ChatMessage?> GetMessageAsync(string conversationId, long id, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken); await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id,role,content,created_at,image_path,sticker_id FROM messages WHERE conversation_id=$c AND id=$id";
+        command.CommandText = "SELECT id,role,content,created_at,image_path,sticker_id,source FROM messages WHERE conversation_id=$c AND id=$id";
         command.Parameters.AddWithValue("$c", conversationId); command.Parameters.AddWithValue("$id", id);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadChatMessage(reader, conversationId) : null;
@@ -478,9 +653,10 @@ public sealed class MemoryDatabase(string databasePath)
         await using (var insert = connection.CreateCommand())
         {
             insert.Transaction = transaction;
-            insert.CommandText = "INSERT INTO messages(conversation_id, role, content, sticker_id, created_at) SELECT conversation_id,'assistant',$c,$i,$at FROM reply_plans WHERE id=$p; SELECT last_insert_rowid();";
+            insert.CommandText = "INSERT INTO messages(conversation_id, role, content, sticker_id, source, created_at) SELECT conversation_id,'assistant',$c,$i,$source,$at FROM reply_plans WHERE id=$p; SELECT last_insert_rowid();";
             insert.Parameters.AddWithValue("$c", message.Content ?? ""); insert.Parameters.AddWithValue("$i", (object?)message.StickerId ?? DBNull.Value);
             insert.Parameters.AddWithValue("$at", deliveredAt.ToString("O")); insert.Parameters.AddWithValue("$p", planId);
+            insert.Parameters.AddWithValue("$source", MessageSources.ModelReply);
             messageId = Convert.ToInt64(await insert.ExecuteScalarAsync(cancellationToken));
         }
         await using (var room = connection.CreateCommand())
@@ -531,6 +707,118 @@ public sealed class MemoryDatabase(string databasePath)
         return result;
     }
 
+    public async Task<IReadOnlyList<MemoryEmbeddingSource>> ListPendingMemoryEmbeddingsAsync(string modelId,
+        int count = 64, CancellationToken cancellationToken = default)
+    {
+        var result = new List<MemoryEmbeddingSource>();
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT m.id,m.summary,m.tags
+            FROM memories m
+            LEFT JOIN memory_embeddings e ON e.memory_id=m.id AND e.model_id=$model
+            WHERE e.memory_id IS NULL OR e.content_fingerprint<>(m.summary || char(10) || m.tags)
+            ORDER BY m.id LIMIT $count
+            """;
+        command.Parameters.AddWithValue("$model", modelId);
+        command.Parameters.AddWithValue("$count", Math.Clamp(count, 1, 512));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(new MemoryEmbeddingSource(reader.GetInt64(0), reader.GetString(1), reader.GetString(2)));
+        return result;
+    }
+
+    public async Task UpsertMemoryEmbeddingAsync(MemoryEmbeddingSource source, string modelId, float[] vector,
+        CancellationToken cancellationToken = default)
+    {
+        if (vector.Length == 0 || vector.Any(value => !float.IsFinite(value)))
+            throw new ArgumentException("Embedding vector must contain finite values.", nameof(vector));
+        var bytes = new byte[vector.Length * sizeof(float)];
+        Buffer.BlockCopy(vector, 0, bytes, 0, bytes.Length);
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO memory_embeddings(memory_id,model_id,dimensions,vector,content_fingerprint,updated_at)
+            VALUES($id,$model,$dimensions,$vector,$fingerprint,$at)
+            ON CONFLICT(memory_id,model_id) DO UPDATE SET dimensions=excluded.dimensions,vector=excluded.vector,
+              content_fingerprint=excluded.content_fingerprint,updated_at=excluded.updated_at
+            """;
+        command.Parameters.AddWithValue("$id", source.Id);
+        command.Parameters.AddWithValue("$model", modelId);
+        command.Parameters.AddWithValue("$dimensions", vector.Length);
+        command.Parameters.Add("$vector", SqliteType.Blob).Value = bytes;
+        command.Parameters.AddWithValue("$fingerprint", source.Content);
+        command.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<MemoryVectorRecord>> ListMemoryVectorsAsync(string characterId, string modelId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new List<MemoryVectorRecord>();
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT m.id,m.character_id,m.kind,m.summary,m.tags,m.importance,m.source_message_id,m.created_at,
+                   m.updated_at,m.last_used_at,e.dimensions,e.vector
+            FROM memories m JOIN memory_embeddings e ON e.memory_id=m.id
+            WHERE m.character_id=$character AND e.model_id=$model
+            """;
+        command.Parameters.AddWithValue("$character", characterId);
+        command.Parameters.AddWithValue("$model", modelId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var memory = ReadMemory(reader);
+            var dimensions = reader.GetInt32(10);
+            var bytes = (byte[])reader[11];
+            if (bytes.Length != dimensions * sizeof(float)) continue;
+            var vector = new float[dimensions];
+            Buffer.BlockCopy(bytes, 0, vector, 0, bytes.Length);
+            result.Add(new MemoryVectorRecord(memory, vector));
+        }
+        return result;
+    }
+
+    public async Task<(int Indexed, int Pending)> GetMemoryEmbeddingCountsAsync(string modelId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+              SUM(CASE WHEN e.memory_id IS NOT NULL AND e.content_fingerprint=(m.summary || char(10) || m.tags) THEN 1 ELSE 0 END),
+              SUM(CASE WHEN e.memory_id IS NULL OR e.content_fingerprint<>(m.summary || char(10) || m.tags) THEN 1 ELSE 0 END)
+            FROM memories m LEFT JOIN memory_embeddings e ON e.memory_id=m.id AND e.model_id=$model
+            """;
+        command.Parameters.AddWithValue("$model", modelId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        await reader.ReadAsync(cancellationToken);
+        return (reader.IsDBNull(0) ? 0 : Convert.ToInt32(reader.GetInt64(0)),
+            reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetInt64(1)));
+    }
+
+    public async Task ClearMemoryEmbeddingsAsync(string modelId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM memory_embeddings WHERE model_id=$model";
+        command.Parameters.AddWithValue("$model", modelId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task TouchMemoriesAsync(IEnumerable<long> ids, CancellationToken cancellationToken = default)
+    {
+        var values = ids.Distinct().Take(100).ToArray();
+        if (values.Length == 0) return;
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"UPDATE memories SET last_used_at=$at WHERE id IN ({string.Join(',', values.Select((_, index) => $"$id{index}"))})";
+        command.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
+        for (var index = 0; index < values.Length; index++) command.Parameters.AddWithValue($"$id{index}", values[index]);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private async Task<ConversationMutationSnapshot?> DeleteMessagesCoreAsync(string conversationId, long messageId,
         bool includeFollowing, CancellationToken cancellationToken)
     {
@@ -558,7 +846,7 @@ public sealed class MemoryDatabase(string databasePath)
         var messages = new List<ChatMessage>();
         await using (var select = connection.CreateCommand())
         {
-            select.Transaction = transaction; select.CommandText = $"SELECT id,role,content,created_at,image_path,sticker_id FROM messages WHERE conversation_id=$c AND id{op}$id ORDER BY id";
+            select.Transaction = transaction; select.CommandText = $"SELECT id,role,content,created_at,image_path,sticker_id,source FROM messages WHERE conversation_id=$c AND id{op}$id ORDER BY id";
             select.Parameters.AddWithValue("$c", conversationId); select.Parameters.AddWithValue("$id", messageId);
             await using var reader = await select.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) messages.Add(ReadChatMessage(reader, conversationId));
         }
@@ -571,6 +859,9 @@ public sealed class MemoryDatabase(string databasePath)
             select.Parameters.AddWithValue("$c", conversationId); select.Parameters.AddWithValue("$id", messageId);
             await using var reader = await select.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) memories.Add(ReadMemory(reader));
         }
+        // 事件行的 payload 含对话明文，所以删除必须与领域写入同事务：先遮蔽再删消息，
+        // 顺序反过来就删不到 subject_message_id 的取值范围了。
+        await MaskProtocolEventsAsync(connection, transaction, conversationId, op, messageId, cancellationToken);
         foreach (var sql in new[]
         {
             $"DELETE FROM memories WHERE source_message_id IN (SELECT id FROM messages WHERE conversation_id=$c AND id{op}$id)",
@@ -611,9 +902,10 @@ public sealed class MemoryDatabase(string databasePath)
         foreach (var message in snapshot.Messages)
         {
             await using var command = connection.CreateCommand(); command.Transaction = transaction;
-            command.CommandText = "INSERT OR REPLACE INTO messages(id,conversation_id,role,content,image_path,sticker_id,created_at) VALUES($id,$c,$r,$text,$image,$sticker,$at)";
+            command.CommandText = "INSERT OR REPLACE INTO messages(id,conversation_id,role,content,image_path,sticker_id,source,created_at) VALUES($id,$c,$r,$text,$image,$sticker,$source,$at)";
             command.Parameters.AddWithValue("$id", message.Id); command.Parameters.AddWithValue("$c", message.ConversationId); command.Parameters.AddWithValue("$r", message.Role.ToString().ToLowerInvariant()); command.Parameters.AddWithValue("$text", message.Content);
             command.Parameters.AddWithValue("$image", (object?)message.ImagePath ?? DBNull.Value); command.Parameters.AddWithValue("$sticker", (object?)message.StickerId ?? DBNull.Value); command.Parameters.AddWithValue("$at", message.CreatedAt.ToString("O"));
+            command.Parameters.AddWithValue("$source", message.Source);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         foreach (var memory in snapshot.Memories)
@@ -636,7 +928,8 @@ public sealed class MemoryDatabase(string databasePath)
 
     private static ChatMessage ReadChatMessage(SqliteDataReader reader, string conversationId) => new(
         reader.GetInt64(0), conversationId, Enum.Parse<ChatRole>(reader.GetString(1), true), reader.GetString(2), DateTimeOffset.Parse(reader.GetString(3)),
-        reader.IsDBNull(4) ? null : reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5));
+        reader.IsDBNull(4) ? null : reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5),
+        Source: reader.GetString(6));
 
     private static MemoryRecord ReadMemory(SqliteDataReader reader) => new(
         reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
@@ -652,6 +945,15 @@ public sealed class MemoryDatabase(string databasePath)
         command.CommandText = "PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;";
         await command.ExecuteNonQueryAsync(cancellationToken);
         return connection;
+    }
+
+    /// <summary>读当前结构版本；表还不存在（全新库）时按 0 处理，让日志能区分"第一次建库"和"就地升级"。</summary>
+    private static async Task<int> ReadSchemaVersionAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COALESCE(MAX(version), 1) FROM schema_info";
+        try { return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken)); }
+        catch (SqliteException) { return 0; }
     }
 
     private static async Task EnsureColumnAsync(SqliteConnection connection, string table, string column,
@@ -678,6 +980,24 @@ public sealed class MemoryDatabase(string databasePath)
         await using var migrate = connection.CreateCommand();
         migrate.CommandText = "INSERT INTO memory_fts(memory_fts) VALUES('rebuild'); UPDATE schema_info SET version=2;";
         await migrate.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>当前数据库结构版本，供协议握手与诊断读取；SQL 不出本层。</summary>
+    public async Task<int> GetSchemaVersionAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COALESCE(MAX(version), 1) FROM schema_info";
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static async Task SetSchemaVersionAsync(SqliteConnection connection, int version,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE schema_info SET version=$version WHERE version<$version";
+        command.Parameters.AddWithValue("$version", version);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static IEnumerable<string> Tokenize(string text) => text

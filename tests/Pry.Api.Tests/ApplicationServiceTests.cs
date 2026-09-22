@@ -1,7 +1,9 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Http;
 using Pry.Contracts;
+using Pry.Api.Middleware;
 using Pry.Api.Services;
 using Pry.Core.Memory;
 using Pry.Core.Models;
@@ -11,6 +13,25 @@ namespace Pry.Api.Tests;
 
 public sealed class ApplicationServiceTests
 {
+    [Fact]
+    public async Task Interaction_cooldown_maps_to_429_with_retry_metadata()
+    {
+        var retryAt = DateTimeOffset.UtcNow.AddSeconds(10);
+        var middleware = new ApiExceptionMiddleware(_ => throw new InteractionRejectedException(
+            "interaction_cooldown", "请稍后再试", retryAt), NullLogger<ApiExceptionMiddleware>.Instance);
+        var context = new DefaultHttpContext(); context.Response.Body = new MemoryStream();
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(429, context.Response.StatusCode);
+        Assert.True(int.Parse(context.Response.Headers.RetryAfter.Single()!) > 0);
+        context.Response.Body.Position = 0;
+        using var reader = new StreamReader(context.Response.Body);
+        var body = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("interaction_cooldown", body);
+        Assert.Contains("retryAt", body);
+    }
+
     [Fact]
     public async Task Media_store_sniffs_content_hides_paths_and_resolves_managed_attachment()
     {
@@ -84,18 +105,84 @@ public sealed class ApplicationServiceTests
     [Fact]
     public async Task Event_log_replays_from_sequence_and_wakes_subscribers()
     {
-        var log = new ConversationEventLog();
-        var first = log.Publish("turn.state", new { state = "ModelThinking" });
-        var second = log.Publish("message.created", new { messageId = 42 });
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        var ct = TestContext.Current.CancellationToken;
+        await fixture.Database.EnsureConversationAsync("room", "character", ct);
+        var log = new ConversationEventLog(fixture.Database, "room", NullLogger.Instance);
+        // 电平触发类不入库：它表达"现在处于哪"，重放会把界面倒回旧状态。
+        log.Publish("turn.state", new { state = "ModelThinking" });
+        var first = log.Publish("message.created", new { messageId = 42 });
+        var second = log.Publish("message.created", new { messageId = 43 });
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         await using var reader = log.ReadAsync(first.Sequence, timeout.Token).GetAsyncEnumerator(timeout.Token);
         Assert.True(await reader.MoveNextAsync());
         Assert.Equal(second.Sequence, reader.Current.Sequence);
 
         var next = reader.MoveNextAsync().AsTask();
-        var third = log.Publish("turn.state", new { state = "Idle" });
+        var third = log.Publish("message.created", new { messageId = 44 });
         Assert.True(await next);
         Assert.Equal(third.Sequence, reader.Current.Sequence);
+    }
+
+    [Fact]
+    public async Task Sequences_are_global_monotonic_and_survive_a_new_log_instance()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        var ct = TestContext.Current.CancellationToken;
+        await fixture.Database.EnsureConversationAsync("room-a", "character", ct);
+        await fixture.Database.EnsureConversationAsync("room-b", "character", ct);
+        var roomA = new ConversationEventLog(fixture.Database, "room-a", NullLogger.Instance);
+        var roomB = new ConversationEventLog(fixture.Database, "room-b", NullLogger.Instance);
+        var a1 = roomA.Publish("message.created", new { messageId = 1 });
+        var b1 = roomB.Publish("message.created", new { messageId = 2 });
+        var a2 = roomA.Publish("message.created", new { messageId = 3 });
+
+        // 序号由那张表唯一分配，因此跨会话单调；同一会话内留洞是正常状态，
+        // 客户端不得据空洞自判丢失——丢失只由服务端的 stream.resumed 宣告。
+        Assert.True(a1.Sequence < b1.Sequence && b1.Sequence < a2.Sequence);
+        Assert.True(a2.Sequence - a1.Sequence > 1);
+
+        // 换一个实例（等价于重配置或重启）后旧游标仍然有效：
+        // 每会话序号从 1 重来时，带旧游标的客户端会在新序号爬到该值之前静默收不到任何事件。
+        var revived = new ConversationEventLog(fixture.Database, "room-a", NullLogger.Instance);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var replayed = new List<ConversationEvent>();
+        await foreach (var item in revived.ReadAsync(a1.Sequence, timeout.Token))
+        {
+            replayed.Add(item);
+            break;
+        }
+        Assert.Equal(a2.Sequence, Assert.Single(replayed).Sequence);
+        var window = await fixture.Database.GetProtocolEventWindowAsync("room-a", ct);
+        Assert.Equal(a2.Sequence, window.Latest);
+        // 会话 b 消耗过序号，所以 a 的流里确实有洞，但补投窗口只按本会话判定。
+        Assert.Equal(a1.Sequence, window.FirstRetained);
+    }
+
+    [Fact]
+    public async Task Level_events_are_never_stored_and_are_not_replayed_to_later_subscribers()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        var ct = TestContext.Current.CancellationToken;
+        await fixture.Database.EnsureConversationAsync("room", "character", ct);
+        var log = new ConversationEventLog(fixture.Database, "room", NullLogger.Instance);
+        var fact = log.Publish("message.created", new { messageId = 7 });
+        log.Publish("turn.state", new { state = "ModelThinking" });
+        log.Publish("session.ready", new { conversationId = "room" });
+
+        Assert.Equal(1, await fixture.Database.CountProtocolEventsAsync("room", ct));
+        Assert.Equal("message.created", (await fixture.Database.ReadProtocolEventsAsync("room", 0, 10, ct)).Single().Type);
+
+        // 迟到的订阅者拿得到事实，拿不到事实之前那条"模型正在思考"——否则界面会被推回旧状态。
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var late = new List<ConversationEvent>();
+        await foreach (var item in log.ReadAsync(0, timeout.Token))
+        {
+            late.Add(item);
+            break;
+        }
+        Assert.Equal([fact.Type], late.Select(x => x.Type));
+        Assert.Equal(fact.Sequence, Assert.Single(late).Sequence);
     }
 
     [Fact]
@@ -218,6 +305,100 @@ public sealed class ApplicationServiceTests
     }
 
     [Fact]
+    public async Task Character_interactions_use_overrides_idempotency_cooldown_and_persisted_events()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        var configuration = new ConfigurationManager(); configuration["Pry:DataDirectory"] = fixture.Directory;
+        await using var registry = new ModelProcessRegistry(NullLogger<ModelProcessRegistry>.Instance);
+        var runtime = new BackendRuntime(configuration, registry, NullLogger<BackendRuntime>.Instance);
+        await runtime.StartAsync(TestContext.Current.CancellationToken);
+        var profiles = new CharacterInteractionProfileService(configuration, runtime);
+        var builtIn = await profiles.GetAsync("author-character", TestContext.Current.CancellationToken);
+        Assert.Equal("built-in", builtIn.Source);
+        Assert.NotEmpty(builtIn.PokeReplies);
+
+        var saved = await profiles.SaveAsync("author-character", new SaveInteractionProfileRequest(1, 0,
+            [new InteractionReplyPresetDto("poke-one", "你戳到我了。", true, 1)],
+            [new InteractionActionDto("wave", "挥挥手", true, InteractionResponseModes.Silent, "happy", [])]),
+            TestContext.Current.CancellationToken);
+        Assert.Equal("user-override", saved.Source);
+        await Assert.ThrowsAsync<ApiValidationException>(() => profiles.SaveAsync("author-character",
+            new SaveInteractionProfileRequest(1, 0,
+                [new InteractionReplyPresetDto("same", "一", true, 1),
+                    new InteractionReplyPresetDto("same", "二", true, 1)], []),
+            TestContext.Current.CancellationToken));
+        Assert.Equal("poke-one", Assert.Single((await profiles.GetAsync("author-character",
+            TestContext.Current.CancellationToken)).PokeReplies).Id);
+
+        await fixture.Database.EnsureConversationAsync("room", "author-character",
+            TestContext.Current.CancellationToken);
+        var media = new MediaAssetStore(configuration);
+        await using var sessions = new ConversationSessionService(fixture.Database, runtime, media,
+            NullLogger<ConversationSessionService>.Instance, null, profiles);
+        var first = await sessions.ExecuteInteractionAsync("room", new ExecuteInteractionRequest("poke", "gesture-1"),
+            TestContext.Current.CancellationToken);
+        var replay = await sessions.ExecuteInteractionAsync("room", new ExecuteInteractionRequest("poke", "gesture-1"),
+            TestContext.Current.CancellationToken);
+        Assert.False(first.Replayed); Assert.True(replay.Replayed); Assert.Equal(first.MessageId, replay.MessageId);
+        var message = Assert.Single(await fixture.Database.GetRecentMessagesAsync("room", 10,
+            TestContext.Current.CancellationToken));
+        Assert.Equal(MessageSources.InteractionPreset, message.Source);
+        var regeneration = await Assert.ThrowsAsync<InteractionRejectedException>(() => sessions.RegenerateAsync(
+            "room", message.Id, TestContext.Current.CancellationToken));
+        Assert.Equal("interaction_not_available", regeneration.Code);
+
+        await using var events = sessions.EventsAsync("room", 0, TestContext.Current.CancellationToken)
+            .GetAsyncEnumerator(TestContext.Current.CancellationToken);
+        Assert.True(await events.MoveNextAsync()); Assert.Equal("interaction.performed", events.Current.Type);
+        Assert.True(await events.MoveNextAsync()); Assert.Equal("message.created", events.Current.Type);
+        await Assert.ThrowsAsync<InteractionRejectedException>(() => sessions.ExecuteInteractionAsync("room",
+            new ExecuteInteractionRequest("wave", "gesture-1"), TestContext.Current.CancellationToken));
+
+        var silent = await sessions.ExecuteInteractionAsync("room", new ExecuteInteractionRequest("wave", "gesture-2"),
+            TestContext.Current.CancellationToken);
+        Assert.Equal("presentation_only", silent.Outcome); Assert.Null(silent.MessageId);
+        Assert.Single(await fixture.Database.GetRecentMessagesAsync("room", 10, TestContext.Current.CancellationToken));
+
+        await profiles.SaveAsync("author-character", new SaveInteractionProfileRequest(1, 60,
+            [new InteractionReplyPresetDto("poke-one", "你戳到我了。", true, 1)], []),
+            TestContext.Current.CancellationToken);
+        var cooldown = await Assert.ThrowsAsync<InteractionRejectedException>(() => sessions.ExecuteInteractionAsync(
+            "room", new ExecuteInteractionRequest("poke", "gesture-3"), TestContext.Current.CancellationToken));
+        Assert.Equal("interaction_cooldown", cooldown.Code); Assert.NotNull(cooldown.RetryAt);
+    }
+
+    [Fact]
+    public async Task Interaction_is_rejected_while_a_user_turn_is_pending()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        var configuration = new ConfigurationManager(); configuration["Pry:DataDirectory"] = fixture.Directory;
+        await using var registry = new ModelProcessRegistry(NullLogger<ModelProcessRegistry>.Instance);
+        var runtime = new BackendRuntime(configuration, registry, NullLogger<BackendRuntime>.Instance);
+        await runtime.StartAsync(TestContext.Current.CancellationToken);
+        var profiles = new CharacterInteractionProfileService(configuration, runtime);
+        await profiles.SaveAsync("author-character", new SaveInteractionProfileRequest(1, 0,
+            [new InteractionReplyPresetDto("poke", "回应", true, 1)], []), TestContext.Current.CancellationToken);
+        await fixture.Database.EnsureConversationAsync("room", "author-character", TestContext.Current.CancellationToken);
+        var media = new MediaAssetStore(configuration);
+        await using var sessions = new ConversationSessionService(fixture.Database, runtime, media,
+            NullLogger<ConversationSessionService>.Instance, null, profiles);
+        var configurationService = new ConfigurationApplicationService(configuration, runtime, sessions, media,
+            fixture.Database);
+        var network = await configurationService.CreateNetworkModelAsync(new SaveNetworkModelRequest("测试文字模型",
+            "test", "http://127.0.0.1:1/v1", new ModelCapabilities(), 2048, 64, .5, 0, "remote", false, null),
+            TestContext.Current.CancellationToken);
+        await configurationService.UpdateModelSelectionAsync(new UpdateModelSelectionRequest(network.Id, null,
+            runtime.ActiveSpeechModelId, null), TestContext.Current.CancellationToken);
+
+        await sessions.SubmitAsync("room", new SubmitTurnRequest("稍等，我还在输入"),
+            TestContext.Current.CancellationToken);
+        var busy = await Assert.ThrowsAsync<InteractionRejectedException>(() => sessions.ExecuteInteractionAsync(
+            "room", new ExecuteInteractionRequest("poke", "gesture-busy"), TestContext.Current.CancellationToken));
+
+        Assert.Equal("turn_busy", busy.Code);
+    }
+
+    [Fact]
     public async Task Character_and_client_preferences_are_owned_by_backend_without_path_leaks()
     {
         await using var fixture = await DatabaseFixture.CreateAsync();
@@ -273,6 +454,28 @@ public sealed class ApplicationServiceTests
         Assert.DoesNotContain("19998", System.Text.Json.JsonSerializer.Serialize(custom));
         await service.DeleteCustomModelAsync(custom.Id, TestContext.Current.CancellationToken);
         Assert.DoesNotContain(service.GetModels(), x => x.Id == custom.Id);
+        var network = await service.CreateNetworkModelAsync(new SaveNetworkModelRequest("网络接口", "remote-model",
+            "https://models.example/v1", new ModelCapabilities(), 8192, 512, .7, 0, "remote", false,
+            ["自定义", "network"]), TestContext.Current.CancellationToken);
+        Assert.Equal("network", network.Source);
+        Assert.Equal(["自定义", "network"], network.Tags);
+        await service.DeleteNetworkModelAsync(network.Id, TestContext.Current.CancellationToken);
+        var networkEmbedding = await service.CreateNetworkModelAsync(new SaveNetworkModelRequest("网络向量", "embed-model",
+            "https://models.example/v1", new ModelCapabilities(false, Embeddings: true), 2048, 1, 0, 0, "remote", false,
+            ["embedding"]), TestContext.Current.CancellationToken);
+        var embeddingStatus = await service.UpdateEmbeddingSelectionAsync(
+            new UpdateEmbeddingSettingsRequest(true, networkEmbedding.Id), TestContext.Current.CancellationToken);
+        Assert.True(embeddingStatus.Enabled);
+        Assert.True(Assert.Single(service.GetModels(), x => x.Id == networkEmbedding.Id).SelectedForEmbedding);
+        await Assert.ThrowsAsync<ResourceConflictException>(() =>
+            service.DeleteNetworkModelAsync(networkEmbedding.Id, TestContext.Current.CancellationToken));
+        await service.UpdateEmbeddingSelectionAsync(new UpdateEmbeddingSettingsRequest(false, null),
+            TestContext.Current.CancellationToken);
+        await service.DeleteNetworkModelAsync(networkEmbedding.Id, TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<ApiValidationException>(() => service.CreateNetworkModelAsync(
+            new SaveNetworkModelRequest("无能力模型", "invalid", "https://models.example/v1",
+                new ModelCapabilities(false), 2048, 1, 0, 0, "remote", false, null),
+            TestContext.Current.CancellationToken));
         var customSpeech = await service.CreateSpeechModelAsync(new SaveSpeechModelRequest("测试语音接口",
             "openai-compatible", "whisper-1", null, "http://127.0.0.1:19997/v1", "zh", 16000),
             TestContext.Current.CancellationToken);
@@ -338,9 +541,11 @@ public sealed class ApplicationServiceTests
         var runtime = new BackendRuntime(configuration, registry, NullLogger<BackendRuntime>.Instance);
         await runtime.StartAsync(TestContext.Current.CancellationToken);
         var media = new MediaAssetStore(configuration);
+        var profiles = new CharacterInteractionProfileService(configuration, runtime);
         await using var sessions = new ConversationSessionService(fixture.Database, runtime, media,
             NullLogger<ConversationSessionService>.Instance);
-        var service = new ConfigurationApplicationService(configuration, runtime, sessions, media, fixture.Database);
+        var service = new ConfigurationApplicationService(configuration, runtime, sessions, media, fixture.Database,
+            null, profiles);
         var builtIn = runtime.Characters[0];
         await Assert.ThrowsAsync<ResourceConflictException>(() =>
             service.DeleteCharacterAsync(builtIn.Id, TestContext.Current.CancellationToken));
@@ -349,6 +554,10 @@ public sealed class ApplicationServiceTests
             "待删除角色", "待删除角色-v1", "你", "测试身份", "", "", [], [], new RuntimeState(), "你好。",
             CharacterPromptMode.Structured, "", null, false, new ImageDisplayPreferences()),
             TestContext.Current.CancellationToken);
+        await profiles.SaveAsync(created.Id, new SaveInteractionProfileRequest(1, 0,
+            [new InteractionReplyPresetDto("poke", "回应", true, 1)], []), TestContext.Current.CancellationToken);
+        var interactionPath = profiles.GetOverridePath(created.Id);
+        Assert.True(File.Exists(interactionPath));
         await fixture.Database.EnsureConversationAsync("uses-character", created.Id, TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<ResourceConflictException>(() =>
             service.DeleteCharacterAsync(created.Id, TestContext.Current.CancellationToken));
@@ -356,6 +565,7 @@ public sealed class ApplicationServiceTests
         await fixture.Database.DeleteConversationAsync("uses-character", TestContext.Current.CancellationToken);
         await service.DeleteCharacterAsync(created.Id, TestContext.Current.CancellationToken);
         Assert.DoesNotContain(service.ListCharacters(), x => x.Id == created.Id);
+        Assert.False(File.Exists(interactionPath));
     }
 
     [Fact]
@@ -421,6 +631,116 @@ public sealed class ApplicationServiceTests
         var memory = await service.CreateAsync(new CreateMemoryRequest("c", "fact", "用户喜欢红茶", "饮品", .8), TestContext.Current.CancellationToken);
         await Assert.ThrowsAsync<ResourceNotFoundException>(() => service.UpdateAsync(memory.Id, "other",
             new UpdateMemoryRequest("fact", "修改", "", .5), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Local_models_are_discovered_persisted_tagged_and_exposed_without_paths()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        var modelsDirectory = Path.Combine(fixture.Directory, "models");
+        System.IO.Directory.CreateDirectory(modelsDirectory);
+        await File.WriteAllBytesAsync(Path.Combine(modelsDirectory, "qwen3.5-9b-q4_k_m.gguf"), "GGUF-test"u8.ToArray(),
+            TestContext.Current.CancellationToken);
+        await File.WriteAllBytesAsync(Path.Combine(modelsDirectory, "mmproj-qwen3.5-9b-f16.gguf"), "GGUF-test"u8.ToArray(),
+            TestContext.Current.CancellationToken);
+        await File.WriteAllBytesAsync(Path.Combine(modelsDirectory, "bge-m3-embedding-q8_0.gguf"), "GGUF-test"u8.ToArray(),
+            TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(Path.Combine(modelsDirectory, "not-a-model.gguf"), "invalid",
+            TestContext.Current.CancellationToken);
+
+        var configuration = new ConfigurationManager();
+        configuration["Pry:DataDirectory"] = fixture.Directory;
+        configuration["Pry:ModelsDirectory"] = modelsDirectory;
+        await using var registry = new ModelProcessRegistry(NullLogger<ModelProcessRegistry>.Instance);
+        var runtime = new BackendRuntime(configuration, registry, NullLogger<BackendRuntime>.Instance);
+        await runtime.StartAsync(TestContext.Current.CancellationToken);
+        var media = new MediaAssetStore(configuration);
+        await using var sessions = new ConversationSessionService(fixture.Database, runtime, media,
+            NullLogger<ConversationSessionService>.Instance);
+        var service = new ConfigurationApplicationService(configuration, runtime, sessions, media, fixture.Database);
+
+        var local = service.GetModels().Where(x => x.Source == "local").ToArray();
+        Assert.Equal(2, local.Length);
+        var chat = Assert.Single(local, x => x.Capabilities.Text);
+        Assert.True(chat.Capabilities.Vision);
+        Assert.Contains("qwen", chat.Tags);
+        Assert.Contains("q4_k_m", chat.Tags);
+        var embedding = Assert.Single(local, x => x.Capabilities.Embeddings);
+        Assert.False(embedding.Capabilities.Text);
+        Assert.Contains("embedding", embedding.Tags);
+        Assert.DoesNotContain("reasoning", embedding.Tags);
+        Assert.DoesNotContain(modelsDirectory, System.Text.Json.JsonSerializer.Serialize(local));
+        var embeddingStatus = await service.UpdateEmbeddingSelectionAsync(
+            new UpdateEmbeddingSettingsRequest(true, embedding.Id), TestContext.Current.CancellationToken);
+        Assert.Equal(embedding.Id, embeddingStatus.ModelId);
+        Assert.Equal(embedding.Id, service.GetPreferences().ActiveEmbeddingModelId);
+        await service.UpdateEmbeddingSelectionAsync(new UpdateEmbeddingSettingsRequest(false, null),
+            TestContext.Current.CancellationToken);
+
+        var tagged = await service.UpdateModelTagsAsync(chat.Id, new UpdateModelTagsRequest(["常用", " RolePlay "]),
+            TestContext.Current.CancellationToken);
+        Assert.Equal(["常用", "roleplay"], tagged.Tags);
+        var scan = await service.ScanModelsAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(2, scan.FoundCount);
+        Assert.Equal(0, scan.AddedCount);
+        Assert.Equal(["常用", "roleplay"], Assert.Single(scan.Models, x => x.Id == chat.Id).Tags);
+        Assert.Contains("discoveredModels", await File.ReadAllTextAsync(Path.Combine(fixture.Directory, "preferences.json"),
+            TestContext.Current.CancellationToken));
+
+        await Assert.ThrowsAsync<ApiValidationException>(() => service.UpdateModelSelectionAsync(
+            new UpdateModelSelectionRequest(embedding.Id, null, runtime.ActiveSpeechModelId, null),
+            TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ApiValidationException>(() => service.UpdateModelTagsAsync(chat.Id,
+            new UpdateModelTagsRequest(Enumerable.Range(0, 21).Select(x => x.ToString()).ToArray()),
+            TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Embedding_failure_degrades_to_keyword_memory_search()
+    {
+        await using var fixture = await DatabaseFixture.CreateAsync();
+        var configuration = new ConfigurationManager(); configuration["Pry:DataDirectory"] = fixture.Directory;
+        await using var chatRegistry = new ModelProcessRegistry(NullLogger<ModelProcessRegistry>.Instance);
+        var runtime = new BackendRuntime(configuration, chatRegistry, NullLogger<BackendRuntime>.Instance);
+        await runtime.StartAsync(TestContext.Current.CancellationToken);
+        var media = new MediaAssetStore(configuration);
+        await using var sessions = new ConversationSessionService(fixture.Database, runtime, media,
+            NullLogger<ConversationSessionService>.Instance);
+        var configurationService = new ConfigurationApplicationService(configuration, runtime, sessions, media,
+            fixture.Database);
+        var profile = await configurationService.CreateNetworkModelAsync(new SaveNetworkModelRequest(
+            "不可用向量服务", "embedding", "http://127.0.0.1:1/v1",
+            new ModelCapabilities(false, Embeddings: true), 2048, 1, 0, 0, "remote", false, null),
+            TestContext.Current.CancellationToken);
+        await configurationService.UpdateEmbeddingSelectionAsync(new UpdateEmbeddingSettingsRequest(true, profile.Id),
+            TestContext.Current.CancellationToken);
+        await fixture.Database.AddMemoryAsync("c", "fact", "用户喜欢红茶", "红茶", .8, null,
+            TestContext.Current.CancellationToken);
+        await using var embeddingRegistry = new EmbeddingProcessRegistry(NullLogger<EmbeddingProcessRegistry>.Instance);
+        var embeddings = new MemoryEmbeddingService(fixture.Database, runtime, embeddingRegistry,
+            NullLogger<MemoryEmbeddingService>.Instance);
+
+        var result = await embeddings.SearchMemoriesAsync("c", "红茶", 6, TestContext.Current.CancellationToken);
+
+        Assert.Single(result);
+        Assert.Equal("degraded", (await embeddings.GetStatusAsync(TestContext.Current.CancellationToken)).State);
+    }
+
+    [Fact]
+    public void Discovery_recognizes_supported_multimodal_and_roleplay_file_names()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"pry-model-tags-{Guid.NewGuid():N}");
+        System.IO.Directory.CreateDirectory(directory);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(directory, "InternVL3-2B-Instruct-Q4_K_M.gguf"), "GGUF-test"u8.ToArray());
+            File.WriteAllBytes(Path.Combine(directory, "mmproj-InternVL3-2B-Instruct-Q8_0.gguf"), "GGUF-test"u8.ToArray());
+            File.WriteAllBytes(Path.Combine(directory, "Luminus-1.5B-Roleplay-Q5_K_M-imat.gguf"), "GGUF-test"u8.ToArray());
+            var models = new LocalModelDiscoveryService().Discover(directory).Models;
+            Assert.True(Assert.Single(models, x => x.ModelName.StartsWith("InternVL3")).Capabilities.Vision);
+            Assert.Contains("roleplay", Assert.Single(models, x => x.ModelName.StartsWith("Luminus")).Tags);
+        }
+        finally { System.IO.Directory.Delete(directory, true); }
     }
 
     private sealed class DatabaseFixture(string path, MemoryDatabase database) : IAsyncDisposable

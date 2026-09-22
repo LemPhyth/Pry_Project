@@ -1,0 +1,564 @@
+using Pry.Core.Intelligence;
+using Pry.Core.Runtime;
+using Xunit;
+
+namespace Pry.Core.Tests;
+
+/// <summary>
+/// Phase 2 / RT-002 验收：持续对话 Runtime 的节奏、闸门、打断与投递语义。
+/// 断言的是"发生了几次模型调用、哪些气泡真的落库了、哪一轮被判成过时"，不是真实等待时长。
+/// </summary>
+public sealed class ConversationRuntimeTests
+{
+    private static Task<ResponsePlan> Immediate(ResponsePlan plan) => Task.FromResult(plan);
+
+    [Fact]
+    public async Task Rapid_consecutive_inputs_are_merged_into_one_turn_and_one_model_call()
+    {
+        var composer = new ControlledComposer((request, index, _) =>
+            Immediate(ControlledComposer.Plan($"reply-{index}")));
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("A"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("B"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("C"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, composer.Calls);
+        Assert.Equal(["A", "B", "C"], composer.Requests[0].CombinedText);
+        Assert.Equal(["reply-0"], harness.Sink.Delivered.Select(x => x.Text));
+        Assert.Equal(3, harness.Store.AppendedInputs);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Immediate_flag_short_circuits_the_buffer()
+    {
+        var composer = new ControlledComposer((_, _, _) => Immediate(ControlledComposer.Plan("now")));
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("别等了"), forceTurn: true, TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, composer.Calls);
+        Assert.Equal(["now"], harness.Sink.Delivered.Select(x => x.Text));
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Turn_does_not_open_while_the_user_is_still_typing()
+    {
+        var composer = new ControlledComposer((_, _, _) => Immediate(ControlledComposer.Plan("late")));
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        await harness.Runtime.NotifyTypingAsync(true, TestContext.Current.CancellationToken);
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("我在想要不"), cancellationToken: TestContext.Current.CancellationToken);
+        await Task.Delay(15, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, composer.Calls);
+        Assert.Equal(RuntimePhase.WaitingForTurn, harness.Runtime.Phase);
+
+        await harness.Runtime.NotifyTypingAsync(false, TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, composer.Calls);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Hard_interrupt_during_generation_discards_the_old_plan_and_replans()
+    {
+        var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var composer = new ControlledComposer(async (request, index, _) =>
+        {
+            if (index == 0) await released.Task;
+            return ControlledComposer.Plan(index == 0 ? "obsolete" : $"heard:{request.PrimaryInput}");
+        });
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("我打算跟你说件事"), cancellationToken: TestContext.Current.CancellationToken);
+        await composer.StartedAsync(0);
+        Assert.Equal(RuntimePhase.Planning, harness.Runtime.Phase);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("等等，我刚才说错了"), cancellationToken: TestContext.Current.CancellationToken);
+        released.SetResult();
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, composer.Calls);
+        Assert.DoesNotContain("obsolete", harness.Sink.Delivered.Select(x => x.Text));
+        Assert.Single(harness.Sink.Delivered);
+        var outcomes = harness.Runtime.RecentTurns.ToDictionary(x => x.Identity.TurnId, x => x.Outcome);
+        Assert.Equal(RuntimeTurnOutcome.Interrupted, outcomes[1]);
+        Assert.Equal(RuntimeTurnOutcome.Completed, outcomes[2]);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Late_model_result_that_ignores_cancellation_is_still_not_delivered()
+    {
+        var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var composer = new ControlledComposer(async (request, index, _) =>
+        {
+            // 故意不检查 cancellationToken：模拟不响应取消的 Provider。
+            if (index == 0) await released.Task;
+            return ControlledComposer.Plan(index == 0 ? "stale-bubble" : "fresh-bubble");
+        });
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("先听我说"), cancellationToken: TestContext.Current.CancellationToken);
+        await composer.StartedAsync(0);
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("不对，换个事"), cancellationToken: TestContext.Current.CancellationToken);
+        released.SetResult();
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(["fresh-bubble"], harness.Sink.Delivered.Select(x => x.Text));
+        var stale = harness.Runtime.RecentTurns.Single(x => x.Identity.TurnId == 1);
+        Assert.Equal(RuntimeTurnOutcome.Interrupted, stale.Outcome);
+        Assert.Equal(0, stale.DeliveredCount);
+        Assert.Contains(harness.Runtime.TraceEntries, entry => entry.Action == "dropped_late_model_result");
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Interrupt_after_first_bubble_cancels_the_pending_second_bubble()
+    {
+        var composer = new ControlledComposer((request, index, _) =>
+            Immediate(index == 0
+                ? ControlledComposer.Plan("第一条", "第二条还没发")
+                : ControlledComposer.Plan("收到插话")));
+        var harness = await RuntimeHarness.CreateAsync(composer,
+            settings: RuntimeSettingsFactory.WithBubbleDelay(900, 900));
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("你先说"), cancellationToken: TestContext.Current.CancellationToken);
+        await WaitUntilAsync(() => harness.Sink.Delivered.Count == 1);
+        Assert.Equal(["第一条"], harness.Sink.Delivered.Select(x => x.Text));
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("等等，我改主意了"), cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Empty(harness.Runtime.PendingOutputs());
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(["第一条", "收到插话"], harness.Sink.Delivered.Select(x => x.Text));
+        Assert.DoesNotContain("第二条还没发", harness.Sink.Delivered.Select(x => x.Text));
+        var interrupted = harness.Runtime.RecentTurns.Single(x => x.Identity.TurnId == 1);
+        Assert.Equal(RuntimeTurnOutcome.Interrupted, interrupted.Outcome);
+        Assert.Equal(1, interrupted.DeliveredCount);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Starting_to_type_cancels_output_that_is_still_queued()
+    {
+        var composer = new ControlledComposer((_, index, _) =>
+            Immediate(index == 0 ? ControlledComposer.Plan("已发出", "还在排队") : ControlledComposer.Plan("好的")));
+        var harness = await RuntimeHarness.CreateAsync(composer,
+            settings: RuntimeSettingsFactory.WithBubbleDelay(900, 900));
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("说一句"), cancellationToken: TestContext.Current.CancellationToken);
+        await WaitUntilAsync(() => harness.Sink.Delivered.Count == 1);
+
+        await harness.Runtime.NotifyTypingAsync(true, TestContext.Current.CancellationToken);
+        Assert.Empty(harness.Runtime.PendingOutputs());
+        Assert.Equal(0, harness.Ledger.OpenPlanCount());   // 取消未投递气泡时计划本身也要被关闭，不留悬挂工作
+        await harness.Runtime.NotifyTypingAsync(false, TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(["已发出"], harness.Sink.Delivered.Select(x => x.Text));
+        Assert.Contains("typing_cancelled_output", string.Join("|", harness.Runtime.TraceEntries.Select(x => x.Action)));
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Backchannel_during_generation_does_not_waste_the_reply()
+    {
+        var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var composer = new ControlledComposer(async (request, index, token) =>
+        {
+            token.ThrowIfCancellationRequested();
+            if (index == 0) await released.Task;
+            return ControlledComposer.Plan(index == 0 ? "正在回复的内容" : "之后的回应");
+        });
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("今天发生了一件事"), cancellationToken: TestContext.Current.CancellationToken);
+        await composer.StartedAsync(0);
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("嗯"), cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(RuntimePhase.Planning, harness.Runtime.Phase);
+
+        // 回复发出后，那声"嗯"已经被这条回复覆盖，不该再为它单独花一次模型调用。
+        released.SetResult();
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, composer.Calls);
+        Assert.Equal(["正在回复的内容"], harness.Sink.Delivered.Select(x => x.Text));
+        Assert.Equal(2, harness.Store.AppendedInputs);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Reply_gate_is_allowed_to_stay_silent()
+    {
+        var advisor = ScriptedAdvisor.DoNothingFor(context => context.CombinedInput == "哈哈", "ack_only");
+        var composer = new ControlledComposer((_, _, _) => Immediate(ControlledComposer.Plan("不该被调用")));
+        var harness = await RuntimeHarness.CreateAsync(composer, advisor);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("哈哈"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, composer.Calls);
+        Assert.Empty(harness.Sink.Delivered);
+        Assert.Equal(RuntimeTurnOutcome.DoNothing, harness.Runtime.RecentTurns.Single().Outcome);
+        Assert.Equal(RuntimePhase.Idle, harness.Runtime.Phase);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task An_empty_plan_from_the_model_is_reported_as_silence_not_as_failure()
+    {
+        var composer = new ControlledComposer((_, _, _) => Immediate(ResponsePlan.Nothing("no_reason_to_speak")));
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("哦"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(harness.Sink.Delivered);
+        Assert.Empty(harness.Sink.Failures);
+        Assert.Equal(RuntimeTurnOutcome.DoNothing, harness.Runtime.RecentTurns.Single().Outcome);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task External_writer_bumping_the_epoch_fences_the_inflight_turn_out()
+    {
+        var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var composer = new ControlledComposer(async (request, index, token) =>
+        {
+            token.ThrowIfCancellationRequested();
+            if (index == 0) await released.Task;
+            return ControlledComposer.Plan(index == 0 ? "外部已经回答了" : "fresh");
+        });
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("在吗"), cancellationToken: TestContext.Current.CancellationToken);
+        await composer.StartedAsync(0);
+        // 另一个写入者（例如互动命令或另一次投递）抬高了权威 epoch。
+        await harness.Store.BumpEpochAsync("chat-1", TestContext.Current.CancellationToken);
+        released.SetResult();
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain("外部已经回答了", harness.Sink.Delivered.Select(x => x.Text));
+        Assert.Contains(harness.Runtime.TraceEntries, entry => entry.Action == "authoritative_epoch_advanced");
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Store_outage_suspends_the_runtime_instead_of_guessing()
+    {
+        var composer = new ControlledComposer((_, _, _) => Immediate(ControlledComposer.Plan("x")));
+        var harness = await RuntimeHarness.CreateAsync(composer);
+        harness.Ledger.FailNextRead = true;
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("喂"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(RuntimePhase.Suspended, harness.Runtime.Phase);
+        Assert.Empty(harness.Sink.Delivered);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Capability_request_pauses_delivery_and_the_result_resumes_it()
+    {
+        var composer = new ControlledComposer((_, index, _) => Immediate(index == 0
+            ? new ResponsePlan(ResponseIntent.UseCapability, [], new CapabilityRequest("open_app",
+                new Dictionary<string, string> { ["target"] = "notes" }, TurnIdentity.None))
+            : ControlledComposer.Plan("开好了")));
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("帮我打开记事本"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(harness.Sink.Capabilities);
+        Assert.Empty(harness.Sink.Delivered);
+
+        var turn = harness.Runtime.Observe().ActiveTurn!;
+        await harness.Runtime.AcceptAsync(RuntimeEvent.Capability(TimeProvider.System.GetUtcNow(),
+            new CapabilityResult("open_app", turn, true, "ok", null)), TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(["开好了"], harness.Sink.Delivered.Select(x => x.Text));
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Changing_intent_while_a_capability_runs_drops_the_stale_continuation()
+    {
+        var composer = new ControlledComposer((_, index, _) => Immediate(index == 0
+            ? new ResponsePlan(ResponseIntent.UseCapability, [], new CapabilityRequest("open_app",
+                new Dictionary<string, string>(), TurnIdentity.None))
+            : ControlledComposer.Plan($"reply-{index}")));
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("打开记事本"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+        var first = harness.Runtime.Observe().ActiveTurn!;
+
+        // 用户在 Capability 执行期间改口：旧轮次作废，迟到的结果不得继续投递。
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("算了，不用开了"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+        await harness.Runtime.AcceptAsync(RuntimeEvent.Capability(TimeProvider.System.GetUtcNow(),
+            new CapabilityResult("open_app", first, true, "ok", null)), TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        // 改口之后重规划的那一条正常交付；旧 Capability 的结果不再产生任何新内容。
+        Assert.Single(harness.Sink.Delivered);
+        Assert.Equal(["reply-1"], harness.Sink.Delivered.Select(x => x.Text));
+        Assert.Contains(harness.Runtime.TraceEntries,
+            entry => entry.Action is "capability_result_stale" or "capability_unexpected");
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Returning_after_a_long_absence_is_observed_as_one_return_event()
+    {
+        var composer = new ControlledComposer((_, index, _) => Immediate(ControlledComposer.Plan($"r{index}")));
+        var settings = RuntimeSettingsFactory.Fast() with { IdleReturnAfterMs = 30, IdleHeartbeatMs = 0 };
+        var harness = await RuntimeHarness.CreateAsync(composer, settings: settings);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("先聊到这"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+        await Task.Delay(80, TestContext.Current.CancellationToken);
+
+        var receipt = await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("我回来了"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains(harness.Runtime.TraceEntries, entry => entry.Action == "idle_return_observed");
+        Assert.Equal(2, composer.Calls);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task A_proactive_candidate_loses_to_the_user_appearing_before_send()
+    {
+        var composer = new ControlledComposer((_, _, _) => Immediate(ControlledComposer.Plan("unused")));
+        var harness = await RuntimeHarness.CreateAsync(composer);
+        var candidate = Candidate(harness.Runtime);
+
+        var review = await harness.Runtime.ReviewProactiveAsync(candidate, TestContext.Current.CancellationToken);
+        Assert.Equal(ProactiveDisposition.Approved, review.Disposition);
+
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("在吗"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        var late = await harness.Runtime.ReviewProactiveAsync(candidate, TestContext.Current.CancellationToken);
+        Assert.NotEqual(ProactiveDisposition.Approved, late.Disposition);
+
+        var report = await harness.Runtime.DeliverProactiveAsync(candidate, TestContext.Current.CancellationToken);
+        Assert.Equal(0, report.Delivered);
+        Assert.DoesNotContain("在忙什么吗", harness.Sink.Delivered.Select(x => x.Text));
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Proactive_delivery_shares_the_interrupt_channel_with_normal_replies()
+    {
+        var composer = new ControlledComposer((_, _, _) => Immediate(ControlledComposer.Plan("unused")));
+        var harness = await RuntimeHarness.CreateAsync(composer,
+            settings: RuntimeSettingsFactory.WithBubbleDelay(900, 900));
+        var plan = new ResponsePlan(ResponseIntent.ContinueTopic,
+            [new RuntimePlannedMessage(0, "想问你件事", null), new RuntimePlannedMessage(1, "还没发的那条", null)],
+            Source: MessageSources.Proactive);
+        var candidate = candidateWith(harness.Runtime, plan);
+
+        await harness.Runtime.ReviewProactiveAsync(candidate, TestContext.Current.CancellationToken);
+        var delivering = harness.Runtime.DeliverProactiveAsync(candidate, TestContext.Current.CancellationToken);
+        await WaitUntilAsync(() => harness.Sink.Delivered.Count == 1);
+
+        await harness.Runtime.NotifyTypingAsync(true, TestContext.Current.CancellationToken);
+        var report = await delivering;
+
+        Assert.Equal(1, report.Delivered);
+        Assert.Equal(1, report.Abandoned);
+        Assert.Equal(["想问你件事"], harness.Sink.Delivered.Select(x => x.Text));
+        Assert.Equal(MessageSources.Proactive, harness.Sink.Delivered[0].Source);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Expired_proactive_candidate_is_dropped_without_touching_the_store()
+    {
+        var composer = new ControlledComposer((_, _, _) => Immediate(ControlledComposer.Plan("unused")));
+        var harness = await RuntimeHarness.CreateAsync(composer);
+        var now = TimeProvider.System.GetUtcNow();
+        var expired = new ProactiveCandidate("c1", "chat-1", "instance-1", "idle",
+            new TurnIdentity(9, 1, harness.Runtime.Epoch), harness.Runtime.ConversationProgress,
+            now - TimeSpan.FromMinutes(3), now - TimeSpan.FromMinutes(1), ControlledComposer.Plan("过期内容"));
+
+        var review = await harness.Runtime.ReviewProactiveAsync(expired, TestContext.Current.CancellationToken);
+        var report = await harness.Runtime.DeliverProactiveAsync(expired, TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProactiveDisposition.RejectedExpired, review.Disposition);
+        Assert.Equal(0, report.Delivered);
+        Assert.DoesNotContain("commit", string.Join("|", harness.Store.Calls));
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Eviction_and_recreation_keep_conversation_continuity_and_fence_epoch()
+    {
+        var composer = new ControlledComposer((_, index, _) => Immediate(ControlledComposer.Plan($"r{index}")));
+        var harness = await RuntimeHarness.CreateAsync(composer);
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("我记得这件事"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+        Assert.True(harness.Runtime.IsIdle());
+
+        var epochBefore = harness.Runtime.Epoch;
+        var persisted = harness.Ledger.State["chat-1"];
+        Assert.True(persisted.LastSpeakerWasCharacter);
+        await harness.Runtime.DisposeAsync();
+
+        var revived = await RuntimeHarness.CreateAsync(
+            new ControlledComposer((_, index, _) => Immediate(ControlledComposer.Plan($"after-{index}"))),
+            ledger: harness.Ledger);
+        Assert.True(revived.Runtime.Epoch >= epochBefore);
+        Assert.NotNull(revived.Runtime.Snapshot().LastCharacterActivity);
+
+        await revived.Runtime.SubmitUserInputAsync(new RuntimeUserInput("接着聊"), cancellationToken: TestContext.Current.CancellationToken);
+        await revived.SettleAsync(TestContext.Current.CancellationToken);
+        Assert.Contains(revived.Sink.Delivered.Select(x => x.Text), text => text.StartsWith("after-"));
+        await revived.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task A_plan_left_open_by_the_previous_process_is_swept_and_can_never_be_replayed()
+    {
+        var ledger = new RuntimeLedger();
+        var composer = new ControlledComposer((_, _, _) => Immediate(ControlledComposer.Plan("第一条", "第二条")));
+        var first = await RuntimeHarness.CreateAsync(composer, ledger: ledger,
+            settings: RuntimeSettingsFactory.WithBubbleDelay(900, 900));
+        await first.Runtime.SubmitUserInputAsync(new RuntimeUserInput("说两句"), cancellationToken: TestContext.Current.CancellationToken);
+        await WaitUntilAsync(() => first.Sink.Delivered.Count == 1);
+        var leftoverPermission = first.Runtime.PendingOutputs().Single().Permission;
+
+        // 优雅退出会把没发完的计划关掉——不留悬挂投递工作。
+        await first.Runtime.DisposeAsync();
+        var store = new FakeRuntimeStore(ledger);
+        Assert.Equal(0, ledger.OpenPlanCount());
+
+        // 崩溃不会留下这种干净状态。直接通过存储写入一条"上个进程遗留的 open 计划"，
+        // 再走恢复清扫，验证它和旧进程的迟到投递都再也发不出去。
+        var crashed = await store.RequestDeliveryAsync("chat-1", new TurnIdentity(999, 1, ledger.Epoch), ledger.Epoch,
+            [new RuntimePlannedMessage(0, "上次没发完", null)], MessageSources.ModelReply, null,
+            TestContext.Current.CancellationToken);
+        Assert.True(crashed.Approved);
+        Assert.Equal(1, ledger.OpenPlanCount());
+
+        var swept = await ConversationRuntime.RecoverStalePlansAsync(store, TestContext.Current.CancellationToken);
+        Assert.Single(swept);
+        Assert.Equal(0, ledger.OpenPlanCount());
+        Assert.Null(await store.CommitBubbleAsync(leftoverPermission, 1,
+            new RuntimePlannedMessage(1, "第二条", null), TestContext.Current.CancellationToken));
+        Assert.Null(await store.CommitBubbleAsync(crashed, 0,
+            new RuntimePlannedMessage(0, "上次没发完", null), TestContext.Current.CancellationToken));
+
+        var revived = await RuntimeHarness.CreateAsync(
+            new ControlledComposer((_, index, _) => Immediate(ControlledComposer.Plan($"new-{index}"))),
+            ledger: ledger);
+        await revived.Runtime.SubmitUserInputAsync(new RuntimeUserInput("重启之后"), cancellationToken: TestContext.Current.CancellationToken);
+        await revived.SettleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(["第一条"], first.Sink.Delivered.Select(x => x.Text));
+        Assert.Equal(["new-0"], revived.Sink.Delivered.Select(x => x.Text));
+        await revived.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Regeneration_reuses_the_persisted_user_message_and_replaces_pending_output()
+    {
+        var composer = new ControlledComposer((_, index, _) => Immediate(ControlledComposer.Plan(index == 0 ? "原回复" : "重生成")));
+        var harness = await RuntimeHarness.CreateAsync(composer,
+            settings: RuntimeSettingsFactory.WithBubbleDelay(600, 600));
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("重说一遍"), cancellationToken: TestContext.Current.CancellationToken);
+        await WaitUntilAsync(() => harness.Sink.Delivered.Count == 1);
+
+        await harness.Runtime.RestoreTurnAsync(11, new RuntimeUserInput("重说一遍"), TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(["原回复", "重生成"], harness.Sink.Delivered.Select(x => x.Text));
+        Assert.Equal(1, harness.Store.AppendedInputs);   // 重新生成不得再写一条用户消息
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Repeated_interruptions_stack_up_without_delivering_any_stale_reply()
+    {
+        var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var composer = new ControlledComposer(async (request, index, _) =>
+        {
+            await released.Task;
+            return ControlledComposer.Plan($"r{index}");
+        });
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        for (var round = 0; round < 3; round++)
+        {
+            await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput($"第{round}次说话"), cancellationToken: TestContext.Current.CancellationToken);
+            await composer.StartedAsync(round);
+            await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput($"等等第{round}次"), cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(3, harness.Runtime.InvalidatedTurns);
+        Assert.Empty(harness.Sink.Delivered);
+        Assert.All(harness.Runtime.RecentTurns.Where(x => x.Outcome == RuntimeTurnOutcome.Interrupted),
+            turn => Assert.Equal(0, turn.DeliveredCount));
+
+        // 用户终于停下来之后，最后一轮带着全部攒下的话正常交付。
+        released.SetResult();
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+        Assert.Single(harness.Sink.Delivered);
+        Assert.True(harness.Runtime.SchedulerBackoffMs > 0);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Suspended_runtime_still_persists_user_input_but_forms_no_turn()
+    {
+        var composer = new ControlledComposer((_, _, _) => Immediate(ControlledComposer.Plan("x")));
+        var harness = await RuntimeHarness.CreateAsync(composer);
+
+        await harness.Runtime.SuspendAsync(SuspendReason.SuspendedByHost);
+        await harness.Runtime.SubmitUserInputAsync(new RuntimeUserInput("挂起时说的话"), cancellationToken: TestContext.Current.CancellationToken);
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, composer.Calls);
+        Assert.Equal(1, harness.Store.AppendedInputs);
+        Assert.Equal(RuntimePhase.Suspended, harness.Runtime.Phase);
+
+        await harness.Runtime.ResumeAsync();
+        await harness.SettleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(1, composer.Calls);
+        await harness.Runtime.DisposeAsync();
+    }
+
+    private const string MessageSource = MessageSources.ModelReply;
+
+    private static ProactiveCandidate Candidate(ConversationRuntime runtime, string conversationId = "chat-1") =>
+        candidateWith(runtime, ControlledComposer.Plan("在忙什么吗"), conversationId);
+
+    private static ProactiveCandidate candidateWith(ConversationRuntime runtime, ResponsePlan plan,
+        string conversationId = "chat-1")
+    {
+        var now = TimeProvider.System.GetUtcNow();
+        return new ProactiveCandidate("cand-1", conversationId, "instance-1", "idle_threshold",
+            new TurnIdentity(900, 1, runtime.Epoch), runtime.ConversationProgress, now,
+            now + TimeSpan.FromMinutes(2), plan, AttemptToken: "attempt-1");
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 4000)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (!condition())
+        {
+            if (Environment.TickCount64 > deadline) throw new TimeoutException("runtime 未在预期时间内达到目标状态");
+            await Task.Delay(5);
+        }
+    }
+}

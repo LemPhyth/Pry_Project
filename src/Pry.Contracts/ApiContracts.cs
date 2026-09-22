@@ -1,9 +1,30 @@
-using Pry.Core.Models;
-
 namespace Pry.Contracts;
 
+/// <summary>
+/// ProblemDetails 的客户端形状。<c>retryable</c> 是线契约的一部分，不是调试附件：服务端对"重试也不会变好"的错误
+/// （协议不匹配、令牌缺失/陈旧、凭据被拒、上下文超限）明确写 <c>false</c>，客户端据此停止自动重连。
+/// 用 <c>bool?</c> 而不是 <c>bool</c>：字段缺席是"服务端没有宣告"，与"宣告了不可重试"是两件事，
+/// 把缺席读成 <c>false</c> 会让旧服务端把界面钉死，读成 <c>true</c> 则会让新服务端的禁行提示被重试淹没。
+/// </summary>
 public sealed record ApiProblemResponse(string? Type, string? Title, int? Status, string? Detail, string? Code,
-    string? TraceId);
+    string? TraceId, bool? Retryable = null);
+
+/// <summary>
+/// 七类稳定的 Provider 错误码（PLAT-001）。字符串本身就是线契约：它们会出现在
+/// <c>urn:pry:error:*</c> 与 <c>turn.failed.code</c> 里，改名等于改协议，新增必须同时补映射与文档。
+/// 放在 Contracts 而不是 Core：界面的错误表（<c>Pry.Client</c>）与 HTTP 状态映射（<c>Pry.Api</c>）都要按同一批码判读，
+/// 而 Client 不得依赖 Core——各写一份字面量就是让这七个码有漂移的余地。
+/// </summary>
+public static class ProviderErrorCodes
+{
+    public const string Auth = "provider_auth";
+    public const string RateLimited = "provider_rate_limited";
+    public const string Timeout = "provider_timeout";
+    public const string InvalidResponse = "provider_invalid_response";
+    public const string ModelUnavailable = "provider_unavailable";
+    public const string ContextOverflow = "context_overflow";
+    public const string Cancelled = "provider_cancelled";
+}
 
 public sealed record CreateConversationRequest(string? CharacterId);
 public sealed record UpdateConversationRequest(string? Title, bool? IsPinned, string? FolderId, bool ClearFolder = false);
@@ -47,7 +68,10 @@ public sealed record SaveCharacterRequest(string Name, string CardName, string U
 public sealed record ClientPreferencesResponse(string? SelectedCharacterId, string? ActiveConversationId,
     string? ActiveModelId, string? ActiveVisionModelId, string? ActiveSpeechModelId, UserProfilePreferences UserProfile,
     DesktopPetPreferences DesktopPet, ShortcutSettings Shortcuts, TurnTakingSettings? TurnTaking,
-    ClientThemePreferences Theme, string? BackgroundUrl, string? UserAvatarUrl);
+    ClientThemePreferences Theme, string? BackgroundUrl, string? UserAvatarUrl)
+{
+    public string? ActiveEmbeddingModelId { get; init; }
+}
 public sealed record ClientThemePreferences(string ThemeMode, string AccentColor, bool UseGlassEffects,
     bool LiveSidebarResize, double BackgroundDimOpacity, double BackgroundImageOpacity, string BackgroundBlurMode,
     double BackgroundBlurRadius, double AvatarSize, double BubbleFontSize, double BubbleMaxWidth, double BubbleSpacing)
@@ -71,7 +95,18 @@ public sealed record SaveSpeechModelRequest(string DisplayName, string Provider,
     string? LocalModelDirectory, string BaseUrl, string Language, int SampleRate);
 public sealed record ModelProfileResponse(string Id, string DisplayName, string Provider, string ModelName,
     ModelCapabilities Capabilities, int ContextSize, int MaxOutputTokens, double Temperature, int GpuLayers,
-    string ComputeDevice, bool EnableThinking, bool SelectedForText, bool SelectedForVision, bool Custom);
+    string ComputeDevice, bool EnableThinking, bool SelectedForText, bool SelectedForVision, bool Custom)
+{
+    public string Source { get; init; } = "built-in";
+    public bool Available { get; init; } = true;
+    public IReadOnlyList<string> Tags { get; init; } = [];
+    public bool SelectedForEmbedding { get; init; }
+}
+public sealed record ModelScanResponse(int FoundCount, int AddedCount, IReadOnlyList<ModelProfileResponse> Models);
+public sealed record UpdateModelTagsRequest(IReadOnlyList<string>? Tags);
+public sealed record UpdateEmbeddingSettingsRequest(bool Enabled, string? ModelId);
+public sealed record EmbeddingStatusResponse(bool Enabled, string State, string? ModelId, int IndexedCount,
+    int PendingCount, int? Dimensions, string? ErrorCode, bool Retryable);
 public sealed record UpdateModelSelectionRequest(string ActiveModelId, string? ActiveVisionModelId,
     string? ActiveSpeechModelId, IReadOnlyDictionary<string, ModelTuningPreferences>? ModelTunings);
 public sealed record UpdateAppearanceMediaRequest(string? BackgroundMediaId, bool ClearBackground,
@@ -88,9 +123,25 @@ public sealed record SaveUserProfileRequest(UserProfilePreferences Profile, stri
     bool ClearAvatar, ImageDisplayPreferences? AvatarDisplay);
 public sealed record SaveCustomModelRequest(string DisplayName, string Provider, string ModelName, string BaseUrl,
     string? LocalModelPath, string? LocalMmprojPath, ModelCapabilities Capabilities, int ContextSize,
-    int MaxOutputTokens, double Temperature, int GpuLayers, string ComputeDevice, bool EnableThinking);
+    int MaxOutputTokens, double Temperature, int GpuLayers, string ComputeDevice, bool EnableThinking)
+{
+    public IReadOnlyList<string>? Tags { get; init; }
+}
+public sealed record SaveNetworkModelRequest(string DisplayName, string ModelName, string BaseUrl,
+    ModelCapabilities Capabilities, int ContextSize, int MaxOutputTokens, double Temperature, int GpuLayers,
+    string ComputeDevice, bool EnableThinking, IReadOnlyList<string>? Tags);
 public sealed record CreateMemoryRequest(string CharacterId, string Kind, string Summary, string Tags, double Importance = 0.5, long? SourceMessageId = null);
 public sealed record UpdateMemoryRequest(string Kind, string Summary, string Tags, double Importance);
+public sealed record InteractionReplyPresetDto(string Id, string Text, bool Enabled, double Weight);
+public sealed record InteractionActionDto(string Id, string DisplayName, bool Enabled, string ResponseMode,
+    string? ExpressionIntent, IReadOnlyList<InteractionReplyPresetDto>? Replies);
+public sealed record SaveInteractionProfileRequest(int SchemaVersion, int CooldownSeconds,
+    IReadOnlyList<InteractionReplyPresetDto>? PokeReplies, IReadOnlyList<InteractionActionDto>? Actions);
+public sealed record InteractionProfileResponse(int SchemaVersion, string CharacterId, int CooldownSeconds,
+    IReadOnlyList<InteractionReplyPresetDto> PokeReplies, IReadOnlyList<InteractionActionDto> Actions, string Source);
+public sealed record ExecuteInteractionRequest(string ActionId, string IdempotencyKey);
+public sealed record InteractionCommandResponse(string ActionId, string CharacterId, long? MessageId,
+    string Outcome, bool Replayed, DateTimeOffset AcceptedAt, string? ExpressionIntent);
 public sealed record ResourceId<T>(T Id);
 
 public static class ContractValidation
@@ -121,4 +172,11 @@ public sealed class ResourceConflictException(string resource, object id, string
 {
     public string Resource { get; } = resource;
     public object Id { get; } = id;
+}
+
+public sealed class InteractionRejectedException(string code, string message, DateTimeOffset? retryAt = null)
+    : Exception(message)
+{
+    public string Code { get; } = code;
+    public DateTimeOffset? RetryAt { get; } = retryAt;
 }

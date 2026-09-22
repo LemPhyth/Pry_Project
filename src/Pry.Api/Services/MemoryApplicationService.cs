@@ -4,13 +4,22 @@ using Pry.Core.Models;
 
 namespace Pry.Api.Services;
 
-public sealed class MemoryApplicationService(MemoryDatabase database)
+public sealed class MemoryApplicationService(MemoryDatabase database, MemoryEmbeddingService? embeddings = null,
+    CompanionOperationCoordinator? operations = null)
 {
-    public Task<IReadOnlyList<MemoryRecord>> ListAsync(string characterId, string? query, CancellationToken token) =>
-        database.ListMemoriesAsync(ContractValidation.Required(characterId, "characterId", 128), query?.Trim(), token);
+    public Task<IReadOnlyList<MemoryRecord>> ListAsync(string characterId, string? query, CancellationToken token)
+    {
+        characterId = ContractValidation.Required(characterId, "characterId", 128);
+        query = query?.Trim();
+        return string.IsNullOrWhiteSpace(query)
+            ? database.ListMemoriesAsync(characterId, null, token)
+            : (embeddings is null ? database.SearchMemoriesAsync(characterId, query, 100, token) :
+                embeddings.SearchMemoriesAsync(characterId, query, 100, token));
+    }
 
     public async Task<MemoryRecord> CreateAsync(CreateMemoryRequest request, CancellationToken token)
     {
+        using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
         ContractValidation.Importance(request.Importance);
         var characterId = ContractValidation.Required(request.CharacterId, "characterId", 128);
         var id = await database.AddMemoryAsync(characterId, ContractValidation.Required(request.Kind, "kind", 64),
@@ -20,6 +29,7 @@ public sealed class MemoryApplicationService(MemoryDatabase database)
 
     public async Task<MemoryRecord> UpdateAsync(long id, string characterId, UpdateMemoryRequest request, CancellationToken token)
     {
+        using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
         characterId = ContractValidation.Required(characterId, "characterId", 128);
         _ = await database.GetMemoryAsync(id, characterId, token) ?? throw new ResourceNotFoundException("memory", id);
         ContractValidation.Importance(request.Importance);
@@ -30,6 +40,7 @@ public sealed class MemoryApplicationService(MemoryDatabase database)
 
     public async Task DeleteAsync(long id, string characterId, CancellationToken token)
     {
+        using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
         characterId = ContractValidation.Required(characterId, "characterId", 128);
         _ = await database.GetMemoryAsync(id, characterId, token) ?? throw new ResourceNotFoundException("memory", id);
         await database.DeleteMemoryAsync(id, characterId, token);

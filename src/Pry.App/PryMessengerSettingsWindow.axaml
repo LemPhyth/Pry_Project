@@ -1,107 +1,114 @@
 <UserControl xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="Pry.App.PryMessengerSettingsWindow"
-        Background="#101827">
+        Background="{DynamicResource PryCanvasBrush}">
   <UserControl.Styles>
-    <Style Selector="TextBox,ComboBox,NumericUpDown"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#2A3850"/><Setter Property="CornerRadius" Value="10"/></Style>
-    <Style Selector="TextBox:focus"><Setter Property="Background" Value="#111827"/><Setter Property="BorderBrush" Value="#6C63FF"/></Style>
-    <Style Selector="Button"><Setter Property="CornerRadius" Value="10"/><Setter Property="Padding" Value="15,8"/></Style>
-    <Style Selector="Button.primary"><Setter Property="Background" Value="#6C63FF"/><Setter Property="Foreground" Value="White"/></Style>
-    <Style Selector="Border.card"><Setter Property="Background" Value="#182235"/><Setter Property="CornerRadius" Value="13"/><Setter Property="Padding" Value="16"/></Style>
-    <Style Selector="TabItem"><Setter Property="Width" Value="148"/><Setter Property="Height" Value="44"/><Setter Property="Margin" Value="0,0,0,5"/><Setter Property="Padding" Value="14,9"/><Setter Property="FontSize" Value="15"/><Setter Property="Background" Value="Transparent"/><Setter Property="CornerRadius" Value="11"/><Setter Property="HorizontalContentAlignment" Value="Left"/></Style>
-    <Style Selector="TabItem:selected"><Setter Property="Background" Value="#202A40"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="ToggleButton"><Setter Property="Background" Value="{DynamicResource PryPanelBrush}"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="12"/><Setter Property="CornerRadius" Value="8"/><Setter Property="HorizontalAlignment" Value="Stretch"/></Style>
+    <Style Selector="TextBox,ComboBox,NumericUpDown"><Setter Property="Background" Value="{DynamicResource PryCardBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource PryBorderBrush}"/><Setter Property="CornerRadius" Value="8"/></Style>
+    <Style Selector="TextBox:focus"><Setter Property="Background" Value="{DynamicResource PryCardBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource PryAccentBrush}"/></Style>
+    <Style Selector="Button"><Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="16,8"/></Style>
+    <Style Selector="Button.primary"><Setter Property="Background" Value="{DynamicResource PryAccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource PryAccentTextBrush}"/></Style>
+    <Style Selector="Border.card"><Setter Property="Background" Value="{DynamicResource PryCardBrush}"/><Setter Property="CornerRadius" Value="12"/><Setter Property="Padding" Value="24"/></Style>
+    <Style Selector="TabItem"><Setter Property="Width" Value="148"/><Setter Property="Height" Value="44"/><Setter Property="Margin" Value="0,0,0,4"/><Setter Property="Padding" Value="14,9"/><Setter Property="FontSize" Value="15"/><Setter Property="Background" Value="Transparent"/><Setter Property="CornerRadius" Value="8"/><Setter Property="HorizontalContentAlignment" Value="Left"/></Style>
+    <Style Selector="TabItem:selected"><Setter Property="Background" Value="{DynamicResource PrySelectionBrush}"/><Setter Property="Foreground" Value="{DynamicResource PryTextBrush}"/></Style>
   </UserControl.Styles>
   <Grid RowDefinitions="Auto,*,Auto">
     <StackPanel Margin="24,16,24,12" Spacing="4">
-      <TextBlock x:Name="RuntimeText" Text="正在读取本地配置…" Foreground="#8090A7" FontSize="11"/>
+      <TextBlock x:Name="RuntimeText" Text="正在读取本地配置…" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/>
     </StackPanel>
     <TabControl Grid.Row="1" Margin="20,0" TabStripPlacement="Left">
       <TabItem Header="个人资料">
-        <ScrollViewer><StackPanel Margin="8,18" Spacing="14">
-          <Border Classes="card"><StackPanel Spacing="9">
-            <TextBlock Text="你的资料" FontSize="17" FontWeight="SemiBold"/>
-            <Grid ColumnDefinitions="72,*" ColumnSpacing="14">
-              <Border Width="64" Height="64" CornerRadius="20" Background="#26344D" ClipToBounds="True"><Grid><TextBlock Text="你" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image x:Name="UserAvatarPreview" IsVisible="False" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/></Grid></Border>
-              <StackPanel Grid.Column="1" Spacing="7" VerticalAlignment="Center"><Button Content="选择头像" Click="ChooseUserAvatar_Click" HorizontalAlignment="Left"/><Button Content="移除头像" Click="ClearUserAvatar_Click" HorizontalAlignment="Left"/></StackPanel>
+        <ScrollViewer><StackPanel Margin="24,16" Spacing="24" MaxWidth="800" HorizontalAlignment="Stretch">
+          <Border Classes="card"><StackPanel Spacing="12">
+            <TextBlock Text="你的资料" FontSize="18" FontWeight="SemiBold"/>
+            <Grid ColumnDefinitions="72,*" ColumnSpacing="16">
+              <Border Width="64" Height="64" CornerRadius="16" Background="{DynamicResource PrySelectionBrush}" ClipToBounds="True"><Grid><TextBlock Text="你" HorizontalAlignment="Center" VerticalAlignment="Center"/><Image x:Name="UserAvatarPreview" IsVisible="False" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/></Grid></Border>
+              <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center"><Button Content="选择头像" Click="ChooseUserAvatar_Click" HorizontalAlignment="Left"/><Button Content="移除头像" Click="ClearUserAvatar_Click" HorizontalAlignment="Left"/></StackPanel>
             </Grid>
-            <TextBlock Text="显示名称" Foreground="#8D9AAF" FontSize="11"/><TextBox x:Name="DisplayNameBox" MaxLength="60"/>
-            <TextBlock Text="个性签名" Foreground="#8D9AAF" FontSize="11"/><TextBox x:Name="SignatureBox" MaxLength="160"/>
+            <TextBlock Text="显示名称" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/><TextBox x:Name="DisplayNameBox" MaxLength="60"/>
+            <TextBlock Text="个性签名" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/><TextBox x:Name="SignatureBox" MaxLength="160"/>
           </StackPanel></Border>
         </StackPanel></ScrollViewer>
       </TabItem>
       <TabItem Header="模型">
-        <ScrollViewer><StackPanel Margin="8,18" Spacing="14">
-          <Border Classes="card"><StackPanel Spacing="9">
-            <TextBlock Text="模型角色" FontSize="17" FontWeight="SemiBold"/>
-            <TextBlock Text="文字模型" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="TextModelBox" SelectionChanged="TextModel_SelectionChanged"/>
-            <TextBlock Text="视觉模型" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="VisionModelBox"/>
-            <TextBlock Text="语音识别模型" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="SpeechModelBox"/>
-            <TextBlock x:Name="DeviceText" Foreground="#718198" TextWrapping="Wrap"/>
+        <ScrollViewer><StackPanel Margin="24,16" Spacing="24" MaxWidth="800" HorizontalAlignment="Stretch">
+          <Border Classes="card"><StackPanel Spacing="12">
+            <TextBlock Text="聊天与看图" FontSize="18" FontWeight="SemiBold"/>
+            <TextBlock Text="文字模型" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/><ComboBox x:Name="TextModelBox" SelectionChanged="TextModel_SelectionChanged"/>
+            <TextBlock Text="视觉模型" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/><ComboBox x:Name="VisionModelBox"/>
+            <TextBlock Text="语音识别模型" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/><ComboBox x:Name="SpeechModelBox"/>
+            <TextBlock x:Name="DeviceText" Foreground="{DynamicResource PryMutedBrush}" TextWrapping="Wrap"/>
             <ToggleButton x:Name="AdvancedSettingsToggle" Margin="0,8,0,0" HorizontalContentAlignment="Stretch" Checked="AdvancedSettingsToggle_Changed" Unchecked="AdvancedSettingsToggle_Changed">
               <Grid ColumnDefinitions="*,Auto"><TextBlock Text="高级设置" FontSize="14" FontWeight="SemiBold"/><TextBlock x:Name="AdvancedSettingsChevron" Grid.Column="1" FontFamily="Segoe Fluent Icons" Text="&#xE70D;"/></Grid>
             </ToggleButton>
-            <Border x:Name="AdvancedSettingsPanel" IsVisible="False" Padding="14" Background="#111A29" BorderBrush="#2A3850" BorderThickness="1" CornerRadius="12">
-              <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="10">
-                <StackPanel><TextBlock Text="温度" FontSize="11" Foreground="#8D9AAF"/><NumericUpDown x:Name="TemperatureBox" Minimum="0" Maximum="2" Increment="0.05" FormatString="0.00"/></StackPanel>
-                <StackPanel Grid.Column="1"><TextBlock Text="最大输出 Token" FontSize="11" Foreground="#8D9AAF"/><NumericUpDown x:Name="MaxOutputBox" Minimum="16" Maximum="32768" Increment="64"/></StackPanel>
-                <StackPanel Grid.Row="1"><TextBlock Text="上下文长度" FontSize="11" Foreground="#8D9AAF"/><NumericUpDown x:Name="ContextSizeBox" Minimum="512" Maximum="1048576" Increment="512"/></StackPanel>
-                <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="GPU 层数" FontSize="11" Foreground="#8D9AAF"/><NumericUpDown x:Name="GpuLayersBox" Minimum="0" Maximum="999" Increment="1"/></StackPanel>
-                <StackPanel Grid.Row="2"><TextBlock Text="计算设备" FontSize="11" Foreground="#8D9AAF"/><ComboBox x:Name="ComputeDeviceBox"/></StackPanel>
+            <Border x:Name="AdvancedSettingsPanel" IsVisible="False" Padding="16" Background="{DynamicResource PryPanelBrush}" BorderBrush="{DynamicResource PryBorderBrush}" BorderThickness="1" CornerRadius="12">
+              <StackPanel Spacing="12">
+              <TextBlock Text="正在调整的模型"/><ComboBox x:Name="TuningModelBox" SelectionChanged="TuningModel_SelectionChanged" HorizontalAlignment="Stretch"/>
+              <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="12">
+                <StackPanel><TextBlock Text="温度" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><NumericUpDown x:Name="TemperatureBox" Minimum="0" Maximum="2" Increment="0.05" FormatString="0.00"/></StackPanel>
+                <StackPanel Grid.Column="1"><TextBlock Text="最大输出 Token" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><NumericUpDown x:Name="MaxOutputBox" Minimum="16" Maximum="32768" Increment="64"/></StackPanel>
+                <StackPanel Grid.Row="1"><TextBlock Text="上下文长度" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><NumericUpDown x:Name="ContextSizeBox" Minimum="512" Maximum="1048576" Increment="512"/></StackPanel>
+                <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="GPU 层数" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><NumericUpDown x:Name="GpuLayersBox" Minimum="0" Maximum="999" Increment="1"/></StackPanel>
+                <StackPanel Grid.Row="2"><TextBlock Text="计算设备" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><ComboBox x:Name="ComputeDeviceBox"/></StackPanel>
                 <CheckBox Grid.Row="2" Grid.Column="1" x:Name="ThinkingBox" Content="启用思考模式" VerticalAlignment="Center"/>
               </Grid>
+              </StackPanel>
             </Border>
           </StackPanel></Border>
+          <ContentControl x:Name="ModelLibraryHost"/>
         </StackPanel></ScrollViewer>
       </TabItem>
       <TabItem Header="聊天体验">
-        <ScrollViewer><StackPanel Margin="8,18" Spacing="14">
-          <Border Classes="card"><StackPanel Spacing="10">
-            <TextBlock Text="回复节奏" FontSize="17" FontWeight="SemiBold"/>
+        <ScrollViewer><StackPanel Margin="24,16" Spacing="24" MaxWidth="800" HorizontalAlignment="Stretch">
+          <Border Classes="card"><StackPanel Spacing="12">
+            <TextBlock Text="回复节奏" FontSize="18" FontWeight="SemiBold"/>
             <CheckBox x:Name="SplitRepliesBox" Content="将回复拆成更自然的短消息"/>
             <CheckBox x:Name="ListeningSignalsBox" Content="等待较久时发送倾听反馈"/>
-            <TextBlock Text="输入完成等待时间（毫秒）" Foreground="#8D9AAF" FontSize="11"/>
+            <TextBlock Text="输入完成等待时间（毫秒）" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/>
             <NumericUpDown x:Name="DebounceBox" Minimum="200" Maximum="10000" Increment="100"/>
-            <TextBlock Text="回复风格提示" Foreground="#8D9AAF" FontSize="11"/>
+            <TextBlock Text="回复风格提示" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/>
             <TextBox x:Name="StyleInstructionBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90" MaxLength="1000"/>
           </StackPanel></Border>
         </StackPanel></ScrollViewer>
       </TabItem>
       <TabItem Header="快捷键">
-        <ScrollViewer><StackPanel Margin="8,18" Spacing="14">
-          <Border Classes="card"><StackPanel Spacing="10">
-            <TextBlock Text="键盘操作" FontSize="17" FontWeight="SemiBold"/>
-            <TextBlock Text="点击输入框后直接输入组合键名称，例如 Enter、Shift+Enter、Ctrl+N。保存时会检查格式和冲突。" Foreground="#8D9AAF" TextWrapping="Wrap"/>
-            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="10">
-              <StackPanel><TextBlock Text="发送消息" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="SendShortcutBox"/></StackPanel>
-              <StackPanel Grid.Column="1"><TextBlock Text="换行" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="NewLineShortcutBox"/></StackPanel>
-              <StackPanel Grid.Row="1"><TextBlock Text="立即回复" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="SendImmediatelyShortcutBox"/></StackPanel>
-              <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="停止回复" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="CancelReplyShortcutBox"/></StackPanel>
-              <StackPanel Grid.Row="2"><TextBlock Text="新建会话" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="NewConversationShortcutBox"/></StackPanel>
-              <StackPanel Grid.Row="2" Grid.Column="1"><TextBlock Text="打开表情" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="OpenStickersShortcutBox"/></StackPanel>
-              <StackPanel Grid.Row="3"><TextBlock Text="打开角色" FontSize="11" Foreground="#8D9AAF"/><TextBox x:Name="OpenCharacterShortcutBox"/></StackPanel>
+        <ScrollViewer><StackPanel Margin="24,16" Spacing="24" MaxWidth="800" HorizontalAlignment="Stretch">
+          <Border Classes="card"><StackPanel Spacing="12">
+            <TextBlock Text="键盘操作" FontSize="18" FontWeight="SemiBold"/>
+            <TextBlock Text="点击输入框后直接输入组合键名称，例如 Enter、Shift+Enter、Ctrl+N。保存时会检查格式和冲突。" Foreground="{DynamicResource PryMutedBrush}" TextWrapping="Wrap"/>
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="12">
+              <StackPanel><TextBlock Text="发送消息" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><TextBox x:Name="SendShortcutBox"/></StackPanel>
+              <StackPanel Grid.Column="1"><TextBlock Text="换行" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><TextBox x:Name="NewLineShortcutBox"/></StackPanel>
+              <StackPanel Grid.Row="1"><TextBlock Text="立即回复" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><TextBox x:Name="SendImmediatelyShortcutBox"/></StackPanel>
+              <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="停止回复" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><TextBox x:Name="CancelReplyShortcutBox"/></StackPanel>
+              <StackPanel Grid.Row="2"><TextBlock Text="新建会话" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><TextBox x:Name="NewConversationShortcutBox"/></StackPanel>
+              <StackPanel Grid.Row="2" Grid.Column="1"><TextBlock Text="打开表情" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><TextBox x:Name="OpenStickersShortcutBox"/></StackPanel>
+              <StackPanel Grid.Row="3"><TextBlock Text="打开角色" FontSize="13" Foreground="{DynamicResource PryMutedBrush}"/><TextBox x:Name="OpenCharacterShortcutBox"/></StackPanel>
             </Grid>
           </StackPanel></Border>
         </StackPanel></ScrollViewer>
       </TabItem>
       <TabItem Header="外观">
-        <ScrollViewer><StackPanel Margin="8,18" Spacing="14">
-          <Border Classes="card"><StackPanel Spacing="9">
-            <TextBlock Text="界面外观" FontSize="17" FontWeight="SemiBold"/>
-            <TextBlock Text="窗口样式" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="WindowStyleBox"/>
-            <TextBlock Text="切换窗口样式需要重启前端窗口，本地后端和已加载模型不会重启。" Foreground="#D5A85B" TextWrapping="Wrap"/>
-            <TextBlock Text="主题模式" Foreground="#8D9AAF" FontSize="11"/><ComboBox x:Name="ThemeModeBox"/>
-            <TextBlock Text="强调色（#RRGGBB）" Foreground="#8D9AAF" FontSize="11"/><TextBox x:Name="AccentColorBox" MaxLength="9"/>
-            <CheckBox x:Name="GlassEffectsBox" Content="启用玻璃效果"/>
-            <TextBlock Text="聊天背景" Foreground="#8D9AAF" FontSize="11"/>
-            <Border Width="560" Height="315" HorizontalAlignment="Left" Background="#101827" BorderBrush="#2A3850" BorderThickness="1" CornerRadius="12" ClipToBounds="True"><Grid><TextBlock Text="未设置背景" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#718198"/><Image x:Name="BackgroundPreview" IsVisible="False" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/></Grid></Border>
+        <ScrollViewer><StackPanel Margin="24,16" Spacing="24" MaxWidth="800" HorizontalAlignment="Stretch">
+          <Border Classes="card"><StackPanel Spacing="12">
+            <TextBlock Text="界面外观" FontSize="18" FontWeight="SemiBold"/>
+            <TextBlock Text="主题模式" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/><ComboBox x:Name="ThemeModeBox"/>
+            <TextBlock Text="强调色（#RRGGBB）" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/><TextBox x:Name="AccentColorBox" MaxLength="9"/>
+            <CheckBox x:Name="GlassEffectsBox" Content="增强聊天背景氛围"/>
+            <TextBlock Text="壁纸覆盖整个陪伴工作区，消息和输入使用独立阅读表面。" Foreground="{DynamicResource PryMutedBrush}" TextWrapping="Wrap"/>
+            <TextBlock Text="图片透明度"/><Slider x:Name="BackgroundOpacityBox" Minimum="0" Maximum="1"/>
+            <TextBlock Text="背景遮罩"/><Slider x:Name="BackgroundDimBox" Minimum="0" Maximum="0.85"/>
+            <TextBlock Text="模糊半径"/><Slider x:Name="BackgroundBlurBox" Minimum="0" Maximum="32"/>
+            <TextBlock Text="聊天背景" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/>
+            <Border Width="320" Height="180" HorizontalAlignment="Left" Background="{DynamicResource PryCanvasBrush}" BorderBrush="{DynamicResource PryBorderBrush}" BorderThickness="1" CornerRadius="12" ClipToBounds="True"><Grid><TextBlock Text="未设置背景" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource PryMutedBrush}"/><Image x:Name="BackgroundPreview" IsVisible="False" Stretch="UniformToFill" RenderOptions.BitmapInterpolationMode="HighQuality"/></Grid></Border>
             <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="选择背景" Click="ChooseBackground_Click"/><Button Content="清除背景" Click="ClearBackground_Click"/></StackPanel>
           </StackPanel></Border>
         </StackPanel></ScrollViewer>
       </TabItem>
     </TabControl>
-    <Border Grid.Row="2" BorderBrush="#243149" BorderThickness="0,1,0,0" Padding="20,14">
-      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="9">
-        <TextBlock x:Name="StatusText" Foreground="#8C9AAF" VerticalAlignment="Center"/>
+    <Border Grid.Row="2" BorderBrush="{DynamicResource PryBorderBrush}" BorderThickness="0,1,0,0" Padding="24,12">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+        <TextBlock TextWrapping="Wrap" x:Name="StatusText" Foreground="{DynamicResource PryMutedBrush}" VerticalAlignment="Center"/>
         <Button Grid.Column="1" Content="取消" Click="Cancel_Click"/>
         <Button Grid.Column="2" Classes="primary" Content="保存设置" Click="Save_Click"/>
       </Grid>

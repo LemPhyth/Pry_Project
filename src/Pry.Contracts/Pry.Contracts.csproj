@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <ProjectReference Include="../Pry.Core/Pry.Core.csproj" />
-  </ItemGroup>
+  <!-- 零依赖是刻意的：`Pry.Core` 引用本程序集，任何回指（尤其指回 Core）都会成环，
+       这条边界由 `ContractBoundaryTests` 钉住。 -->
 </Project>

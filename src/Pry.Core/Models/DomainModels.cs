@@ -2,8 +2,6 @@ using System.Text.Json.Serialization;
 
 namespace Pry.Core.Models;
 
-public enum CharacterPromptMode { Structured, Legacy }
-
 public sealed record CharacterDefinition
 {
     public int SchemaVersion { get; init; } = 1;
@@ -24,39 +22,50 @@ public sealed record CharacterDefinition
     public ImageDisplayPreferences AvatarDisplay { get; init; } = new();
 }
 
-public sealed record RuntimeState
-{
-    public string Location { get; init; } = "日常空间";
-    public string Mood { get; init; } = "平静";
-    public string CurrentGoal { get; init; } = "陪伴用户";
-    public int Trust { get; init; } = 50;
-    public int Familiarity { get; init; } = 10;
-}
-
-public enum ChatRole { System, User, Assistant }
 public enum DeliveryState { Pending, Delivered, Cancelled }
 
-public sealed record ChatMessage(long Id, string ConversationId, ChatRole Role, string Content,
-    DateTimeOffset CreatedAt, string? ImagePath = null, string? StickerId = null,
-    DateTimeOffset? DeliveredAt = null);
-
-public sealed record ConversationRoom(string Id, string Title, string? CharacterId,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, int MessageCount,
-    string? FolderId = null, bool IsPinned = false)
+public static class InteractionResponseModes
 {
-    public string? LastMessagePreview { get; init; }
-    public ChatRole? LastMessageRole { get; init; }
-    public string? LastMessageKind { get; init; }
-    public DateTimeOffset? LastMessageAt { get; init; }
+    public const string Preset = "preset";
+    public const string Silent = "silent";
 }
 
-public sealed record ConversationFolder(string Id, string Name, DateTimeOffset CreatedAt);
+public sealed record InteractionReplyPreset
+{
+    public required string Id { get; init; }
+    public required string Text { get; init; }
+    public bool Enabled { get; init; } = true;
+    public double Weight { get; init; } = 1;
+}
+
+public sealed record InteractionActionDefinition
+{
+    public required string Id { get; init; }
+    public required string DisplayName { get; init; }
+    public bool Enabled { get; init; } = true;
+    public string ResponseMode { get; init; } = InteractionResponseModes.Preset;
+    public string? ExpressionIntent { get; init; }
+    public IReadOnlyList<InteractionReplyPreset> Replies { get; init; } = [];
+}
+
+public sealed record CharacterInteractionProfile
+{
+    public int SchemaVersion { get; init; } = 1;
+    public required string CharacterId { get; init; }
+    public int CooldownSeconds { get; init; } = 3;
+    public IReadOnlyList<InteractionReplyPreset> PokeReplies { get; init; } = [];
+    public IReadOnlyList<InteractionActionDefinition> Actions { get; init; } = [];
+}
+
+public enum InteractionCommandWriteStatus { Created, Replayed, IdempotencyConflict, Cooldown }
+
+public sealed record InteractionCommandWriteResult(InteractionCommandWriteStatus Status, string ActionId,
+    string CharacterId, long? MessageId, string Outcome, DateTimeOffset AcceptedAt, DateTimeOffset? RetryAt = null,
+    string? ExpressionIntent = null);
 
 public sealed record ConversationMutationSnapshot(string ConversationId, ConversationRoom Room,
     IReadOnlyList<ChatMessage> Messages, IReadOnlyList<MemoryRecord> Memories,
     long MaxMessageIdBeforeMutation);
-
-public enum StickerSource { BuiltIn, User }
 
 public sealed record StickerDefinition
 {
@@ -115,41 +124,19 @@ public sealed record UserInputPart(string Text, string? StickerId = null,
 public enum InterruptKind { Backchannel, SoftInterrupt, HardInterrupt }
 public enum TurnState { Idle, UserPending, ModelThinking, AgentPending, AgentSending }
 
-public sealed record TypingStyle
+public sealed record ChatRequestOptions(bool StructuredReplyPlan = false, int? MaxOutputTokens = null,
+    bool? EnableThinking = null);
+
+public sealed record MemoryEmbeddingSource(long Id, string Summary, string Tags)
 {
-    public double Speed { get; init; } = 1.0;
-    public double Burstiness { get; init; } = 0.75;
-    public int MinDelayMs { get; init; } = 450;
-    public int MaxDelayMs { get; init; } = 3200;
+    public string Content => $"{Summary}\n{Tags}";
 }
 
-public sealed record TurnTakingSettings
-{
-    public int DebounceMs { get; init; } = 1200;
-    public int MaxPendingMs { get; init; } = 5000;
-    public bool SplitReplies { get; init; } = true;
-    public bool AutoClassifyInterrupts { get; init; } = true;
-    public TypingStyle TypingStyle { get; init; } = new();
-    public int MinReplyMessages { get; init; } = 1;
-    public int MaxReplyMessages { get; init; } = 4;
-    public int MaxMessageCharacters { get; init; } = 90;
-    public bool EnableListeningSignals { get; init; } = true;
-    public int ListeningSignalDelayMs { get; init; } = 4500;
-    public string StyleInstruction { get; init; } = "像即时通讯聊天一样自然、简短，不要一次倾倒过多信息。";
-}
-
-public sealed record ChatRequestOptions(bool StructuredReplyPlan = false);
-
-public sealed record MemoryRecord(long Id, string CharacterId, string Kind, string Summary,
-    string Tags, double Importance, long? SourceMessageId, DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt = null, DateTimeOffset? LastUsedAt = null);
+public sealed record MemoryVectorRecord(MemoryRecord Memory, float[] Vector);
 
 public sealed record PromptContext(CharacterDefinition Character, RuntimeState State,
     IReadOnlyList<MemoryRecord> Memories, IReadOnlyList<ChatMessage> RecentMessages,
     IReadOnlyList<StickerDefinition> Stickers, string UserMessage, string? ImagePath);
-
-public sealed record ModelCapabilities(bool Text = true, bool Vision = false,
-    bool Embeddings = false, bool ImageGeneration = false, bool ToolCalling = false);
 
 public sealed record ModelProfile
 {
@@ -173,6 +160,7 @@ public sealed record ModelProfile
     public int GpuLayers { get; init; }
     public string ComputeDevice { get; init; } = "auto-discrete";
     public bool EnableThinking { get; init; }
+    public IReadOnlyList<string> Tags { get; init; } = [];
 }
 
 public sealed record AppSettings
@@ -201,17 +189,6 @@ public sealed record SpeechModelProfile
     public int SampleRate { get; init; } = 16000;
 }
 
-public sealed record ShortcutSettings
-{
-    public string Send { get; init; } = "Enter";
-    public string SendImmediately { get; init; } = "Ctrl+Enter";
-    public string NewLine { get; init; } = "Shift+Enter";
-    public string CancelReply { get; init; } = "Escape";
-    public string NewConversation { get; init; } = "Ctrl+N";
-    public string OpenStickers { get; init; } = "Ctrl+E";
-    public string OpenCharacterEditor { get; init; } = "Ctrl+Shift+C";
-}
-
 public sealed record UserPreferences
 {
     public bool EnableThinking { get; init; } = true;
@@ -219,23 +196,21 @@ public sealed record UserPreferences
     public ModelTuningPreferences ModelTuning { get; init; } = new();
     public TurnTakingSettings? TurnTakingOverride { get; init; }
     public IReadOnlyList<ModelProfile> CustomModels { get; init; } = [];
+    public IReadOnlyList<ModelProfile> DiscoveredModels { get; init; } = [];
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> ModelTags { get; init; } =
+        new Dictionary<string, IReadOnlyList<string>>();
     public string? SelectedCharacterId { get; init; }
     public DesktopPetPreferences DesktopPet { get; init; } = new();
     public string? ActiveModelId { get; init; }
     public string? ActiveVisionModelId { get; init; }
     public string? ActiveSpeechModelId { get; init; }
+    public string? ActiveEmbeddingModelId { get; init; }
     public IReadOnlyDictionary<string, ModelTuningPreferences> ModelTunings { get; init; } =
         new Dictionary<string, ModelTuningPreferences>();
     public IReadOnlyList<SpeechModelProfile> CustomSpeechModels { get; init; } = [];
     public string? ActiveConversationId { get; init; }
     public ThemePreferences Theme { get; init; } = new();
     public UserProfilePreferences UserProfile { get; init; } = new();
-}
-
-public sealed record UserProfilePreferences
-{
-    public string DisplayName { get; init; } = "你";
-    public string Signature { get; init; } = "愿今天也有好心情";
 }
 
 public sealed record ThemePreferences
@@ -262,35 +237,4 @@ public sealed record ThemePreferences
     public double BubbleFontSize { get; init; } = 14;
     public double BubbleMaxWidth { get; init; } = 620;
     public double BubbleSpacing { get; init; } = 10;
-}
-
-public static class MainWindowLayoutModes
-{
-    public const string Messenger = "messenger";
-    public const string Card = "card";
-}
-
-public sealed record ImageDisplayPreferences
-{
-    public double FocusX { get; init; } = 0.5;
-    public double FocusY { get; init; } = 0.5;
-    public double Zoom { get; init; } = 1.0;
-}
-
-public sealed record DesktopPetPreferences
-{
-    public bool Enabled { get; init; }
-    public bool AlwaysOnTop { get; init; } = true;
-    public double Scale { get; init; } = 1.0;
-}
-
-public sealed record ModelTuningPreferences
-{
-    public string? ActiveModelId { get; init; }
-    public double? Temperature { get; init; }
-    public int? MaxOutputTokens { get; init; }
-    public int? ContextSize { get; init; }
-    public int? GpuLayers { get; init; }
-    public string? ComputeDevice { get; init; }
-    public bool? EnableThinking { get; init; }
 }

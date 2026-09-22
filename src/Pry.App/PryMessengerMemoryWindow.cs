@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Pry.Client;
 using Pry.Contracts;
 using Pry.Core.Models;
+using Pry.App.Services;
 
 namespace Pry.App;
 
@@ -18,39 +19,43 @@ internal sealed class PryMessengerMemoryWindow : UserControl
     private readonly TextBox _summary = new() { Watermark = "记忆内容", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 110 };
     private readonly TextBox _tags = new() { Watermark = "标签，用逗号分隔" };
     private readonly Slider _importance = new() { Minimum = 0, Maximum = 1, TickFrequency = 0.1, Value = 0.5 };
-    private readonly TextBlock _status = new() { Foreground = Brush.Parse("#8492A8") };
+    private readonly TextBlock _status = new() { Foreground = Pry.App.Services.PryVisualTheme.Get("Muted") };
     private MemoryRecord? _selected;
 
     public PryMessengerMemoryWindow(PryBackendClient api, CharacterSummaryResponse character)
     {
-        _api = api; _character = character; Background = Brush.Parse("#101827");
+        _api = api; _character = character; Background = Pry.App.Services.PryVisualTheme.Get("Canvas");
         var add = Button("新建", NewRecord); var save = Button("保存", SaveAsync, true); var remove = Button("删除", DeleteAsync);
         _search.TextChanged += async (_, _) => await ReloadAsync(_search.Text);
         _list.SelectionChanged += (_, _) => SelectRecord((_list.SelectedItem as ListBoxItem)?.Tag as MemoryRecord);
-        var fields = new StackPanel { Spacing = 9, Margin = new Thickness(18), Children =
+        var fields = new StackPanel { Spacing = 16, Margin = new Thickness(24), MaxWidth = 800, Children =
         {
-            new TextBlock { Text = "记忆详情", FontSize = 20, FontWeight = FontWeight.SemiBold }, Label("类型"), _kind,
-            Label("内容"), _summary, Label("标签"), _tags, Label("重要程度"), _importance, _status,
-            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { remove, save } }
+            PryUi.Heading("记忆详情"), PryUi.Field("类型", _kind),
+            PryUi.Field("内容", _summary), PryUi.Field("标签", _tags), PryUi.Field("重要程度", _importance)
         }};
-        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(18), RowSpacing = 10 };
-        var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { new TextBlock { Text = "长期记忆", FontSize = 20, FontWeight = FontWeight.SemiBold }, add } };
+        remove.Classes.Add("danger");
+        _status.TextWrapping = TextWrapping.Wrap;
+        var actions = PryUi.Actions(remove, save); actions.HorizontalAlignment = HorizontalAlignment.Right;
+        var footer = PryUi.Footer(new StackPanel { Spacing = 8, Children = { _status, actions } });
+        var detail = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), Children = { new ScrollViewer { Content = fields }, footer } };
+        Grid.SetRow(footer, 1);
+        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*"), Margin = new Thickness(24), RowSpacing = 16 };
+        var heading = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { PryUi.Heading("长期记忆"), add } };
         Grid.SetColumn(add, 1); Grid.SetRow(_search, 1); Grid.SetRow(_list, 2); left.Children.Add(heading); left.Children.Add(_search); left.Children.Add(_list);
-        var root = new Grid { ColumnDefinitions = new ColumnDefinitions("320,*"), Children = { left, new Border { BorderBrush = Brush.Parse("#263249"), BorderThickness = new Thickness(1,0,0,0), Child = fields } } };
+        var root = new Grid { ColumnDefinitions = new ColumnDefinitions("280,*"), Children = { left, new Border { BorderBrush = Pry.App.Services.PryVisualTheme.Get("Border"), BorderThickness = new Thickness(1,0,0,0), Child = detail } } };
         Grid.SetColumn(root.Children[1], 1); Content = root;
         AttachedToVisualTree += async (_, _) => await ReloadAsync();
     }
 
-    private static TextBlock Label(string text) => new() { Text = text, Foreground = Brush.Parse("#8D9AAF"), FontSize = 11 };
     private static Button Button(string text, Action action) { var b = new Button { Content = text }; b.Click += (_, _) => action(); return b; }
-    private static Button Button(string text, Func<Task> action, bool primary = false) { var b = new Button { Content = text, Background = primary ? Brush.Parse("#6C63FF") : null }; b.Click += async (_, _) => await action(); return b; }
+    private static Button Button(string text, Func<Task> action, bool primary = false) { var b = new Button { Content = text }; if (primary) b.Classes.Add("primary"); b.Click += async (_, _) => await action(); return b; }
 
     private async Task ReloadAsync(string? query = null)
     {
         try
         {
             var records = await _api.GetMemoriesAsync(_character.Id, query);
-            _list.ItemsSource = records.Select(item => new ListBoxItem { Tag = item, Padding = new Thickness(10), Margin = new Thickness(0,0,0,4), Content = new StackPanel { Spacing = 3, Children = { new TextBlock { Text = item.Summary, TextTrimming = TextTrimming.CharacterEllipsis }, new TextBlock { Text = $"{item.Kind} · 重要度 {item.Importance:0.0}", FontSize = 10, Foreground = Brush.Parse("#718198") } } } }).ToArray();
+            _list.ItemsSource = records.Select(item => new ListBoxItem { Tag = item, Padding = new Thickness(12), Margin = new Thickness(0,0,0,4), Content = new StackPanel { Spacing = 3, Children = { new TextBlock { Text = item.Summary, TextTrimming = TextTrimming.CharacterEllipsis }, new TextBlock { Text = $"{item.Kind} · 重要度 {item.Importance:0.0}", FontSize = 13, Foreground = Pry.App.Services.PryVisualTheme.Get("Muted") } } } }).ToArray();
             _status.Text = records.Count == 0 ? "没有符合条件的记忆" : $"共 {records.Count} 条";
         }
         catch (Exception ex) { _status.Text = $"读取失败：{ex.Message}"; }

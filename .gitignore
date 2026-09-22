@@ -6,7 +6,10 @@ obj/
 .dotnet-home/
 .downloads/
 artifacts/
+Sample/
 TestResults/
+# 走查截图含二创美术，按 ASSETS_LICENSE.md 与 AGENTS.md 第 6/7 条不得入库
+docs/eval/walkthroughs/
 data/
 /models/
 /runtime/

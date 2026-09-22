@@ -11,6 +11,7 @@ Pry depends on third-party software and can optionally be used with separately d
 | SkiaSharp | 2.88.9 | MIT | https://github.com/mono/SkiaSharp |
 | Tmds.DBus.Protocol | 0.94.2 | MIT | https://github.com/tmds/Tmds.DBus |
 | Microsoft.Data.Sqlite | 10.0.0 | MIT | https://github.com/dotnet/efcore |
+| Microsoft.Extensions.Logging.Abstractions | 10.0.0 | MIT | https://github.com/dotnet/runtime |
 | SQLitePCLRaw.lib.e_sqlite3 | 2.1.13 | Apache-2.0 | https://github.com/ericsink/SQLitePCL.raw |
 | sherpa-onnx | 1.13.5 | Apache-2.0 | https://github.com/k2-fsa/sherpa-onnx |
 | xUnit.net | 3.2.2 | Apache-2.0 | https://github.com/xunit/xunit |
@@ -45,7 +46,6 @@ Copies of the licenses currently bundled for optional components are stored besi
 The complete Qwen Research and FunASR model license texts are stored beside this notice. Apache-2.0 is included at the package root and with Qwen3-1.7B; the llama.cpp MIT text is also stored beside this notice. NVIDIA's current CUDA Toolkit EULA is linked above and applies to its redistributable DLLs.
 
 The v0.0.2 public package does not contain model weights. Any future package that contains Qwen2.5-VL-3B is restricted to non-commercial distribution under its model license.
-
 
 ## Upstream code reused in Pry
 

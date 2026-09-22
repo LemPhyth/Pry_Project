@@ -40,7 +40,7 @@ public sealed class ModelProcessRegistry(ILogger<ModelProcessRegistry> logger, M
             var hardwareTier = policy.Classify(device);
             foreach (var attemptedProfile in policy.CreateCandidates(profile, device))
             {
-                server = new LlamaServerManager();
+                server = new LlamaServerManager(logger);
                 try
                 {
                     var metrics = await server.StartAsync(executablePath, attemptedProfile, token);
@@ -54,7 +54,7 @@ public sealed class ModelProcessRegistry(ILogger<ModelProcessRegistry> logger, M
                             profile.Id, profile.ContextSize);
                     var adjustmentReason = profile.ContextSize == source.ContextSize ? null : lastFailure?.Code ?? $"hardware_{hardwareTier.Id}";
                     lastFailure = null;
-                    var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+                    var client = ProviderTimeouts.CreateModelClient(localLoopback: true);
                     var model = new OpenAiCompatibleChatModel(client, profile);
                     logger.LogInformation("Model {ModelId} registered using {Provider}", profile.Id, profile.Provider);
                     return new ModelHandle(model, server, client, source.ContextSize, profile.ContextSize,
@@ -85,7 +85,7 @@ public sealed class ModelProcessRegistry(ILogger<ModelProcessRegistry> logger, M
             if (lastFailure is not null || server is null)
                 throw lastFailure ?? new ModelRuntimeException("process_start_failed", "无法启动本地模型服务。", true);
         }
-        var remoteClient = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        var remoteClient = ProviderTimeouts.CreateModelClient(ProviderTimeouts.IsLocal(profile));
         var remoteModel = new OpenAiCompatibleChatModel(remoteClient, profile);
         logger.LogInformation("Model {ModelId} registered using {Provider}", profile.Id, profile.Provider);
         return new ModelHandle(remoteModel, server, remoteClient, profile.ContextSize, profile.ContextSize, null, null);

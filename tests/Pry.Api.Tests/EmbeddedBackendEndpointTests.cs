@@ -29,6 +29,13 @@ public sealed class EmbeddedBackendEndpointTests
             Assert.Contains("api/v1/runtime/retry", routes);
             Assert.Contains("api/v1/runtime/compute-devices", routes);
             Assert.Contains("api/v1/preferences", routes);
+            Assert.Contains("api/v1/characters/{characterId}/interaction-profile", routes);
+            Assert.Contains("api/v1/conversations/{conversationId}/interactions", routes);
+            Assert.Contains("api/v1/characters/{characterId}/proactive-policy", routes);
+            Assert.Contains("api/v1/companion/activity/{clientId}", routes);
+            Assert.Contains("api/v1/characters/{characterId}/proactive-status", routes);
+            Assert.Contains("api/v1/conversations/{id}/read-state", routes);
+            Assert.Contains("api/v1/conversations/unread-summary", routes);
         }
         finally
         {

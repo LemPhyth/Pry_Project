@@ -71,7 +71,7 @@ public sealed class CoreTests
     [Fact]
     public async Task Closing_windows_process_job_terminates_owned_process()
     {
-        if (!OperatingSystem.IsWindows()) return;
+        if (!OperatingSystem.IsWindows()) Assert.Skip("作业对象是 Windows 独有的进程终止机制，其它平台没有对应物。");
         using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe")
         {
             UseShellExecute = false,
@@ -79,7 +79,14 @@ public sealed class CoreTests
             ArgumentList = { "/c", "ping 127.0.0.1 -n 30 > nul" }
         }) ?? throw new InvalidOperationException("测试子进程未启动。");
 
-        using (WindowsProcessJob.Attach(process)) { }
+        using (WindowsProcessJob.Attach(process))
+        {
+            // 前置条件：判据是"关掉句柄把它杀了"，所以关句柄那一刻它必须还活着。采样点要在启动落定
+            // 之后——Start 的下一行读 HasExited 几乎永远是 false，那样等于没判（证伪实测：子进程换成
+            // `cmd /c exit` 仍 27 ms 通过）。500ms 远短于子进程自身的约 30 秒，不会误杀好用例。
+            await Task.Delay(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken);
+            Assert.False(process.HasExited, "测试子进程在作业句柄关闭前就已退出，本用例没有判据可言。");
+        }
         await process.WaitForExitAsync(TestContext.Current.CancellationToken)
             .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.True(process.HasExited);
@@ -117,8 +124,53 @@ public sealed class CoreTests
             var db = new MemoryDatabase(path); await db.InitializeAsync(cancellationToken);
             var id = await db.AddMessageAsync("chat", ChatRole.User, "我喜欢下雨天", null, cancellationToken);
             await db.AddMemoryAsync("c", "user_fact", "用户喜欢下雨天", "下雨天", .8, id, cancellationToken);
-            Assert.Single(await db.GetRecentMessagesAsync("chat", 10, cancellationToken));
+            Assert.Equal(MessageSources.UserInput,
+                Assert.Single(await db.GetRecentMessagesAsync("chat", 10, cancellationToken)).Source);
             Assert.Single(await db.SearchMemoriesAsync("c", "下雨天", 6, cancellationToken));
+            var source = Assert.Single(await db.ListPendingMemoryEmbeddingsAsync("embedding-test", 10, cancellationToken));
+            await db.UpsertMemoryEmbeddingAsync(source, "embedding-test", [1f, 0f, .5f], cancellationToken);
+            Assert.Empty(await db.ListPendingMemoryEmbeddingsAsync("embedding-test", 10, cancellationToken));
+            var stored = Assert.Single(await db.ListMemoryVectorsAsync("c", "embedding-test", cancellationToken));
+            Assert.Equal([1f, 0f, .5f], stored.Vector);
+            Assert.Equal((1, 0), await db.GetMemoryEmbeddingCountsAsync("embedding-test", cancellationToken));
+            await using var schema = new SqliteConnection($"Data Source={path}");
+            await schema.OpenAsync(cancellationToken);
+            await using var schemaCommand = schema.CreateCommand(); schemaCommand.CommandText = "SELECT MAX(version) FROM schema_info";
+            // 读侧只允许引用写侧常量：两处各写一个字面量时，一方推进另一方就会把契约漂移显示成产品缺陷。
+            Assert.Equal((long)MemoryDatabase.SchemaVersion, Convert.ToInt64(await schemaCommand.ExecuteScalarAsync(cancellationToken)));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (var suffix in new[] { "", "-wal", "-shm" }) if (File.Exists(path + suffix)) File.Delete(path + suffix);
+        }
+    }
+
+    [Fact]
+    public async Task Interaction_command_is_atomic_idempotent_and_enforces_cooldown()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"pry-interaction-{Guid.NewGuid():N}.db");
+        var token = TestContext.Current.CancellationToken;
+        try
+        {
+            var db = new MemoryDatabase(path); await db.InitializeAsync(token);
+            await db.EnsureConversationAsync("room", "character", token);
+            var writes = await Task.WhenAll(
+                db.ExecuteInteractionCommandAsync("room", "character", "poke", "gesture-1", "回应", "message_created", null, 0, token),
+                db.ExecuteInteractionCommandAsync("room", "character", "poke", "gesture-1", "另一条回应", "message_created", null, 0, token));
+
+            Assert.Contains(writes, item => item.Status == InteractionCommandWriteStatus.Created);
+            Assert.Contains(writes, item => item.Status == InteractionCommandWriteStatus.Replayed);
+            Assert.Equal(writes[0].MessageId, writes[1].MessageId);
+            var message = Assert.Single(await db.GetRecentMessagesAsync("room", 10, token));
+            Assert.Equal(MessageSources.InteractionPreset, message.Source);
+            var conflict = await db.ExecuteInteractionCommandAsync("room", "character", "hug", "gesture-1",
+                null, "presentation_only", "warm", 0, token);
+            Assert.Equal(InteractionCommandWriteStatus.IdempotencyConflict, conflict.Status);
+            var cooldown = await db.ExecuteInteractionCommandAsync("room", "character", "poke", "gesture-2",
+                "回应", "message_created", null, 60, token);
+            Assert.Equal(InteractionCommandWriteStatus.Cooldown, cooldown.Status);
+            Assert.NotNull(cooldown.RetryAt);
         }
         finally
         {

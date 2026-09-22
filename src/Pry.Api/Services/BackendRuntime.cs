@@ -7,7 +7,8 @@ using Pry.Core.Models;
 namespace Pry.Api.Services;
 
 public sealed class BackendRuntime(IConfiguration configuration, ModelProcessRegistry registry,
-    ILogger<BackendRuntime> logger, ModelPerformancePolicy? performancePolicy = null) : IHostedService
+    ILogger<BackendRuntime> logger, ModelPerformancePolicy? performancePolicy = null,
+    LocalModelDiscoveryService? modelDiscovery = null) : IHostedService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
@@ -66,9 +67,24 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
     public IReadOnlyList<CharacterDefinition> Characters => _characters;
     public IReadOnlyList<SpeechModelProfile> SpeechProfiles => (_settings?.SpeechModels ?? [])
         .Concat(_preferences.CustomSpeechModels).ToArray();
-    public IReadOnlyList<ModelProfile> ModelProfiles => (_settings?.Models ?? []).Concat(_preferences.CustomModels).ToArray();
+    public IReadOnlyList<ModelProfile> ModelProfiles => (_settings?.Models ?? []).Concat(_preferences.DiscoveredModels)
+        .Concat(_preferences.CustomModels).ToArray();
+    public bool IsModelAvailable(ModelProfile profile) => profile.Provider != "local-llama" ||
+        (!string.IsNullOrWhiteSpace(profile.ModelPath) && File.Exists(ResolveAssetPath(profile.ModelPath)));
     public string? ActiveSpeechModelId => _preferences.ActiveSpeechModelId ?? _settings?.ActiveSpeechModelId;
+    public string? ActiveEmbeddingModelId => _preferences.ActiveEmbeddingModelId;
+    public RuntimeComponents? LoadedComponents => _components;
     public StickerCatalog Stickers => _stickers ?? throw new InvalidOperationException("贴纸目录尚未就绪。");
+
+    public (string ExecutablePath, ModelProfile Profile) ResolveEmbeddingRuntime()
+    {
+        var id = ActiveEmbeddingModelId ?? throw new InvalidOperationException("未启用长期记忆 Embedding 模型。");
+        var profile = ModelProfiles.FirstOrDefault(x => x.Id == id) ?? throw new ResourceNotFoundException("model", id);
+        if (!profile.Capabilities.Embeddings || !IsModelAvailable(profile))
+            throw new InvalidOperationException("所选模型不可用或不支持 Embedding。");
+        var settings = _settings ?? throw new InvalidOperationException("后端配置尚未就绪。");
+        return (ResolveAssetPath(settings.LlamaServerPath), ResolveProfile(profile));
+    }
 
     public async Task<IReadOnlyList<ComputeDeviceResponse>> ListComputeDevicesAsync(CancellationToken token)
     {
@@ -107,6 +123,13 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
         finally { _gate.Release(); }
     }
 
+    public async Task<ModelScanResult> ScanModelsAsync(CancellationToken token)
+    {
+        await _gate.WaitAsync(token);
+        try { return await ScanModelsCoreAsync(token); }
+        finally { _gate.Release(); }
+    }
+
     public async Task RefreshContentAsync(CancellationToken token)
     {
         await _gate.WaitAsync(token);
@@ -130,7 +153,8 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
             if (_settings is null || _characters.Count == 0) throw new InvalidOperationException("后端配置尚未就绪。");
             _error = null;
             _state = "loading_models";
-            var profiles = _settings.Models.Concat(_preferences.CustomModels).Select(ResolveProfile).ToDictionary(x => x.Id, StringComparer.Ordinal);
+            var profiles = _settings.Models.Concat(_preferences.DiscoveredModels).Concat(_preferences.CustomModels)
+                .Select(ResolveProfile).ToDictionary(x => x.Id, StringComparer.Ordinal);
             var textId = ActiveTextModelId ?? throw new InvalidOperationException("未配置文字模型。");
             if (!profiles.TryGetValue(textId, out var textProfile)) throw new InvalidOperationException($"找不到文字模型配置 {textId}。");
             var serverPath = ResolveAssetPath(_settings.LlamaServerPath);
@@ -216,6 +240,7 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
             _preferences = await JsonConfiguration.LoadAsync<UserPreferences>(preferencesPath, token);
             _preferences = MigrateLegacyBundledModelDefaults(_preferences);
         }
+        await ScanModelsCoreAsync(token);
         _characters = await LoadCharactersAsync(resourceDirectory, dataDirectory, token);
         _stickers = new StickerCatalog(Path.Combine(resourceDirectory, "Stickers", "manifest.json"), Path.Combine(dataDirectory, "stickers"));
         await _stickers.LoadAsync(token);
@@ -224,6 +249,38 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
 
     private string ResolveDataDirectory() => Path.GetFullPath(configuration["Pry:DataDirectory"] ??
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion"));
+
+    private async Task<ModelScanResult> ScanModelsCoreAsync(CancellationToken token)
+    {
+        var service = modelDiscovery ?? new LocalModelDiscoveryService();
+        var directory = Path.GetFullPath(configuration["Pry:ModelsDirectory"] ?? ResolveAssetPath("models"));
+        var discovery = service.Discover(directory);
+        var builtInPaths = (_settings?.Models ?? []).Where(x => x.Provider == "local-llama" &&
+                !string.IsNullOrWhiteSpace(x.ModelPath)).Select(x => Path.GetFullPath(ResolveAssetPath(x.ModelPath!)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var discoveredModels = discovery.Models.Where(x => x.ModelPath is not null &&
+            !builtInPaths.Contains(Path.GetFullPath(x.ModelPath))).ToArray();
+        var previous = _preferences.DiscoveredModels.ToDictionary(x => x.Id, StringComparer.Ordinal);
+        var found = discoveredModels.ToDictionary(x => x.Id, StringComparer.Ordinal);
+        var merged = discoveredModels.Concat(_preferences.DiscoveredModels.Where(x => !found.ContainsKey(x.Id) &&
+            (x.ModelPath is null || !builtInPaths.Contains(Path.GetFullPath(x.ModelPath))))).ToArray();
+        var added = discoveredModels.Count(x => !previous.ContainsKey(x.Id));
+        var changed = merged.Length != _preferences.DiscoveredModels.Count ||
+            merged.Where(x => previous.TryGetValue(x.Id, out _)).Any(x => !ProfileEquivalent(previous[x.Id], x));
+        if (changed)
+        {
+            _preferences = _preferences with { DiscoveredModels = merged };
+            await JsonConfiguration.SaveAsync(Path.Combine(ResolveDataDirectory(), "preferences.json"), _preferences, token);
+            logger.LogInformation("Local model scan found {FoundCount} models and added {AddedCount} configurations",
+                discoveredModels.Length, added);
+        }
+        return new ModelScanResult(discovery.Directory, discoveredModels.Length, added);
+    }
+
+    private static bool ProfileEquivalent(ModelProfile left, ModelProfile right) =>
+        left.Id == right.Id && left.DisplayName == right.DisplayName && left.ModelPath == right.ModelPath &&
+        left.MmprojPath == right.MmprojPath && left.Capabilities == right.Capabilities &&
+        left.EnableThinking == right.EnableThinking && left.Tags.SequenceEqual(right.Tags, StringComparer.OrdinalIgnoreCase);
 
     private static UserPreferences MigrateLegacyBundledModelDefaults(UserPreferences preferences)
     {
@@ -257,6 +314,8 @@ public sealed class BackendRuntime(IConfiguration configuration, ModelProcessReg
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
     }
 }
+
+public sealed record ModelScanResult(string Directory, int FoundCount, int AddedCount);
 
 public sealed record RuntimeComponents(ModelRouter Router, StickerCatalog Stickers, IReadOnlyList<CharacterDefinition> Characters)
 {

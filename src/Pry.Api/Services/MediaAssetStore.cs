@@ -14,10 +14,15 @@ public sealed class MediaAssetStore(IConfiguration configuration)
     private readonly string _directory = Path.Combine(Path.GetFullPath(configuration["Pry:DataDirectory"] ??
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PryCompanion")), "media");
 
+    /// <summary>运行期单文件上限，只能在 <see cref="MediaUploadLimits.CeilingUploadBytes"/> 以下收紧。
+    /// 请求体在到达本方法之前已被端点上限与 <c>FormOptions</c> 夹住，这里是给出稳定错误码的那一层。</summary>
+    public long MaximumUploadBytes { get; } = MediaUploadLimits.ResolveMaximumUploadBytes(configuration);
+
     public async Task<MediaAssetResponse> SaveAsync(Stream source, string submittedName, long length,
         CancellationToken token)
     {
         if (length <= 0) throw new ApiValidationException("file", "文件不能为空");
+        if (length > MaximumUploadBytes) throw new PayloadTooLargeException("file", MaximumUploadBytes);
         var name = submittedName.Replace('\\', '/').Split('/')[^1].Trim();
         if (string.IsNullOrWhiteSpace(name) || name.Length > 255) throw new ApiValidationException("file", "文件名不合法");
         Directory.CreateDirectory(_directory);

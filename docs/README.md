@@ -10,8 +10,18 @@
 | [`PROJECT_PLAN.md`](../PROJECT_PLAN.md) | 当前任务、优先级、验证及发行基线 | 当前本机协作计划；按仓库策略不公开提交 |
 | [`architecture.md`](architecture.md) | 前端、Client、Contracts、API 与 Core 边界 | 架构职责 |
 | [`api-v1.md`](api-v1.md) | 路径、Method、DTO、状态码、错误和 SSE | 稳定接口契约 |
+| [`character-runtime.md`](character-runtime.md) | 持续会话状态机、Gate、打断、Delivery、恢复与验证边界 | RT-002 实现交接记录（Codex 撰写）；2026-09-20 已合回共享工作区，仍未提交 |
+| [`phase1-platform-baseline.md`](phase1-platform-baseline.md) | 分层依赖事实、边界冻结规则、稳定 ID、SSE 事件目录、Runtime↔平台接缝、平台缺陷台账 | RT-001 平台侧冻结；描述现状边界，不表示 1.0 已完成 |
+| [`protocol-versioning-and-websocket-migration.md`](protocol-versioning-and-websocket-migration.md) | 协议版本协商、事件游标持久化、心跳、本机 token 与端口发现、SSE→WebSocket 的 M0～M3 步骤与验收清单 | 目标方案与迁移顺序；Phase 1 内不实施传输改造 |
+| [`proactive-scheduling-api.md`](proactive-scheduling-api.md) | 主动话题策略、活动上报、调度状态、投递、验证和回滚 | COMP-005 后端契约；前端按 COMP-006 接入 |
 | [`gpu-autotuning.md`](gpu-autotuning.md) | 设备投影、上下文档位和降档策略 | 模型性能策略 |
 | [`sticker-library.md`](sticker-library.md) | 表情资源、稳定 ID 和表现约束 | 表情包格式 |
+| [`ui-design-system.md`](ui-design-system.md) | 品牌理念、视觉层级、主题 Token、组件状态与尺寸适配 | UI 设计基线；候选参数待界面实施验证 |
+| [`ui-main-window-redesign.md`](ui-main-window-redesign.md) | 单一陪伴空间的结构、实现、验证与回滚边界 | UI-019；主窗口结构取代基线文档中的旧双布局方案 |
+| [`ui-frontend-handoff.md`](ui-frontend-handoff.md) | 最新反馈、壁纸与角色入口、模型库/自定义模型/Embedding、实施顺序与验收 | UI-020 前端交接；修订 UI-019 暴露的问题，区分可接入与待后端能力 |
+| [`ui-visual-review.md`](ui-visual-review.md) | 消息布局恢复、跨页面视觉统一、共享样式及验证记录 | UI-023；保留前端功能，细化阅读底面与组件实现 |
+| [`ui-appearance-options.md`](ui-appearance-options.md) | 分区域透明、毛玻璃、空会话图片＋标语组合与壁纸应用范围 | UI-024 新增规格；功能接入与视觉绘制分工，尚未实现 |
+| [`role-driven-companion.md`](role-driven-companion.md) | 头像互动、戳一戳、主动话题、角色主题与桌宠联动 | 已确认产品需求；接口尚未冻结 |
 | [`upstream-license-compatibility.md`](upstream-license-compatibility.md) | 五个上游项目的许可实测、Pry 代码许可（GPL-3.0-only）与照搬白名单、留痕程序 | 许可与复用边界的权威文本；谁可抄源码文本、谁只可作机制参考以此为准 |
 | [`research/README.md`](research/README.md) | 五个成熟开源项目的源码研究资料包入口与证据边界 | 机制参考；开工前必读，照搬边界以 `upstream-license-compatibility.md` 为准 |
 | [`engineering-pitfalls.md`](engineering-pitfalls.md) | 已发生故障、根因和防复发规则 | 集成与排障经验 |
@@ -146,3 +156,7 @@ SQLite / 配置 / 模型进程
 ```
 
 先复现并记录提交号、运行产物、数据目录、API 状态、模型状态、错误码和 `traceId`。`/health` 返回 200 只证明 Web 主机可达，不证明 Controller、配置或模型已经可用。已知故障模式优先查阅 [`engineering-pitfalls.md`](engineering-pitfalls.md)。
+
+## 9. 固定角色 Eval 与 QA 验收
+
+入口见 [固定 Eval Suite](eval/README.md)：永久场景、工程与模型证据分层、Useful/False/Missing Recall、发布严重度、真实用户纵向反馈转回归。首轮结果与未关闭缺陷见 [2026-09-20 QA 报告](eval/reports/2026-09-20-baseline.md)。自动化通过不等于角色连续性已验收。

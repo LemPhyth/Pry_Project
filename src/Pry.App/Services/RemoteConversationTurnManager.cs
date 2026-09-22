@@ -57,46 +57,43 @@ public sealed class RemoteConversationTurnManager : IAsyncDisposable
 
     private async Task ReadEventsAsync(CancellationToken token)
     {
-        var after = -1L;
-        while (!token.IsCancellationRequested)
+        var runner = new ConversationEventStreamRunner(
+            (after, cancellation) => _api.ReadEventsAsync(_conversationId, after, cancellation));
+        runner.EventReceived = async item =>
         {
-            try
+            if (item.Data is not JsonElement data) return;
+            if (item.Type == "turn.state" && data.TryGetProperty("state", out var stateValue)
+                && Enum.TryParse<TurnState>(stateValue.GetString(), out var state))
             {
-                await foreach (var item in _api.ReadEventsAsync(_conversationId, after, token))
+                _state = state; StateChanged?.Invoke(state);
+            }
+            else if (item.Type == "message.created" && data.TryGetProperty("role", out var role)
+                     && role.GetString() == "Assistant")
+            {
+                var type = data.TryGetProperty("type", out var typeValue)
+                           && Enum.TryParse<ReplyMessageType>(typeValue.GetString(), out var parsed) ? parsed : ReplyMessageType.Text;
+                var message = new PlannedReplyMessage
                 {
-                    after = item.Sequence;
-                    if (item.Data is not JsonElement data) continue;
-                    if (item.Type == "turn.state" && data.TryGetProperty("state", out var stateValue)
-                        && Enum.TryParse<TurnState>(stateValue.GetString(), out var state))
-                    {
-                        _state = state; StateChanged?.Invoke(state);
-                    }
-                    else if (item.Type == "message.created" && data.TryGetProperty("role", out var role)
-                             && role.GetString() == "Assistant")
-                    {
-                        var type = data.TryGetProperty("type", out var typeValue)
-                                   && Enum.TryParse<ReplyMessageType>(typeValue.GetString(), out var parsed) ? parsed : ReplyMessageType.Text;
-                        var message = new PlannedReplyMessage
-                        {
-                            Id = data.GetProperty("messageId").GetInt64(), Type = type,
-                            Content = data.TryGetProperty("content", out var content) ? content.GetString() : null,
-                            StickerId = data.TryGetProperty("stickerId", out var sticker) && sticker.ValueKind != JsonValueKind.Null ? sticker.GetString() : null,
-                            State = DeliveryState.Delivered
-                        };
-                        if (AgentMessageDelivered is not null) await AgentMessageDelivered(message);
-                    }
-                    else if (item.Type == "turn.failed") Failed?.Invoke(new InvalidOperationException(
-                        data.TryGetProperty("message", out var failure) ? failure.GetString() : "模型暂时无法完成回复"));
-                }
-                if (!token.IsCancellationRequested) await Task.Delay(250, token);
+                    Id = data.GetProperty("messageId").GetInt64(), Type = type,
+                    Content = data.TryGetProperty("content", out var content) ? content.GetString() : null,
+                    StickerId = data.TryGetProperty("stickerId", out var sticker) && sticker.ValueKind != JsonValueKind.Null ? sticker.GetString() : null,
+                    State = DeliveryState.Delivered
+                };
+                if (AgentMessageDelivered is not null) await AgentMessageDelivered(message);
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
-            catch (Exception ex)
-            {
-                Warning?.Invoke("与本地后端的事件连接中断，正在重连：" + ex.Message);
-                await Task.Delay(500, token);
-            }
-        }
+            else if (item.Type == "turn.failed") Failed?.Invoke(new InvalidOperationException(
+                data.TryGetProperty("message", out var failure) ? failure.GetString() : "模型暂时无法完成回复"));
+        };
+        // 不挂 Resumed：本类的回复走追加渲染（MainWindow.AddAgentMessage），补一次历史就是同一条画两遍。
+        // 断线窗口内落库的回复要等下一次重进房间才出现；收敛它需要在追加侧按消息 Id 去重，已记入待办。
+        runner.StateChanged = state =>
+        {
+            if (state == PryStreamState.Reconnecting) Warning?.Invoke("与本地后端的事件连接中断，正在重连");
+        };
+        // Runner 说"不再重连"才是终点：禁令要给出可执行的修复说明，连续失败到上限也要说一句。
+        runner.Faulted = error => Failed?.Invoke(new InvalidOperationException(
+            PryErrorPresenter.Describe(error).Body, error));
+        await runner.RunAsync(token);
     }
 
     public async ValueTask DisposeAsync()

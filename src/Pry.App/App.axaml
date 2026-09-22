@@ -18,20 +18,38 @@
     <FluentTheme />
     <Style Selector="Window">
       <Setter Property="Icon" Value="/Assets/Pry.ico"/>
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI, Segoe UI"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="Foreground" Value="{DynamicResource PryTextBrush}"/>
     </Style>
     <Style Selector="Button">
+      <Setter Property="Foreground" Value="{DynamicResource PryTextBrush}"/>
+      <Setter Property="MinHeight" Value="36"/>
       <Setter Property="Background" Value="{DynamicResource PryButtonBrush}"/>
       <Setter Property="BorderBrush" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="Padding" Value="13,8"/>
+      <Setter Property="Padding" Value="16,8"/>
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button:pointerover"><Setter Property="Background" Value="{DynamicResource PryButtonHoverBrush}"/></Style>
     <Style Selector="Button:pressed"><Setter Property="Background" Value="{DynamicResource PryButtonPressedBrush}"/></Style>
     <Style Selector="Button.primary"><Setter Property="Background" Value="{DynamicResource PryAccentBrush}"/><Setter Property="Foreground" Value="{DynamicResource PryAccentTextBrush}"/></Style>
-    <Style Selector="Button.primary:pointerover"><Setter Property="Background" Value="{DynamicResource PryButtonHoverBrush}"/></Style>
+    <Style Selector="Button.primary:pointerover"><Setter Property="Background" Value="{DynamicResource PryAccentHoverBrush}"/></Style>
+    <Style Selector="Button.primary:pressed"><Setter Property="Background" Value="{DynamicResource PryAccentPressedBrush}"/></Style>
+    <Style Selector="Button:focus-visible"><Setter Property="BorderBrush" Value="{DynamicResource PryFocusBrush}"/><Setter Property="BorderThickness" Value="2"/></Style>
+    <Style Selector="Button:disabled"><Setter Property="Opacity" Value="0.5"/></Style>
+    <Style Selector="Button.danger"><Setter Property="Foreground" Value="{DynamicResource PryErrorBrush}"/></Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource PryButtonHoverBrush}"/><Setter Property="Foreground" Value="{DynamicResource PryTextBrush}"/></Style>
+    <Style Selector="Button:pressed /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource PryButtonPressedBrush}"/></Style>
+    <Style Selector="Button.danger:pointerover /template/ ContentPresenter"><Setter Property="Foreground" Value="{DynamicResource PryErrorBrush}"/></Style>
+    <Style Selector="ComboBox, NumericUpDown"><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="CornerRadius" Value="8"/></Style>
+    <Style Selector="CheckBox"><Setter Property="Foreground" Value="{DynamicResource PryTextBrush}"/></Style>
+    <Style Selector="Expander"><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="CornerRadius" Value="8"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/></Style>
+    <Style Selector="FlyoutPresenter, MenuFlyoutPresenter"><Setter Property="Background" Value="{DynamicResource PryPopupBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource PryBorderBrush}"/><Setter Property="CornerRadius" Value="12"/></Style>
+    <Style Selector="TextBox, ComboBox, NumericUpDown"><Setter Property="Foreground" Value="{DynamicResource PryTextBrush}"/><Setter Property="Background" Value="{DynamicResource PryCardBrush}"/><Setter Property="BorderBrush" Value="{DynamicResource PryControlBorderBrush}"/><Setter Property="MinHeight" Value="36"/></Style>
+    <Style Selector="TextBox:focus"><Setter Property="BorderBrush" Value="{DynamicResource PryFocusBrush}"/></Style>
     <Style Selector="Button.composer-action"><Setter Property="Padding" Value="0"/><Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="0"/></Style>
     <Style Selector="Button.recording"><Setter Property="Background" Value="#D75454"/><Setter Property="Foreground" Value="White"/></Style>
     <Style Selector="Button.sidebar-nav">
@@ -41,12 +59,16 @@
       <Setter Property="HorizontalContentAlignment" Value="Left"/>
       <Setter Property="Padding" Value="14,11"/>
     </Style>
-    <Style Selector="Button.sidebar-nav:pointerover"><Setter Property="Background" Value="#202F3D"/></Style>
+    <Style Selector="Button.sidebar-nav:pointerover"><Setter Property="Background" Value="{DynamicResource PryButtonHoverBrush}"/></Style>
     <Style Selector="ListBoxItem:selected"><Setter Property="Background" Value="{DynamicResource PrySelectionBrush}"/></Style>
-    <Style Selector="TextBox"><Setter Property="CornerRadius" Value="10"/><Setter Property="BorderBrush" Value="{DynamicResource PryBorderBrush}"/><Setter Property="BorderThickness" Value="1"/></Style>
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource PrySelectionBrush}"/></Style>
+    <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource PryButtonHoverBrush}"/></Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource PryAccentHoverBrush}"/><Setter Property="Foreground" Value="{DynamicResource PryAccentTextBrush}"/></Style>
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter"><Setter Property="Background" Value="{DynamicResource PryAccentPressedBrush}"/></Style>
+    <Style Selector="TextBox"><Setter Property="CornerRadius" Value="8"/><Setter Property="BorderBrush" Value="{DynamicResource PryBorderBrush}"/><Setter Property="BorderThickness" Value="1"/></Style>
     <Style Selector="ScrollViewer.pry-chat-scroll ScrollBar:vertical">
       <Setter Property="Width" Value="8"/>
-      <Setter Property="Margin" Value="0,92,2,92"/>
+      <Setter Property="Margin" Value="0,8,2,8"/>
       <Setter Property="Background" Value="Transparent"/>
     </Style>
     <Style Selector="ScrollViewer.pry-chat-scroll ScrollBar:vertical /template/ Thumb">

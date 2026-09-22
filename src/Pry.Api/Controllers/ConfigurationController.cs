@@ -28,6 +28,9 @@ public sealed class ConfigurationController(ConfigurationApplicationService serv
     [HttpGet("preferences")] public ClientPreferencesResponse Preferences() => service.GetPreferences();
     [HttpPatch("preferences")] public Task<ClientPreferencesResponse> UpdatePreferences(UpdateClientPreferencesRequest request, CancellationToken token) => service.UpdatePreferencesAsync(request, token);
     [HttpGet("models")] public IReadOnlyList<ModelProfileResponse> Models() => service.GetModels();
+    [HttpPost("models/scan")] public Task<ModelScanResponse> ScanModels(CancellationToken token) => service.ScanModelsAsync(token);
+    [HttpPut("models/{id}/tags")] public Task<ModelProfileResponse> UpdateModelTags(string id,
+        UpdateModelTagsRequest request, CancellationToken token) => service.UpdateModelTagsAsync(id, request, token);
     [HttpPut("models/selection")] public Task<IReadOnlyList<ModelProfileResponse>> SelectModels(UpdateModelSelectionRequest request, CancellationToken token) => service.UpdateModelSelectionAsync(request, token);
     [HttpPost("models/custom")] public async Task<ActionResult<ModelProfileResponse>> CreateCustomModel(SaveCustomModelRequest request, CancellationToken token)
     {
@@ -35,6 +38,16 @@ public sealed class ConfigurationController(ConfigurationApplicationService serv
     }
     [HttpPut("models/custom/{id}")] public Task<ModelProfileResponse> UpdateCustomModel(string id, SaveCustomModelRequest request, CancellationToken token) => service.UpdateCustomModelAsync(id, request, token);
     [HttpDelete("models/custom/{id}")] public async Task<IActionResult> DeleteCustomModel(string id, CancellationToken token) { await service.DeleteCustomModelAsync(id, token); return NoContent(); }
+    [HttpPost("models/network")] public async Task<ActionResult<ModelProfileResponse>> CreateNetworkModel(
+        SaveNetworkModelRequest request, CancellationToken token)
+    {
+        var result = await service.CreateNetworkModelAsync(request, token);
+        return Created($"/api/v1/models/{result.Id}", result);
+    }
+    [HttpPut("models/network/{id}")] public Task<ModelProfileResponse> UpdateNetworkModel(string id,
+        SaveNetworkModelRequest request, CancellationToken token) => service.UpdateNetworkModelAsync(id, request, token);
+    [HttpDelete("models/network/{id}")] public async Task<IActionResult> DeleteNetworkModel(string id,
+        CancellationToken token) { await service.DeleteNetworkModelAsync(id, token); return NoContent(); }
     [HttpPut("appearance/media")] public Task<ClientPreferencesResponse> UpdateAppearance(UpdateAppearanceMediaRequest request, CancellationToken token) => service.UpdateAppearanceMediaAsync(request, token);
     [HttpPut("settings")] public Task<SaveSettingsResponse> SaveSettings(SaveSettingsRequest request, CancellationToken token) => service.SaveSettingsAsync(request, token);
     [HttpPut("user-profile")] public Task<ClientPreferencesResponse> SaveUserProfile(SaveUserProfileRequest request, CancellationToken token) => service.SaveUserProfileAsync(request, token);

@@ -75,7 +75,7 @@ public sealed partial class MainWindow : Window, IPryMainWindow
     private bool _sendBusy;
     private bool _allowClose;
 
-    public MainWindow() : this(new PryBackendClient(new HttpClient { BaseAddress = new Uri("http://127.0.0.1:5078/"), Timeout = Timeout.InfiniteTimeSpan })) { }
+    public MainWindow() : this(PryBackendClient.Unattached()) { }
 
     public MainWindow(PryBackendClient api)
     {

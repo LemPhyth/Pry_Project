@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Pry.App.Services;
 
 namespace Pry.App;
 
@@ -19,29 +20,29 @@ internal sealed class PryMessengerConfirmDialog : Window
     {
         Title = title;
         Width = 540;
-        Height = 260;
+        Height = 300;
         CanResize = false;
         SystemDecorations = SystemDecorations.None;
         ExtendClientAreaToDecorationsHint = true;
         ExtendClientAreaChromeHints = Avalonia.Platform.ExtendClientAreaChromeHints.NoChrome;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Background = Brush.Parse("#0E1623");
+        Background = PryVisualTheme.Get("Canvas");
         Icon = CreateApplicationIcon();
 
-        var close = Button("×", Brushes.Transparent, Brush.Parse("#D7DFEC"));
+        var close = new Button { Content = "×", Background = Brushes.Transparent };
         close.Width = 40; close.Height = 40; close.Padding = new Thickness(0); close.FontSize = 17;
         close.Click += (_, _) => Close();
         var titleBar = new Border
         {
-            Height = 42, Background = Brush.Parse("#0F1725"), BorderBrush = Brush.Parse("#253149"), BorderThickness = new Thickness(0, 0, 0, 1),
+            Height = 48, Background = PryVisualTheme.Get("Panel"), BorderBrush = PryVisualTheme.Get("Border"), BorderThickness = new Thickness(0, 0, 0, 1),
             Child = new Grid
             {
-                ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(18, 0, 5, 0),
+                ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(24, 0, 8, 0),
                 Children =
                 {
                     new StackPanel
                     {
-                        Orientation = Orientation.Horizontal, Spacing = 9, VerticalAlignment = VerticalAlignment.Center,
+                        Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center,
                         Children =
                         {
                             CreateLogoImage(22),
@@ -55,30 +56,26 @@ internal sealed class PryMessengerConfirmDialog : Window
         Grid.SetColumn(close, 1);
         titleBar.PointerPressed += (_, e) => { if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) BeginMoveDrag(e); };
 
-        var actionBar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8 };
+        var actionBar = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
         foreach (var action in actions)
         {
-            var background = action.Primary ? Brush.Parse(accentColor) : Brush.Parse("#243247");
-            if (action.Destructive) background = Brush.Parse("#C84F5A");
-            var button = Button(action.Label, background, Brushes.White);
+            var button = new Button { Content = action.Label, Margin = new Thickness(8, 8, 0, 0) };
+            if (action.Destructive) button.Classes.Add("danger");
+            else if (action.Primary) button.Classes.Add("primary");
             button.Click += (_, _) => { _result = action.Id; Close(); };
             actionBar.Children.Add(button);
         }
         var body = new Grid
         {
-            RowDefinitions = new RowDefinitions("*,Auto"), Margin = new Thickness(22), RowSpacing = 20,
+            RowDefinitions = new RowDefinitions("*,Auto"), Margin = new Thickness(24), RowSpacing = 16,
             Children =
             {
-                new Border
-                {
-                    Background = Brush.Parse("#182235"), BorderBrush = Brush.Parse("#2C3B54"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16), Padding = new Thickness(20),
-                    Child = new StackPanel { Spacing = 11, Children = { new TextBlock { Text = heading, FontSize = 20, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = message, Foreground = Brush.Parse("#AAB6C8"), TextWrapping = TextWrapping.Wrap } } }
-                },
+                new ScrollViewer { Content = new StackPanel { Spacing = 12, Children = { PryUi.Heading(heading), PryUi.Hint(message) } } },
                 actionBar
             }
         };
         Grid.SetRow(actionBar, 1);
-        Content = new Grid { RowDefinitions = new RowDefinitions("42,*"), Children = { titleBar, body } };
+        Content = new Grid { RowDefinitions = new RowDefinitions("48,*"), Children = { titleBar, body } };
         Grid.SetRow(body, 1);
         KeyDown += (_, e) => { if (e.Key == Key.Escape) { e.Handled = true; Close(); } };
     }
@@ -90,12 +87,6 @@ internal sealed class PryMessengerConfirmDialog : Window
         await dialog.ShowDialog(owner);
         return dialog._result;
     }
-
-    private static Button Button(string text, IBrush background, IBrush foreground) => new()
-    {
-        Content = text, Background = background, Foreground = foreground, BorderThickness = new Thickness(0),
-        CornerRadius = new CornerRadius(11), Padding = new Thickness(16, 9), MinHeight = 38
-    };
 
     private static Image CreateLogoImage(double size)
     {

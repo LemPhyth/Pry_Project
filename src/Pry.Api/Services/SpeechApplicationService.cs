@@ -4,7 +4,8 @@ using Pry.Core.Inference;
 
 namespace Pry.Api.Services;
 
-public sealed class SpeechApplicationService(BackendRuntime runtime, MediaAssetStore media) : IDisposable
+public sealed class SpeechApplicationService(BackendRuntime runtime, MediaAssetStore media,
+    CompanionOperationCoordinator? operations = null) : IDisposable
 {
     private readonly SemaphoreSlim _recognitionGate = new(1, 1);
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(3) };
@@ -20,6 +21,7 @@ public sealed class SpeechApplicationService(BackendRuntime runtime, MediaAssetS
 
     public async Task<TranscribeSpeechResponse> TranscribeAsync(TranscribeSpeechRequest request, CancellationToken token)
     {
+        using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
         var asset = await media.ResolveAsync(ContractValidation.Required(request.MediaId, "mediaId", 128), token);
         if (asset.Metadata.Kind != "Audio") throw new ApiValidationException("mediaId", "语音识别需要 WAV 音频资源");
         var profile = runtime.ResolveSpeechProfile(request.ModelId);

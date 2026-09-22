@@ -4,7 +4,7 @@ using Pry.Core.Models;
 
 namespace Pry.Api.Services;
 
-public sealed class ConversationApplicationService(MemoryDatabase database)
+public sealed class ConversationApplicationService(MemoryDatabase database, CompanionOperationCoordinator? operations = null)
 {
     public Task<IReadOnlyList<ConversationRoom>> ListAsync(int limit, CancellationToken token) =>
         database.ListConversationsAsync(Math.Clamp(limit, 1, 200), token);
@@ -14,6 +14,7 @@ public sealed class ConversationApplicationService(MemoryDatabase database)
 
     public async Task<ConversationRoom> CreateAsync(CreateConversationRequest request, CancellationToken token)
     {
+        using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
         var id = Guid.NewGuid().ToString("N");
         await database.EnsureConversationAsync(id, ContractValidation.OptionalId(request.CharacterId, "characterId"), token);
         return await GetAsync(id, token);
@@ -21,6 +22,7 @@ public sealed class ConversationApplicationService(MemoryDatabase database)
 
     public async Task<ConversationRoom> UpdateAsync(string id, UpdateConversationRequest request, CancellationToken token)
     {
+        using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
         _ = await GetAsync(id, token);
         if (request.Title is not null) await database.RenameConversationAsync(id, ContractValidation.Required(request.Title, "title", 200), token);
         if (request.IsPinned is not null) await database.SetConversationPinnedAsync(id, request.IsPinned.Value, token);
@@ -35,6 +37,7 @@ public sealed class ConversationApplicationService(MemoryDatabase database)
 
     public async Task DeleteAsync(string id, CancellationToken token)
     {
+        using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
         _ = await GetAsync(id, token);
         await database.DeleteConversationAsync(id, token);
     }
@@ -47,6 +50,7 @@ public sealed class ConversationApplicationService(MemoryDatabase database)
 
     public async Task<ChatMessage> AddMessageAsync(string id, CreateMessageRequest request, CancellationToken token)
     {
+        using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
         _ = await GetAsync(id, token);
         if (request.Role != ChatRole.User) throw new ApiValidationException("role", "客户端只能写入 user 消息");
         if (!string.IsNullOrWhiteSpace(request.ImagePath)) throw new ApiValidationException("imagePath", "不接受客户端文件路径，请使用后续的受控媒体上传接口");

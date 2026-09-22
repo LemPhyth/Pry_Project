@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "characterId": "author-character",
+  "cooldownSeconds": 3,
+  "pokeReplies": [
+    { "id": "poke-hello", "text": "你是在叫我吗？", "enabled": true, "weight": 1 },
+    { "id": "poke-curious", "text": "嗯？怎么突然戳我。", "enabled": true, "weight": 1 }
+  ],
+  "actions": [
+    {
+      "id": "pat_head",
+      "displayName": "摸摸头",
+      "enabled": true,
+      "responseMode": "preset",
+      "expressionIntent": "happy",
+      "replies": [
+        { "id": "pat-head-soft", "text": "嗯……再摸一下也可以。", "enabled": true, "weight": 1 }
+      ]
+    },
+    {
+      "id": "hug",
+      "displayName": "抱一抱",
+      "enabled": true,
+      "responseMode": "preset",
+      "expressionIntent": "warm",
+      "replies": [
+        { "id": "hug-soft", "text": "好，抱一下。", "enabled": true, "weight": 1 }
+      ]
+    }
+  ]
+}

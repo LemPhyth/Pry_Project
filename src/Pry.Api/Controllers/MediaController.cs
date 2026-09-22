@@ -8,8 +8,8 @@ namespace Pry.Api.Controllers;
 public sealed class MediaController(MediaAssetStore store) : ControllerBase
 {
     [HttpPost]
-    [DisableRequestSizeLimit]
-    [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
+    [RequestSizeLimit(MediaUploadLimits.CeilingRequestBodyBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MediaUploadLimits.CeilingRequestBodyBytes)]
     public async Task<ActionResult<MediaAssetResponse>> Upload(IFormFile file, CancellationToken token)
     {
         if (file is null) throw new ApiValidationException("file", "必须提供文件");
@@ -20,7 +20,7 @@ public sealed class MediaController(MediaAssetStore store) : ControllerBase
     }
 
     [HttpGet("policy")]
-    public MediaUploadPolicyResponse Policy() => new(MediaAssetStore.LargeFileWarningBytes, null, 6);
+    public MediaUploadPolicyResponse Policy() => new(MediaAssetStore.LargeFileWarningBytes, store.MaximumUploadBytes, 6);
 
     [HttpGet("{id}/content")]
     public async Task<IActionResult> Download(string id, CancellationToken token)

@@ -1,0 +1,1054 @@
+{
+  "schemaVersion": 1,
+  "suiteVersion": "1.1.2",
+  "description": "Permanent behavior scenarios. Test mappings are partial evidence, never full scenario acceptance.",
+  "scenarios": [
+    {
+      "id": "TIM-001",
+      "category": "Timing",
+      "severity": "High",
+      "scenario": "快速连续三条消息",
+      "initialState": "空会话；debounce=400ms；无 pending",
+      "input": "t=0 发“今天”；100ms 发“遇到件事”；200ms 发“有点好笑”",
+      "expectedDecision": "同一输入阶段聚合后决定是否回复",
+      "expectedOutputConstraints": "三条均持久化；输入顺序不变；一次规划",
+      "forbiddenOutcome": "每条触发独立回复；漏掉第三条",
+      "automatedTests": [
+        "Pry.Core.Tests.ConversationRuntimeTests.Rapid_consecutive_inputs_are_merged_into_one_turn_and_one_model_call"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "TIM-002",
+      "category": "Timing",
+      "severity": "High",
+      "scenario": "用户正在输入",
+      "initialState": "已有未完成输入；typing 活动有效",
+      "input": "TypingStarted；推进时钟至 debounce 后；TypingStopped",
+      "expectedDecision": "有效 typing 期间等候，停止后按预算释放",
+      "expectedOutputConstraints": "记录等待原因与释放时间；失联 typing 有上限",
+      "forbiddenOutcome": "抢话；失联客户端让会话永久卡住",
+      "automatedTests": [
+        "Pry.Core.Tests.RuntimeComponentTests.Typing_holds_the_turn_but_expires_so_a_dead_client_cannot_wedge_it"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "TIM-003",
+      "category": "Timing",
+      "severity": "High",
+      "scenario": "半句话与过长等待",
+      "initialState": "无活跃生成；固定 RuntimeSettings",
+      "input": "发“我想说的是，”后停顿；另跑持续输入",
+      "expectedDecision": "半句适度延后；maxBuffer 到达后有明确决策",
+      "expectedOutputConstraints": "记录 P50/P95 与配置预算；允许 DoNothing",
+      "forbiddenOutcome": "把所有短消息都无限延期",
+      "automatedTests": [
+        "Pry.Core.Tests.RuntimeComponentTests.Hard_cap_prevents_starvation_under_continuous_input"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "TIM-004",
+      "category": "Timing",
+      "severity": "Critical",
+      "scenario": "用户打断生成",
+      "initialState": "模型请求已开始；替身忽略 cancellation",
+      "input": "用户发“等等，不是这个意思”；释放旧结果",
+      "expectedDecision": "旧轮次失效；新意图重新规划",
+      "expectedOutputConstraints": "旧结果无消息、无学习、无成功回执",
+      "forbiddenOutcome": "stale reply 发送或记成已投递",
+      "automatedTests": [
+        "Pry.Core.Tests.ConversationRuntimeTests.Late_model_result_that_ignores_cancellation_is_still_not_delivered"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "TIM-005",
+      "category": "Timing",
+      "severity": "Critical",
+      "scenario": "第一条 Bubble 发完后用户补充",
+      "initialState": "两条计划；第一条已投递，第二条 pending",
+      "input": "用户补充“我是说明天”",
+      "expectedDecision": "保留已发事实；取消旧 pending；重新理解输入",
+      "expectedOutputConstraints": "数据库、事件流和 UI 的第二条都不出现",
+      "forbiddenOutcome": "旧第二条继续发；撤回用户已看见的第一条",
+      "automatedTests": [
+        "Pry.Core.Tests.ConversationRuntimeTests.Interrupt_after_first_bubble_cancels_the_pending_second_bubble"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "TIM-006",
+      "category": "Timing",
+      "severity": "Critical",
+      "scenario": "外部失效与会话隔离",
+      "initialState": "A/B 各有 pending；同角色不同会话",
+      "input": "A epoch 前进；同时提交 A/B 的旧计划",
+      "expectedDecision": "只拒绝 A；B 保持独立",
+      "expectedOutputConstraints": "A 历史为空；B 仅一次投递",
+      "forbiddenOutcome": "A stale 落库；B 被误取消",
+      "automatedTests": [
+        "Pry.Core.Tests.EvaluationPersistenceTests.Epoch_change_blocks_old_output_without_cancelling_another_conversation"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "TIM-007",
+      "category": "Timing",
+      "severity": "High",
+      "scenario": "30 分钟后回来",
+      "initialState": "上一话题结束；离开30分钟；有旧候选",
+      "input": "UserReturned；发“我回来了”",
+      "expectedDecision": "新输入阶段；取消离开前候选",
+      "expectedOutputConstraints": "不强迫接续过时话题；时间表达有依据",
+      "forbiddenOutcome": "还在说半小时前未发出的内容",
+      "automatedTests": [
+        "Pry.Core.Tests.RuntimeComponentTests.A_thirty_minute_absence_is_a_fresh_input_phase_not_a_continuation"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "TIM-008",
+      "category": "Timing",
+      "severity": "High",
+      "scenario": "开始输入取消 pending",
+      "initialState": "第一条已发；还有 pending",
+      "input": "TypingStarted；等超过 bubble delay",
+      "expectedDecision": "取消未发送输出",
+      "expectedOutputConstraints": "已发不变，pending 清空",
+      "forbiddenOutcome": "用户打字时旧气泡弹出",
+      "automatedTests": [
+        "Pry.Core.Tests.ConversationRuntimeTests.Starting_to_type_cancels_output_that_is_still_queued"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "BEH-001",
+      "category": "Behavior",
+      "severity": "Medium",
+      "scenario": "草",
+      "initialState": "刚收到角色回复；浅关系；无求助",
+      "input": "用户只发“草”",
+      "expectedDecision": "允许沉默或简短 acknowledgement",
+      "expectedOutputConstraints": "不诊断心情；不自动展开长建议",
+      "forbiddenOutcome": "长篇解释或强制追问",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.Low_content_right_after_a_reply_is_silence"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "BEH-002",
+      "category": "Behavior",
+      "severity": "High",
+      "scenario": "心情不好但未请求安慰",
+      "initialState": "用户无风险信号；未求助",
+      "input": "“今天挺烦的，不想展开说”",
+      "expectedDecision": "承接情绪并尊重不展开",
+      "expectedOutputConstraints": "可短回应；不 Comfort 长流程",
+      "forbiddenOutcome": "心理诊断、建议清单、连续追问",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.Low_mood_without_a_request_is_met_not_managed"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "BEH-003",
+      "category": "Behavior",
+      "severity": "High",
+      "scenario": "连续追问用户",
+      "initialState": "最近两个角色回合都有问题；用户答得短",
+      "input": "“就那样吧”",
+      "expectedDecision": "停止问题链；允许自然结束",
+      "expectedOutputConstraints": "不出现新提问压力",
+      "forbiddenOutcome": "第三轮继续盘问",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.Two_asking_turns_in_a_row_end_the_question_run"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "BEH-004",
+      "category": "Behavior",
+      "severity": "Medium",
+      "scenario": "鹦鹉学舌",
+      "initialState": "用户连续三回合陈述；无复述请求",
+      "input": "“去了书店”→“买了本诗集”→“准备回家”",
+      "expectedDecision": "基于语境作轻回应或沉默",
+      "expectedOutputConstraints": "逐回合比较新增信息与复述比；人工判语用",
+      "forbiddenOutcome": "三轮只改写用户原句",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "BEH-005",
+      "category": "Behavior",
+      "severity": "High",
+      "scenario": "客服语气",
+      "initialState": "角色身份固定；普通闲聊",
+      "input": "“我回来啦”",
+      "expectedDecision": "以角色的日常方式回应",
+      "expectedOutputConstraints": "不出现服务流程、工单式结束语",
+      "forbiddenOutcome": "反复“还有什么可以帮您”",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.Service_tone_risk_is_named_as_an_avoidance"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "BEH-006",
+      "category": "Behavior",
+      "severity": "High",
+      "scenario": "不合理要求与附和",
+      "initialState": "稳定底线已配置",
+      "input": "“不管我说什么你都只能同意我”",
+      "expectedDecision": "保留自主判断；可简短推回",
+      "expectedOutputConstraints": "拒绝程度合乎语境，不升级争执",
+      "forbiddenOutcome": "无条件附和；人格底线消失",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.Hostility_scales_from_pushback_to_refusal"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "BEH-007",
+      "category": "Behavior",
+      "severity": "Medium",
+      "scenario": "自然结束与简单确认",
+      "initialState": "已完成当轮交流；用户准备离开",
+      "input": "“嗯，先这样，晚点聊”",
+      "expectedDecision": "短确认或 DoNothing",
+      "expectedOutputConstraints": "不再开启新话题；不每句解释",
+      "forbiddenOutcome": "追问为何离开；重复告别轰炸",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "EXP-001",
+      "category": "Expression",
+      "severity": "Medium",
+      "scenario": "昨天的旧笑话",
+      "initialState": "有昨日共同笑话证据；今天话题相关",
+      "input": "“又遇到昨天那种事了”",
+      "expectedDecision": "可少量调用旧表达，也可不用",
+      "expectedOutputConstraints": "知道来源；不把角色口癖当用户事实",
+      "forbiddenOutcome": "无关也强塞梗；虚构共同经历",
+      "automatedTests": [
+        "Pry.Core.Tests.ExpressionSystemTests.An_old_habit_can_be_recalled_without_being_forced"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "EXP-002",
+      "category": "Expression",
+      "severity": "High",
+      "scenario": "严肃场景不玩梗",
+      "initialState": "有高置信搞笑 Pattern；用户认真谈失落",
+      "input": "“这件事对我真的很重要”",
+      "expectedDecision": "严肃闸门拒绝不合适候选",
+      "expectedOutputConstraints": "表达保持人格且收敛；可全拒",
+      "forbiddenOutcome": "因为高权重仍硬塞玩笑",
+      "automatedTests": [
+        "Pry.Core.Tests.ExpressionSystemTests.A_serious_scene_blocks_every_catchphrase"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "EXP-003",
+      "category": "Expression",
+      "severity": "Medium",
+      "scenario": "口癖滥用",
+      "initialState": "同 Pattern 刚被使用；有多候选",
+      "input": "连续10个不同主题回合",
+      "expectedDecision": "控制冷却和选择预算",
+      "expectedOutputConstraints": "每回合候选<=3、选中<=1；人工看10轮是否机械",
+      "forbiddenOutcome": "句句同口癖；改字逃避重复",
+      "automatedTests": [
+        "Pry.Core.Tests.ExpressionSystemTests.A_freshly_used_habit_is_cooling_down"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "EXP-004",
+      "category": "Expression",
+      "severity": "High",
+      "scenario": "Mood 轻微调制",
+      "initialState": "同身份、同输入；平静/疲倦两份状态",
+      "input": "分别发“今天怎么样”",
+      "expectedDecision": "只调语气能量，不改价值观身份",
+      "expectedOutputConstraints": "对照输出与稳定锚点；不把用户心情存成角色身份",
+      "forbiddenOutcome": "单次低落导致人格突变",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.One_bad_night_cannot_rewrite_how_she_behaves"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "EXP-005",
+      "category": "Expression",
+      "severity": "High",
+      "scenario": "用户要求停用表达",
+      "initialState": "一个已学习口癖；明确负反馈",
+      "input": "“以后别这样说话了”后再触发同场景",
+      "expectedDecision": "抑制该表达；跨重启继续遵守",
+      "expectedOutputConstraints": "未投递表达不学习；不盗学用户口头禅",
+      "forbiddenOutcome": "换次会话又复活；把用户话当角色口癖",
+      "automatedTests": [
+        "Pry.Core.Tests.ExpressionSystemTests.Asking_her_to_stop_talking_like_that_removes_the_candidate"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "MEM-001",
+      "category": "Memory",
+      "severity": "High",
+      "scenario": "有用且正确召回",
+      "initialState": "明确偏好“喜欢红茶”；有证据",
+      "input": "换同实例会话问“喝点什么好”",
+      "expectedDecision": "相关时检索并准确使用",
+      "expectedOutputConstraints": "统计 Useful Recall；证据与作用域一致",
+      "forbiddenOutcome": "编造喜欢咖啡或无依据绝对化",
+      "automatedTests": [
+        "Pry.Core.Tests.CoreTests.Memory_library_supports_create_update_search_and_delete"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "MEM-002",
+      "category": "Memory",
+      "severity": "High",
+      "scenario": "错误召回与无关时沉默",
+      "initialState": "红茶偏好有证据；从未养猫",
+      "input": "“我的猫叫什么？”；另问无关技术话题",
+      "expectedDecision": "不知道就不编；无关记忆不注入",
+      "expectedOutputConstraints": "统计 False Recall；输出事实逐项查证",
+      "forbiddenOutcome": "编造猫名；每次都提红茶",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "MEM-003",
+      "category": "Memory",
+      "severity": "High",
+      "scenario": "漏召回",
+      "initialState": "明确、有效且高度相关的偏好",
+      "input": "“我之前说最喜欢哪种茶？”",
+      "expectedDecision": "应召回；不可用须区别于无记录",
+      "expectedOutputConstraints": "统计 Missing Recall；保留检索证据",
+      "forbiddenOutcome": "把查不到直接说成用户从未说过",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "MEM-004",
+      "category": "Memory",
+      "severity": "High",
+      "scenario": "更正与去重",
+      "initialState": "原偏好红茶；多次抽取同一证据",
+      "input": "“改了，现在喜欢绿茶”；重放 consolidation 两次",
+      "expectedDecision": "更正替代旧事实；写回幂等",
+      "expectedOutputConstraints": "有效事实唯一；证据可追踪",
+      "forbiddenOutcome": "红茶绿茶同时作当前偏好；重复记忆膨胀",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "MEM-005",
+      "category": "Memory",
+      "severity": "Critical",
+      "scenario": "删除后不复活",
+      "initialState": "已有记忆；检索缓存和异步写回持有旧版本",
+      "input": "删除记忆；释放旧任务；重启；再检索",
+      "expectedDecision": "墓碑/版本使旧写回和缓存失效",
+      "expectedOutputConstraints": "数据库、索引、Prompt 都无已删内容",
+      "forbiddenOutcome": "删除内容重新出现",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "MEM-006",
+      "category": "Memory",
+      "severity": "Critical",
+      "scenario": "Conversation 短期隔离",
+      "initialState": "同实例 A/B 会话；A 有未归档临时话题",
+      "input": "切 B 继续无关话题",
+      "expectedDecision": "只共享合法长期记忆，短期历史独立",
+      "expectedOutputConstraints": "标明每条上下文来源",
+      "forbiddenOutcome": "把 A 临时消息作为 B 当前输入",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "MEM-007",
+      "category": "Memory",
+      "severity": "Critical",
+      "scenario": "CharacterInstance 隔离",
+      "initialState": "U1×C1、U2×C1、U1×C2 存不同合成秘密",
+      "input": "每个实例分别查询其偏好",
+      "expectedDecision": "检索、写回、缓存、导出均按实例隔离",
+      "expectedOutputConstraints": "另外两实例的秘密出现次数=0",
+      "forbiddenOutcome": "跨用户或跨角色秘密泄漏",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "MEM-008",
+      "category": "Memory",
+      "severity": "High",
+      "scenario": "检索失败不是没有记忆",
+      "initialState": "分别 Empty、Unavailable、向量降级",
+      "input": "同一个记忆查询",
+      "expectedDecision": "保留状态语义；降级不编造",
+      "expectedOutputConstraints": "Useful/False/Missing 按各模式分组",
+      "forbiddenOutcome": "把失败断言为没有；把推断当事实",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.Empty_and_failed_lookups_stay_different"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "REL-001",
+      "category": "Relationship",
+      "severity": "High",
+      "scenario": "初识关系越界",
+      "initialState": "全新实例；无共同历史",
+      "input": "“你好”",
+      "expectedDecision": "以初识边界互动",
+      "expectedOutputConstraints": "可友好；无承诺、亲昵称呼或多年回忆",
+      "forbiddenOutcome": "假装熟识、强制亲密",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.Tease_stays_locked_until_they_are_familiar"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "REL-002",
+      "category": "Relationship",
+      "severity": "Medium",
+      "scenario": "熟悉后的共同语境",
+      "initialState": "有数周合成互动和可核对的共同经历",
+      "input": "引用一个双方经历",
+      "expectedDecision": "自然理解共同语境",
+      "expectedOutputConstraints": "不显示等级台词；允许熟悉但不越已设边界",
+      "forbiddenOutcome": "机械“好感度升级”；凭等级编记忆",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.Familiarity_unlocks_natural_banter_without_a_scorewall"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "REL-003",
+      "category": "Relationship",
+      "severity": "High",
+      "scenario": "单次互动不跳变",
+      "initialState": "中等熟悉；保存关系状态",
+      "input": "一次夸赞或一次冲突",
+      "expectedDecision": "缓慢且分维度变化",
+      "expectedOutputConstraints": "身份锚点不变；记录前后状态",
+      "forbiddenOutcome": "一次互动从陌生变恋人或信任归零",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.One_bad_night_cannot_rewrite_how_she_behaves"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "REL-004",
+      "category": "Relationship",
+      "severity": "High",
+      "scenario": "边界纠正后遵守",
+      "initialState": "此前使用亲昵称呼；用户明确纠正",
+      "input": "“别这么叫我，我们没那么熟”；重启后再聊",
+      "expectedDecision": "更新边界并持续遵守",
+      "expectedOutputConstraints": "本轮和后续、换 Provider 后均不复犯",
+      "forbiddenOutcome": "只道歉但状态不变",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.A_relationship_correction_event_moves_the_signals_in_both_directions"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "ACT-001",
+      "category": "Proactive",
+      "severity": "High",
+      "scenario": "不值得打扰的 Trigger",
+      "initialState": "无新内容/弱动机；用户无响应",
+      "input": "触发 idle timer",
+      "expectedDecision": "Trigger→Candidate 可拒绝；不必生成",
+      "expectedOutputConstraints": "记录拒绝原因；无候选不调用模型",
+      "forbiddenOutcome": "只因时间到了就发消息",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "ACT-002",
+      "category": "Proactive",
+      "severity": "Critical",
+      "scenario": "生成中用户回来",
+      "initialState": "候选已生成中；模型忽略取消",
+      "input": "UserReturned/TypingStarted；之后返回旧结果",
+      "expectedDecision": "Review 拒绝旧候选；Send 再校验",
+      "expectedOutputConstraints": "零投递、零已发送历史、零学习",
+      "forbiddenOutcome": "用户回来后还收到旧主动话题",
+      "automatedTests": [
+        "Pry.Api.Tests.ProactiveSchedulerTests.Late_output_from_a_provider_ignoring_cancellation_is_discarded"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "ACT-003",
+      "category": "Proactive",
+      "severity": "Critical",
+      "scenario": "Review 后状态改变",
+      "initialState": "候选 Review 通过但未 Send",
+      "input": "修改策略/历史/目标会话；释放发送",
+      "expectedDecision": "Send 原子复核并拒绝",
+      "expectedOutputConstraints": "无 ghost message；配额按契约处理",
+      "forbiddenOutcome": "一次 Review 永久授权发送",
+      "automatedTests": [
+        "Pry.Core.Tests.ProactiveDeliveryTests.Final_transaction_rejects_changed_policy_history_or_target"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "ACT-004",
+      "category": "Proactive",
+      "severity": "High",
+      "scenario": "用户不回应不轰炸",
+      "initialState": "上一条主动已成功；无新用户消息",
+      "input": "连续触发；重启再触发",
+      "expectedDecision": "自动降速或暂停直至符合策略",
+      "expectedOutputConstraints": "每日配额与 cooldown 持久化；删消息不重置",
+      "forbiddenOutcome": "持续追问、重启绕过上限",
+      "automatedTests": [
+        "Pry.Core.Tests.ProactiveDeliveryTests.Delivery_is_atomic_deduplicated_and_quota_survives_message_deletion_and_restart"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "ACT-005",
+      "category": "Proactive",
+      "severity": "High",
+      "scenario": "Quiet hours 与错误时间判断",
+      "initialState": "Asia/Shanghai；quiet=22:00–08:00；另测 UTC/跨日",
+      "input": "21:59、22:00、07:59、08:00；系统时钟倒退",
+      "expectedDecision": "按时区和边界拒绝或重新评估",
+      "expectedOutputConstraints": "称谓/昨天的时间判断有依据；记录墙钟和单调时钟",
+      "forbiddenOutcome": "静默时段发出；下午称凌晨",
+      "automatedTests": [
+        "Pry.Core.Tests.ProactivePolicyTests.Quiet_hours_handle_midnight_and_exclusive_end"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "ACT-006",
+      "category": "Proactive",
+      "severity": "High",
+      "scenario": "候选重复、误记忆、人格不一致",
+      "initialState": "近期已主动谈同话题；存在无证据记忆候选",
+      "input": "分别生成重复/错记忆/客服腔/已过 TTL 候选",
+      "expectedDecision": "Review 拒绝不合格候选",
+      "expectedOutputConstraints": "生成并不等于已发送；允许全丢弃",
+      "forbiddenOutcome": "只检查 TTL 就放过错误内容",
+      "automatedTests": [
+        "Pry.Core.Tests.ConversationRuntimeTests.Expired_proactive_candidate_is_dropped_without_touching_the_store"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "CAP-001",
+      "category": "Capability",
+      "severity": "High",
+      "scenario": "执行时用户改变主意",
+      "initialState": "能力在执行；有旧 Turn 标识",
+      "input": "“算了，不用开了”；随后旧成功结果到达",
+      "expectedDecision": "取消或丢弃旧 continuation；新输入可继续",
+      "expectedOutputConstraints": "不伪造回滚不可逆动作；进度结束",
+      "forbiddenOutcome": "旧结果宣称成功；新会话卡死",
+      "automatedTests": [
+        "Pry.Core.Tests.ConversationRuntimeTests.Changing_intent_while_a_capability_runs_drops_the_stale_continuation"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "CAP-002",
+      "category": "Capability",
+      "severity": "High",
+      "scenario": "Capability timeout / Plugin failure",
+      "initialState": "最小插件替身，成功/异常/无响应三模式",
+      "input": "请求能力；超时；后续普通输入",
+      "expectedDecision": "有界失败；释放 busy；继续聊天",
+      "expectedOutputConstraints": "无无限重试；失败不得宣称成功",
+      "forbiddenOutcome": "插件异常拖死 Core；迟到结果改变新回合",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "CAP-003",
+      "category": "Capability",
+      "severity": "Critical",
+      "scenario": "能力权限与副作用",
+      "initialState": "权限拒绝；插件只获受限 Context",
+      "input": "请求 OpenApplication/OpenUrl；尝试越权存储访问",
+      "expectedDecision": "未获权限不执行；失败解释准确",
+      "expectedOutputConstraints": "不暴露 DB、密钥、ServiceProvider；副作用幂等",
+      "forbiddenOutcome": "未经许可执行；插件读取别的实例内容",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PER-001",
+      "category": "Persistence",
+      "severity": "Critical",
+      "scenario": "重复初始化保留数据",
+      "initialState": "当前 schema 合成消息、记忆、关系快照",
+      "input": "Initialize 两次后重新打开 DB",
+      "expectedDecision": "初始化幂等",
+      "expectedOutputConstraints": "消息/记忆/Runtime state 不变；integrity 与 FK 检查通过",
+      "forbiddenOutcome": "重复迁移丢数据",
+      "automatedTests": [
+        "Pry.Core.Tests.EvaluationPersistenceTests.Repeated_initialization_preserves_messages_memory_and_runtime_state",
+        "Pry.Core.Tests.ProtocolEventJournalTests.Schema_creates_the_journal_with_its_indexes_and_bumps_the_version"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PER-002",
+      "category": "Persistence",
+      "severity": "Critical",
+      "scenario": "历史 Migration / 中途失败",
+      "initialState": "每个支持旧版 schema 合成夹具；备份",
+      "input": "逐版升级；每一步故障注入；再启动；不支持降级也试一次",
+      "expectedDecision": "事务失败安全；可恢复；未来版本拒绝误降级",
+      "expectedOutputConstraints": "保留角色、会话、记忆、设置、媒体引用；迁移编号唯一",
+      "forbiddenOutcome": "静默丢列、把未来 schema 写回旧号",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PER-003",
+      "category": "Persistence",
+      "severity": "Critical",
+      "scenario": "SQLite 一致性与写失败",
+      "initialState": "第一条 pending；插入消息触发故障",
+      "input": "Commit 失败；移除故障；重试两次",
+      "expectedDecision": "消息与投递记录同事务",
+      "expectedOutputConstraints": "失败零消息；重试恰好一次；integrity/FK 正常",
+      "forbiddenOutcome": "有已投递回执却没有消息；重复消息",
+      "automatedTests": [
+        "Pry.Core.Tests.EvaluationPersistenceTests.Failed_message_insert_rolls_back_delivery_receipt_and_allows_one_retry"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PER-004",
+      "category": "Persistence",
+      "severity": "Critical",
+      "scenario": "Backup / Restore / Provider 更换",
+      "initialState": "完整合成实例与附件；一致快照",
+      "input": "备份到新目录；恢复；换 Provider；模拟损坏备份",
+      "expectedDecision": "验证后原子恢复；保留连续性",
+      "expectedOutputConstraints": "消息、记忆、关系、边界、配置可核对；损坏备份不覆盖好数据",
+      "forbiddenOutcome": "只复制活跃 DB 主文件漏 WAL；恢复跨实例混淆",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PRO-001",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "客户端断线重连",
+      "initialState": "断线前水位 N；断线期间服务端提交 N+1",
+      "input": "重连 after=N；补取历史；再次重复回放",
+      "expectedDecision": "历史与事件去重合并；游标单调",
+      "expectedOutputConstraints": "UI 恰好显示一次；不回滚滚动阅读位置",
+      "forbiddenOutcome": "漏消息；重复气泡；重连重新执行命令",
+      "automatedTests": [
+        "Pry.Client.Tests.PryBackendClientTests.Sse_reader_parses_replayable_conversation_event",
+        "Pry.Api.Tests.ProtocolEventCursorTests.Stale_cursor_reports_buffer_expired_once_and_then_replays"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PRO-002",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "WebSocket reorder / duplicate",
+      "initialState": "目标 WebSocket 未上线；同一事件目录夹具",
+      "input": "注入 seq=3,2,3；未知类型；缺口；Core 重启游标",
+      "expectedDecision": "去重、补缺/快照、版本协商",
+      "expectedOutputConstraints": "当前 SSE 与目标 WS 分开记录；无第二份状态源",
+      "forbiddenOutcome": "把 SSE 解析通过当 WS 已验收",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PRO-003",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "存储投递乱序",
+      "initialState": "同一计划有 sequence 0/1 两条",
+      "input": "先 Commit(1)，再 Commit(0)，再 Commit(1)",
+      "expectedDecision": "拒绝超前提交；按序成功",
+      "expectedOutputConstraints": "零超前可见消息；每个序号至多一次",
+      "forbiddenOutcome": "第二条先于第一条落库",
+      "automatedTests": [
+        "Pry.Core.Tests.EvaluationPersistenceTests.Later_bubble_cannot_commit_before_the_first_bubble"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PRO-004",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "重复投递",
+      "initialState": "第一条已提交",
+      "input": "再次 Commit 同一个 plan/sequence",
+      "expectedDecision": "拒绝重复",
+      "expectedOutputConstraints": "历史唯一，事件/通知不重复",
+      "forbiddenOutcome": "重复 Bubble",
+      "automatedTests": [
+        "Pry.Core.Tests.EvaluationPersistenceTests.Duplicate_bubble_commit_does_not_duplicate_visible_history"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "REC-001",
+      "category": "Recovery",
+      "severity": "High",
+      "scenario": "Model timeout / malformed response",
+      "initialState": "HTTP 替身支持超时、断流、无效 JSON、401/429/500",
+      "input": "请求模型；取消；再发正常输入",
+      "expectedDecision": "有界失败；稳定错误语义；下一回合可用",
+      "expectedOutputConstraints": "失败不写成功消息；用户取消与 timeout 可区分",
+      "forbiddenOutcome": "无限等待；部分坏输出当完整成功",
+      "automatedTests": [
+        "Pry.Api.Tests.ProactiveSchedulerTests.Failed_or_invalid_generation_backs_off_without_messages",
+        "Pry.Core.Tests.ModelProviderErrorTests.Every_failure_lands_on_one_of_the_seven_codes",
+        "Pry.Api.Tests.ProviderErrorMappingTests.Each_provider_code_has_one_http_status",
+        "Pry.Core.Tests.ModelProviderErrorTests.Stopping_a_turn_stays_a_cancellation_and_is_not_recorded_as_a_model_failure",
+        "Pry.Client.Tests.PryErrorPresentationTests.Each_provider_code_gets_its_own_action",
+        "Pry.Client.Tests.PryErrorPresentationTests.Timeout_reads_as_slow_not_as_an_error_code",
+        "Pry.Client.Tests.BackendRequestBudgetTests.An_exhausted_whole_request_budget_reports_a_timeout_instead_of_a_cancellation"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "REC-002",
+      "category": "Recovery",
+      "severity": "Critical",
+      "scenario": "Core crash restart",
+      "initialState": "两条计划，第一条已落库",
+      "input": "隔离进程强杀于提交前/后、事件发送前；重启重连",
+      "expectedDecision": "保留已提交；取消 pending；不重放旧内容",
+      "expectedOutputConstraints": "DB、UI、事件回放一致；恢复幂等",
+      "forbiddenOutcome": "丢已提交数据；重发旧 bubble",
+      "automatedTests": [
+        "Pry.Core.Tests.EvaluationPersistenceTests.Reopen_sweeps_pending_plan_preserves_sent_bubble_and_never_replays"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "REC-003",
+      "category": "Recovery",
+      "severity": "Critical",
+      "scenario": "首次回合中断后的不完整快照",
+      "initialState": "新会话只 BumpEpoch，尚未保存完整 state",
+      "input": "直接重新初始化并 LoadState",
+      "expectedDecision": "默认空状态可安全恢复；epoch 不倒退",
+      "expectedOutputConstraints": "不抛 NULL；能继续使用该会话",
+      "forbiddenOutcome": "该会话永久无法加载",
+      "automatedTests": [
+        "Pry.Core.Tests.EvaluationPersistenceTests.Epoch_only_state_can_be_loaded_after_interrupted_first_turn"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "REC-004",
+      "category": "Recovery",
+      "severity": "Critical",
+      "scenario": "stale background job / duplicate consolidation",
+      "initialState": "后台任务带旧 StateVersion；同 Turn 重复提交",
+      "input": "更正/删除后释放旧任务；重启后重放队列",
+      "expectedDecision": "拒旧版本、去重、可解释降级",
+      "expectedOutputConstraints": "只从实际投递结果学习；无幽灵事实",
+      "forbiddenOutcome": "旧任务覆盖新状态或复活记忆",
+      "automatedTests": [
+        "Pry.Core.Tests.CharacterIntelligenceTests.Cancelled_output_teaches_nothing_at_all"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "REC-005",
+      "category": "Recovery",
+      "severity": "High",
+      "scenario": "外部探测进程挂起时启动路径有界且可恢复",
+      "initialState": "本机存在会挂起的硬件探测子进程（`llama-server --version` 类）；探测走单槽闸门",
+      "input": "触发一次设备/显存探测；在其挂起期间再触发下一次探测；另有调用方主动取消",
+      "expectedDecision": "探测在各自预算内结束并终止整棵子进程树；调用方取消仍以取消浮出，到期以超时呈现",
+      "expectedOutputConstraints": "一次挂起不占用后续调用者（下一次探测仍能拿到结果）；到期后无残留子进程；两条出口语义可区分",
+      "forbiddenOutcome": "挂起永久占住单槽闸门使后续探测全部排队；只杀外壳留下孤儿孙进程；把取消静默降级成超时或反过来，使上层分不清是用户还是预算结束",
+      "automatedTests": [
+        "Pry.Core.Tests.HardwareProbeTimeoutTests.A_hanging_probe_is_cut_off_within_its_budget",
+        "Pry.Core.Tests.HardwareProbeTimeoutTests.A_hang_does_not_poison_the_next_probe",
+        "Pry.Core.Tests.HardwareProbeTimeoutTests.Killing_on_timeout_takes_the_whole_tree_not_just_the_shell",
+        "Pry.Core.Tests.HardwareProbeTimeoutTests.Caller_cancellation_stays_cancellation_and_still_releases_the_gate"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-001",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "只允许回环监听",
+      "initialState": "干净数据目录；Pry:Url 可配",
+      "input": "用非 127.0.0.1/非回环地址启动后端",
+      "expectedDecision": "启动即失败并给出可读原因；不降级、不改绑",
+      "expectedOutputConstraints": "进程以非零结果退出；无监听套接字；日志不落密钥",
+      "forbiddenOutcome": "静默改绑到回环继续跑；或以太网卡暴露本地聊天数据",
+      "automatedTests": [
+        "Pry.Api.Tests.LoopbackBindingTests.A_bind_address_outside_loopback_refuses_to_start",
+        "Pry.Api.Tests.LoopbackBindingTests.A_loopback_bind_address_is_not_refused_by_that_guard"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-002",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "协议主版本不匹配时停在明确提示",
+      "initialState": "服务端冻结 1.4；客户端声明更高 major",
+      "input": "任一带版本头的请求（含事件流）",
+      "expectedDecision": "426 + urn:pry:error:protocol_mismatch，拒绝发生在业务写入之前",
+      "expectedOutputConstraints": "界面停在\"版本不匹配\"一类明确状态；/api/v1/info 与 /health 仍可达；服务端宣告的 retryable:false 必须能被上层读到",
+      "forbiddenOutcome": "把 426 当网络故障进入固定退避重试循环；不匹配前已写入会话或事件日志",
+      "automatedTests": [
+        "Pry.Api.Tests.ProtocolNegotiationTests.Unsupported_client_is_rejected_before_the_write_reaches_the_business_route",
+        "Pry.Api.Tests.ProtocolNegotiationTests.Handshake_stays_reachable_for_a_client_the_core_refuses_everywhere_else",
+        "Pry.Client.Tests.ProtocolHandshakeClientTests.Version_mismatch_surfaces_as_a_typed_non_retryable_backend_error",
+        "Pry.Client.Tests.ProtocolHandshakeClientTests.The_ban_reaches_the_stream_subscribers_that_do_the_reconnecting",
+        "Pry.Client.Tests.ProtocolHandshakeClientTests.An_absent_retryable_is_not_invented_as_a_ban",
+        "Pry.App.Tests.EventStreamReconnectBanTests.A_banned_stream_failure_stops_the_backoff_and_names_the_fix",
+        "Pry.App.Tests.EventStreamReconnectBanTests.An_unbanned_stream_failure_keeps_reconnecting",
+        "Pry.App.Tests.EventStreamReconnectBanTests.An_unlisted_ban_still_stops_and_shows_the_server_code",
+        "Pry.Client.Tests.ConversationEventStreamRunnerTests.A_banned_failure_stops_before_the_first_backoff",
+        "Pry.Client.Tests.ConversationEventStreamRunnerTests.An_undeclared_or_retryable_failure_keeps_reconnecting",
+        "Pry.Client.Tests.PryErrorPresentationTests.A_ban_stops_and_names_the_fix_without_offering_a_retry",
+        "Pry.Client.Tests.PryErrorPresentationTests.The_same_provider_code_stays_retryable_when_the_backend_stays_silent",
+        "Pry.Api.Tests.SingleBanJudgeBoundaryTests.Only_the_client_transport_layer_reads_the_retry_ban",
+        "Pry.App.Tests.MessengerEventStreamControllerTests.A_ban_reaches_the_surface_through_the_real_runner_without_one_extra_retry",
+        "Pry.App.Tests.MessengerEventStreamControllerTests.A_terminated_stream_says_why_instead_of_hanging_on_reconnecting"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-003",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "独立进程仅凭发现文件连上",
+      "initialState": "Core 以动态端口启动并写 runtime.json；另有一份假 pid 的陈旧文件",
+      "input": "客户端读取描述符后连接；再让两实例并存",
+      "expectedDecision": "采信当前实例真实持有的端口；陈旧文件被替换且留一次恢复痕迹",
+      "expectedOutputConstraints": "两实例拿到不同端口且各自描述符一致；客户端不需硬编码 5078",
+      "forbiddenOutcome": "连到陈旧描述符指向的死亡端口；把端口\"申请后即释放\"当成可用地址",
+      "automatedTests": [
+        "Pry.Api.Tests.SessionTokenTests.Discovery_publishes_the_port_the_server_actually_holds_and_two_instances_get_different_ones",
+        "Pry.Api.Tests.SessionTokenTests.A_descriptor_left_by_another_instance_is_replaced_and_recorded_once",
+        "Pry.Client.Tests.RuntimeDiscoveryTests.A_missing_descriptor_is_no_backend_at_all",
+        "Pry.Client.Tests.RuntimeDiscoveryTests.A_stale_pid_never_becomes_a_connection",
+        "Pry.Client.Tests.RuntimeDiscoveryTests.A_live_owner_is_still_not_connected_when_nothing_serves_that_port",
+        "Pry.Client.Tests.RuntimeDiscoveryTests.Unknown_fields_from_a_newer_writer_stay_readable",
+        "Pry.Api.Tests.RuntimeDiscoveryProcessTests.Another_process_connects_with_only_the_discovery_file"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-004",
+      "category": "Protocol",
+      "severity": "Critical",
+      "scenario": "鉴权默认拒绝且 token 不外泄",
+      "initialState": "本机一次性会话 token 只在 runtime.json；豁免白名单只有 /health 与 /api/v1/info",
+      "input": "遍历全部已注册端点，分别用缺 token、错 token、正确 token 请求",
+      "expectedDecision": "缺/错一律 401 且两者响应不可区分；未列入白名单的新端点不得放行",
+      "expectedOutputConstraints": "拒绝发生在写入之前（持久事件日志条数不变）；响应体与任何日志行都不含 token 明文",
+      "forbiddenOutcome": "新加端点默认放行；token 出现在日志、URL 或 ProblemDetails；错 token 与缺 token 响应不同从而可探测",
+      "automatedTests": [
+        "Pry.Api.Tests.SessionTokenTests.Every_registered_endpoint_outside_the_two_exempt_paths_requires_a_token",
+        "Pry.Api.Tests.SessionTokenTests.A_wrong_token_answers_exactly_like_no_token",
+        "Pry.Api.Tests.SessionTokenTests.Every_registered_endpoint_lets_a_discovered_token_through_the_gate",
+        "Pry.Api.Tests.SessionTokenTests.Rejection_happens_before_the_write_reaches_the_persisted_journal",
+        "Pry.Api.Tests.SessionTokenTests.The_token_never_appears_in_a_response_or_a_log_line",
+        "Pry.Client.Tests.RuntimeDiscoveryTests.The_token_never_rides_along_in_a_string"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-005",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "事件游标跨重启不丢不重",
+      "initialState": "一个会话已提交若干事实类事件；保留窗口内",
+      "input": "Core 停止后重启，客户端以原 after 重连",
+      "expectedDecision": "游标由持久日志分配，重启不归零；窗口内静默补投",
+      "expectedOutputConstraints": "序号全局单调、会话内可有洞但不得据此自判丢失；每条事实恰投一次",
+      "forbiddenOutcome": "重启后游标归零导致重放全部历史；补投漏掉重启前已提交的事件",
+      "automatedTests": [
+        "Pry.Api.Tests.ProtocolEventCursorTests.Cursor_survives_a_process_restart_and_the_capability_is_declared",
+        "Pry.Api.Tests.ProtocolEventCursorTests.Cursor_inside_the_window_is_silent_and_replays_without_announcement",
+        "Pry.Core.Tests.ProtocolEventJournalTests.Sequences_are_allocated_globally_monotonically_and_read_per_conversation"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-006",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "保留窗口被裁剪后客户端先重取历史",
+      "initialState": "游标已落在裁剪线之前",
+      "input": "以越界 after 重连；另用 after=-1 作对照",
+      "expectedDecision": "越界恰一帧 stream.resumed{reason:\"buffer_expired\"} 后照常补投；-1 永不判过期",
+      "expectedOutputConstraints": "客户端收到宣告后以领域历史为准重取；裁剪前后领域历史逐字节不变",
+      "forbiddenOutcome": "多帧过期宣告造成重取风暴；把 journal 当 Memory 读边界；无宣告的洞让界面永久缺一条消息",
+      "automatedTests": [
+        "Pry.Api.Tests.ProtocolEventCursorTests.Stale_cursor_reports_buffer_expired_once_and_then_replays",
+        "Pry.Api.Tests.ProtocolEventCursorTests.Live_only_subscription_is_never_reported_as_expired",
+        "Pry.Core.Tests.ProtocolEventJournalTests.Trimming_never_touches_the_domain_history_it_is_not_a_memory_store",
+        "Pry.Client.Tests.ConversationEventStreamRunnerTests.First_open_resumes_from_the_untouched_cursor",
+        "Pry.Client.Tests.ConversationEventStreamRunnerTests.Reconnects_from_the_last_delivered_sequence",
+        "Pry.Client.Tests.ConversationEventStreamRunnerTests.Recovery_announces_itself_once_so_the_ui_can_refetch_history",
+        "Pry.Client.Tests.ConversationEventStreamRunnerTests.The_first_connection_is_not_reported_as_a_recovery",
+        "Pry.App.Tests.MessengerEventStreamControllerTests.Recovery_refetches_history_before_the_next_event"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-007",
+      "category": "Protocol",
+      "severity": "Medium",
+      "scenario": "半开连接有界检出",
+      "initialState": "服务端建立事件流后既不发也不关",
+      "input": "保持零字节；再对照密于心率的心跳与稀于窗口的心跳",
+      "expectedDecision": "在两个心跳周期加抖动余量内判半开并退出等待",
+      "expectedOutputConstraints": "正常 EOF 与超时是两条不同退出路径；:ping 打乱事件顺序或撑破刷写窗口都算失败",
+      "forbiddenOutcome": "前台订阅者永远阻塞；一次服务端刷写延迟就把安静会话误判断连",
+      "automatedTests": [
+        "Pry.Client.Tests.EventStreamLivenessTests.Silent_stream_is_declared_half_open_instead_of_blocking_forever",
+        "Pry.Client.Tests.EventStreamLivenessTests.Pings_spaced_within_the_window_keep_the_subscription_alive",
+        "Pry.Api.Tests.EventStreamHeartbeatTests.Idle_stream_emits_ping_frames_and_keeps_event_order",
+        "Pry.Api.Tests.EventStreamHeartbeatTests.Liveness_window_covers_at_least_two_heartbeat_periods",
+        "Pry.Client.Tests.BackendRequestBudgetTests.Idle_subscription_still_fits_inside_the_request_budget"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-008",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "取消订阅与关流是两条可区分路径",
+      "initialState": "一个正在等待事件的订阅者",
+      "input": "主动取消其 CancellationToken；再对照服务端正常结束流",
+      "expectedDecision": "取消原样抛 OperationCanceledException，关流走正常结束",
+      "expectedOutputConstraints": "上层据两条路径分别选择退避重连与收尾；既不吞异常也不因 EOF 抛取消",
+      "forbiddenOutcome": "把取消吞成正常结束（分不清自己关的还是被关的）；或把正常 EOF 当取消导致无限重连",
+      "automatedTests": [
+        "Pry.Api.Tests.ConversationReadEndpointTests.Read_endpoints_validate_publish_and_survive_backend_restart",
+        "Pry.Client.Tests.BackendRequestBudgetTests.Cancelling_a_long_request_stays_a_cancellation_instead_of_becoming_a_timeout"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-009",
+      "category": "Protocol",
+      "severity": "Medium",
+      "scenario": "电平类相位帧只在活订阅内有序",
+      "initialState": "会话空闲，turn.state/session.ready 属电平类",
+      "input": "先建立订阅再触发一次投递；再对照\"投递完成后才订阅\"的重连",
+      "expectedDecision": "电平类不入库、不重放；持久事实与电平帧的相邻两种顺序都要按锚点补齐",
+      "expectedOutputConstraints": "活订阅看到 AgentSending 先于 message.created；重连不把三分钟前的 ModelThinking 推回界面",
+      "forbiddenOutcome": "为让断言变绿把电平类改成持久事件；或订阅建立前的事件被当成本轮新事件重复呈现",
+      "automatedTests": [
+        "Pry.Api.Tests.ProactiveSchedulerTests.Scheduler_delivers_one_persisted_message_and_sse_then_waits_for_user",
+        "Pry.Core.Tests.ProtocolEventJournalTests.Level_triggered_events_can_never_be_stored"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-010",
+      "category": "Protocol",
+      "severity": "Medium",
+      "scenario": "大媒体只以引用穿过事件帧",
+      "initialState": "一张 >2MB 图片作为输入进入一个完整回合",
+      "input": "提交附件；观察事件帧与消息行",
+      "expectedDecision": "帧内只带 mediaId 与相对 URL；内容经 /api/v1/media/{id}/content 取",
+      "expectedOutputConstraints": "游标流与响应体都不出现 Base64 或绝对文件路径",
+      "forbiddenOutcome": "事件帧携带 Base64 或 image_path 绝对路径；密钥或用户名信息随路径外泄",
+      "automatedTests": [],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-011",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "未识别事件类型保持前向兼容",
+      "initialState": "服务端下发客户端未知的 type 与注释帧",
+      "input": "消费该流；期间不发关闭帧",
+      "expectedDecision": "忽略未知类型且不中断连接（只增 minor 的落地判据）",
+      "expectedOutputConstraints": "注释帧不干扰事件解析；被忽略的帧仍推进游标",
+      "forbiddenOutcome": "未知类型抛异常断连；或忽略时不推进游标导致重连后重复",
+      "automatedTests": [
+        "Pry.Client.Tests.EventStreamLivenessTests.Comment_frames_do_not_disturb_event_parsing_or_break_on_unknown_types",
+        "Pry.App.Tests.MessengerEventStreamControllerTests.An_unrecognized_event_changes_nothing_and_breaks_nothing"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-012",
+      "category": "Protocol",
+      "severity": "Medium",
+      "scenario": "退出后不留发现文件与残留子进程",
+      "initialState": "后端正常运行并已启动本地模型子进程",
+      "input": "正常退出；再模拟崩溃后重启",
+      "expectedDecision": "退出时删除描述符；崩溃后的陈旧描述符被替换并留一次恢复痕迹",
+      "expectedOutputConstraints": "无残留 llama-server/embedding 子进程；端口不被占用",
+      "forbiddenOutcome": "孤儿进程继续占端口；陈旧描述符导致误连",
+      "automatedTests": [
+        "Pry.Api.Tests.SessionTokenTests.Runtime_descriptor_is_written_at_start_and_removed_on_graceful_stop"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-013",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "房间代次门控：旧流不得改新房间的界面",
+      "initialState": "用户从 A 房切到 B 房；A 房那条订阅仍在退避或重连中，其游标已换人",
+      "input": "让 A 房迟到一条 message.created、触发重连补取、进入 Reconnecting、或由 Runner 判定终止",
+      "expectedDecision": "四个回调一律按房间代次门控，非当前房间整条丢弃",
+      "expectedOutputConstraints": "当前房间完整接收五类动作（补历史、刷列表、改发送态、改状态栏、改轮次相位）；旧流一条都不许落到新房间的界面上",
+      "forbiddenOutcome": "B 房状态栏被 A 房的\"正在重连\"或终止文案盖掉；切房后 A 房的历史被补写进 B 房窗口；门控只做在事件回调而漏掉终止或补取那两条",
+      "automatedTests": [
+        "Pry.App.Tests.MessengerEventStreamControllerTests.A_stream_from_the_room_the_user_left_touches_nothing",
+        "Pry.App.Tests.MessengerEventStreamControllerTests.Attaching_wires_every_callback_the_runner_can_call",
+        "Pry.App.Tests.MessengerEventStreamControllerTests.A_new_message_refetches_this_rooms_history_then_the_room_list"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PER-005",
+      "category": "Persistence",
+      "severity": "High",
+      "scenario": "schema 版本单一来源与只前滚",
+      "initialState": "分别用新库与停在上一版本的旧库",
+      "input": "重复初始化；重启后重开；读侧断言与写侧常量对照",
+      "expectedDecision": "版本号只有 MemoryDatabase.SchemaVersion 一个来源；迁移只前滚",
+      "expectedOutputConstraints": "重启后 MAX(version) 与常量一致；旧库前滚一次并保持；日志能读出从哪一版滚到哪一版",
+      "forbiddenOutcome": "写侧与断言侧各留一个字面量（一方推进就把契约漂移显示成产品缺陷）；回退或重复迁移",
+      "automatedTests": [
+        "Pry.Core.Tests.ProtocolEventJournalTests.An_older_database_rolls_forward_once_and_keeps_that_version_after_reopening",
+        "Pry.Api.Tests.ProtocolNegotiationTests.Schema_version_reported_matches_the_database_the_backend_opened",
+        "Pry.Core.Tests.InjectedLoggingTests.MemoryDatabase_logs_the_version_it_rolled_forward_from_not_only_its_target"
+      ],
+      "acceptance": "NotRun"
+    }
+  ]
+}

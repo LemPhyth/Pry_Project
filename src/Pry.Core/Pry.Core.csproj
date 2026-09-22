@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <ProjectReference Include="../Pry.Contracts/Pry.Contracts.csproj" />
+    <!-- 日志抽象（PLAT-006）：Core 只依赖 Microsoft.Extensions.Logging.Abstractions 这一个零实现包，
+         由宿主（Pry.Api / Pry.App）决定日志去哪里。它不引入 HTTP、Avalonia 或 ASP.NET。 -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
     <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.5" />
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.13" />

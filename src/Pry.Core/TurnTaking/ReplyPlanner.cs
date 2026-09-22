@@ -9,17 +9,35 @@ using Pry.Core.Prompting;
 
 namespace Pry.Core.TurnTaking;
 
-public sealed class ReplyPlanner(MemoryDatabase database, PromptBuilder promptBuilder, ModelRouter router,
-    CharacterDefinition character, RuntimeState state, StickerCatalog stickerCatalog)
+public sealed class ReplyPlanner
 {
+    public ReplyPlanner(MemoryDatabase database, PromptBuilder promptBuilder, ModelRouter router,
+        CharacterDefinition character, RuntimeState state, StickerCatalog stickerCatalog)
+        : this(database, database, promptBuilder, router, character, state, stickerCatalog) { }
+
+    public ReplyPlanner(MemoryDatabase database, IMemoryRetriever memoryRetriever, PromptBuilder promptBuilder, ModelRouter router,
+    CharacterDefinition character, RuntimeState state, StickerCatalog stickerCatalog)
+    {
+        _database = database; _memoryRetriever = memoryRetriever; _promptBuilder = promptBuilder; _router = router;
+        _character = character; _state = state; _stickerCatalog = stickerCatalog;
+    }
+
+    private readonly MemoryDatabase _database;
+    private readonly IMemoryRetriever _memoryRetriever;
+    private readonly PromptBuilder _promptBuilder;
+    private readonly ModelRouter _router;
+    private readonly CharacterDefinition _character;
+    private readonly RuntimeState _state;
+    private readonly StickerCatalog _stickerCatalog;
+
     public async Task<IReadOnlyList<PlannedReplyMessage>> PlanAsync(string conversationId, string combinedUserText,
         IReadOnlyList<string> imagePaths, TurnTakingSettings turnSettings, CancellationToken cancellationToken)
     {
-        var recent = await database.GetRecentMessagesAsync(conversationId, 20, cancellationToken);
-        var memories = await database.SearchMemoriesAsync(character.Id, combinedUserText, 6, cancellationToken);
-        var stickers = stickerCatalog.Enabled;
-        var imageDescription = imagePaths.Count == 0 ? null : await router.DescribeImagesAsync(combinedUserText, imagePaths, cancellationToken);
-        var basePrompt = promptBuilder.Build(new PromptContext(character, state, memories, recent, stickers, combinedUserText, imagePaths.FirstOrDefault()),
+        var recent = await _database.GetRecentMessagesAsync(conversationId, 20, cancellationToken);
+        var memories = await _memoryRetriever.SearchMemoriesAsync(_character.Id, combinedUserText, 6, cancellationToken);
+        var stickers = _stickerCatalog.Enabled;
+        var imageDescription = imagePaths.Count == 0 ? null : await _router.DescribeImagesAsync(combinedUserText, imagePaths, cancellationToken);
+        var basePrompt = _promptBuilder.Build(new PromptContext(_character, _state, memories, recent, stickers, combinedUserText, imagePaths.FirstOrDefault()),
             includeExpressionProtocol: false);
         var minMessages = Math.Clamp(turnSettings.MinReplyMessages, 1, 6);
         var maxMessages = Math.Clamp(turnSettings.MaxReplyMessages, minMessages, 6);
@@ -38,8 +56,8 @@ public sealed class ReplyPlanner(MemoryDatabase database, PromptBuilder promptBu
         if (lastUserIndex >= 0) modelMessages[lastUserIndex] = modelMessages[lastUserIndex] with { Content = combinedUserText, ImagePath = imagePaths.FirstOrDefault() };
         else modelMessages.Add(currentMessage);
         var raw = new StringBuilder();
-        var model = router.Select(imagePaths.Count > 0);
-        var directImagePaths = router.UsesVisionBridge ? null : imagePaths;
+        var model = _router.Select(imagePaths.Count > 0);
+        var directImagePaths = _router.UsesVisionBridge ? null : imagePaths;
         await foreach (var token in model.StreamAsync(planningPrompt, modelMessages, directImagePaths,
                            new ChatRequestOptions(StructuredReplyPlan: true), cancellationToken)) raw.Append(token);
         return ParseOrFallback(raw.ToString(), turnSettings.SplitReplies, stickers, maxMessages);
