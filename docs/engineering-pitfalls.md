@@ -211,3 +211,39 @@
 **于是数字对上了（乘数这一项最容易算错）：** 终止态 = 退避之和 `0.5+1+2+4+8+15+15 = 45.5 s` **加上"需要重新握手的那几次"各自的 2.05 s**，而**重新握手次数不等于失败次数**。离线"一上来就打一个死端口"要付 **8** 次 ⇒ `45.5 + 8 × 2.05 ≈ 61.9 s`，与逐段表 `2.13/4.68/7.73/11.78/17.84/27.91/44.96/62.01` 的末值一致；真机 A′ 的第一次失败是**一条已经建好、随后被杀掉的活流**，它不付 connect 成本 ⇒ 只有 **7** 次，`45.5 + 7 × 2.05 = 59.9 s`，与走查实测 58.2–59.8 s 吻合（守门人在 `.local-notes/p7/deadport` 的同栈复现先给出这张表，本轮的裸 socket 探针补上了"成本在哪一层"的那一半）。**形式化**：写墙上时间阈值时，环境项的乘数是"重新握手次数"，拓扑变了它就跟变；省掉这一项会把环境的成本记到产品头上。
 
 **防复发：** ① 任何以墙上时间做档的判据，公式必须写成 **`产品可控量 + N × 单次环境成本`**，其中 `N` 等于真实尝试次数而不是退避次数——`③c` 的 330 s 本来就是 `45.5 + 8 × 32 s` 这个形状，`③b` 漏了第二项才是 outlier。② 环境成本要**当场实测并记进报告**（一条裸 socket 计时就够），而不是假设"近乎瞬时"；假设值一旦进了阈值，判据就从"产品对不对"变成"这台机器的 TCP 栈快不快"。③ **不接受两种省事做法**：改 `MaximumConsecutiveFailures` / `MaximumDelay` 去凑 55 s（那是 `PLT-002`/`PLT-006` 的判据本体），或给"连接被拒"加快速失败（后端正在重启与被永久杀死在 TCP 层是同一个信号，快速失败会把 ② 之后重启再连这条真实路径打死）。④ 阈值归属不在实施侧：写下判据的人不自行放宽，改档由 QA/作者裁定，实施侧只交归因与数据。⑤ 顺带一条已守住的不变量：界面与发现路径一律写 `127.0.0.1` 字面量，**不要改成 `localhost`**——同一台机器上 `http://localhost:死端口` 每次尝试实测 `4.10 s`，正好是 v6/v4 双栈各吃一次 2.05 s。⑥ **落地情况（09-23 晚，Core Platform）**：作者选择"改产品达标"，实施走的是第三条路线——**订阅前先查本机 TCP 监听表**（`Pry.Client.LoopbackEndpointLiveness`），只在"上一次订阅真的因连接被拒失败过 + 目标是字面量回环地址 + 监听表说没人监听"三件事同时成立时省掉这一次必然被拒的握手，并报同形失败（内层真 `SocketException(ConnectionRefused)`），A′ 拓扑下环境项从 7 次降到 1 次。它与 ③ 不冲突的原因要说清：③ 禁的是"拿环境项去凑阈值"（改阶梯、改计数）和"把被拒当永久失败"，而这一条把环境项本身变小、产品可控量一字未动，且答不了的一律答"有人监听"。判据 12 例 `tests/Pry.Client.Tests/DeadLoopbackReconnectTests.cs`（含"第一次必真连""端口复活后回到真连接""静默监听仍按预算报超时"三向证伪），契约文本在 `docs/api-v1.md`"重连前的本机存活探测"，过程记录在 `PROJECT_PLAN.md` §9 该轮。
+
+## 27. 编译器生成的异步流在"自己的 `MoveNextAsync` 还没结束"时被 Dispose 必定抛：心跳一递出，`SseEventStream` 就走进这个状态
+
+**现象：** 门禁第二遍（run B）红一条 `Pry.Api.Tests.EventStreamHeartbeatTests.Finished_stream_closes_without_padding_frames`，异常 `System.NotSupportedException : Specified method is not supported.`；栈顶是 `EventStreamHeartbeatTests.Empty()+System.IAsyncDisposable.DisposeAsync()`，下一帧落在 `src/Pry.Api/Services/SseEventStream.cs:line 20`，也就是 `:19` 那句 `await using var cursor` 的 finally。同一遍其余 643 条全绿，第一遍 645 通过 / 0 失败 / 2 跳过全绿。单跑 Api 工程在负载下 3/3 红、机器安静时绿。**涉事两份文件最后一次改动是 `5361dab`，`8fe2be8` 一字未动**（`git diff --stat 3790df9 8fe2be8` 只含 `Pry.Client` 与其测试/文档），所以它不是被复验的那一刀写坏的，是一条一直在那里的竞态判据。
+
+**根因（离线探针，2026-09-23，`.local-notes/p7/iterprobe`）：** C# 为一个 `async` 迭代器生成的 `DisposeAsync()`，在"这个迭代器自己的某次 `MoveNextAsync()` 仍未结束"时**固定抛** `NotSupportedException`——状态机无法在推进中途安全清理。`FramesAsync` 的整个设计就是在制造这个状态：`:22` 的注释写明 `MoveNextAsync` 不能被取消后复用，所以 `:23` 拿到那笔任务后只等不取消；一旦超时，`:30` 直接 `yield return PryProtocol.HeartbeatFrame`，**此刻那笔 `moved` 还在飞**。之后任何一条离开作用域的路径都会走到 `:19` 的 finally 去 Dispose 一个仍在推进的内层流 ⇒ 抛。探针把 `FramesAsync` 原样抄进独立工程、只换内层源，结果完全确定：
+
+| 心跳档 / 内层源 | 递出的心跳帧数 | `MoveNextAsync` | `DisposeAsync` |
+|---|---|---|---|
+| 100 ms / 延迟 50 ms | 0 | 正常结束 | 干净 |
+| 40 ms / 延迟 50 ms | 1 | 正常拿到帧 | **抛 `NotSupportedException`** |
+| 20 ms / 延迟 50 ms | 2 | 正常拿到帧 | **抛** |
+| 1 ms / 延迟 50 ms | 多帧 | 正常拿到帧 | **抛** |
+| 30 ms / 延迟 5 ms | 0 | 正常结束 | 干净 |
+| 30 ms / `Task.Yield` | 0 | 正常结束 | 干净 |
+| 20 ms / **手写** `IAsyncDisposable` 内层 | 2 | 正常拿到帧 | **干净** |
+
+最后一行是关键分界：帧数与时序完全相同，只把内层从编译器生成的流换成手写 `IAsyncDisposable` 就不抛 ⇒ 缺陷不在"用注释帧判活"这个架构选择上，而在**由谁去 Dispose 一个仍在推进的编译器生成流**。
+
+**为什么它时有时无（这一半决定判据稳定性）：** `:29` 的 `token.ThrowIfCancellationRequested()` 也在同一个循环里，取消发生时那笔 `moved` 是否已经落地，取决于内层迭代器有没有在这一次调度里跑完自己的 `MoveNext`。负载下它常常还在飞 ⇒ 必抛；机器安静时常常已经结束 ⇒ 绿。也就是说红绿由**竞争窗口宽度**决定，而不是由被验的行为决定。
+
+**生产侧形状（读码判定，本轮未做端到端复现，如实标注）：** 唯一真实消费点是 `src/Pry.Api/Controllers/ChatController.cs:71`，它的离开路径就是"客户端断开 ⇒ `token` 取消 ⇒ 放弃流"；被放弃的内层链 `ConversationSessionService.EventsAsync` → `ConversationEventLog.ReadAsync` 在会话安静时正停在一个 `while (true)` 的到达等待里，即**心跳递出的那一刻内层 `MoveNextAsync` 必然在飞**。后果不只是多一条日志：`OperationCanceledException` 会被 Dispose 抛出的 `NotSupportedException` 顶掉，服务端因此把"一次正常的 SSE 断连"记成与真实故障同形的未预期异常。
+
+**优先级判定：** 产品可见面 P2（用户看不到，但错误语义被顶替、日志会误导下一次归因）；**门禁面 P1**——`PROJECT_PLAN.md` §5.0 的出口条件含"并行连续 ≥2 次全绿"，一条 1-in-2 的竞态判据足以让 Phase 1 永远结不了案。守门人按后者入账，编号 `DEF-P1WALK-03`。
+
+**防复发：** ① 不许删或放宽那条断言，也不许在测试里 `catch` 掉这个异常、给 `FramesAsync` 的 finally 加 swallow——"递出心跳后消费方放弃流"就是要被 Dispose 路径判到的事实，藏起来等于把 P1 变成 P0。② 修的位置在 `FramesAsync` 如何跨心跳 `yield` 持有并释放内层游标：离开作用域前先把那笔未完成的 `MoveNextAsync` 结算掉（内层已收同一个 `token`，取消后它会自己走完），再 `DisposeAsync`。两种省事做法明确排除：**取消心跳**（`turn.completed` 的半开检出会退回 `M0-b` 之前）和**给 `MoveNextAsync` 传取消**（`:22` 已写明它不可取消后复用）。③ 判据不许继续依赖"假源 `Empty()` 赢下 30 ms 竞赛"：补一条"至少递出一帧心跳后再放弃流"的用例，把这条路径变成确定性覆盖，而不是等真机负载来提醒。④ 一般化：**任何 `await using` 一个编译器生成异步流、又可能在 `MoveNextAsync` 未结束时离开作用域的代码，都必须在 Dispose 前结算那笔任务**；写"只等不取消"的超时循环时，这条要么进注释要么进判据。⑤ 同类形状排查：全仓 `src/` 手工取异步游标的只有 `SseEventStream.cs:19` 这一处（`grep -rn GetAsyncEnumerator src/`），所以修法只需守住它；但任何新代码引入"手工 `GetAsyncEnumerator` + 可能在推进途中离开作用域"时，本条即适用，判据要跟在这一处收口。
+
+## 28. 测试 fixture 里的 `ClearAllPools()` 是进程级操作：它删得掉自己的临时库，也顺手 dispose 掉别人正在用的句柄
+
+**现象：** 解决方案级门禁第二遍（run B）红一条 `Pry.Core.Tests.ConversationReadTests.Upgrade_defaults_old_messages_to_unread_and_failed_write_rolls_back`，异常 `System.ObjectDisposedException : Cannot access a disposed object. Object name: 'SQLitePCL.sqlite3'.`，栈是 `SafeHandle.DangerousAddRef` → `SQLitePCL...sqlite3_prepare_v2` → `SqliteCommand.PrepareAndEnumerateStatements`。同一份代码第一遍全绿；单独跑 `Pry.Core.Tests` **六次 0 红**；四工程并行复测三次也 **0 红** ⇒ 只在"多程序集争抢 CPU ＋ 别的 collection 恰好在同一刻收尾"那个窗口里出现，本轮总计 1/10。
+
+**根因（机制读码确定；逐次归因到"哪一类是肇事者"未做，如实标注）：** `Fixture.Dispose()`（`tests/Pry.Core.Tests/ConversationReadTests.cs:111`）用 `SqliteConnection.ClearAllPools()` 释放文件句柄，好删那份临时库目录。这个方法**作用于整个进程的所有连接池**，包括此刻其他测试类正在使用的那些。而 `Pry.Core.Tests` 没有关并行——全仓只有 `tests/Pry.App.Tests/AssemblyInfo.cs:3` 写了 `CollectionBehavior(DisableTestParallelization = true)`——xUnit 默认按 collection 并行，该程序集内 `ClearAllPools` 共出现 **13 次、分布在 6 个文件**（`CoreTests.cs` 一个文件就 8 次）。于是每个 fixture 都以"清掉我自己那一份池"的名义，清掉了全进程的池。受害方的表现是下一次 `prepare` 拿到一个已被 dispose 的 `sqlite3` 句柄，**异常里没有任何一行指向真正的肇事者**，所以它长得像"SQLite 随机坏了"，而实际是用例间耦合。
+
+**为什么容易写成这样：** Windows 上临时库删不掉（`Directory.Delete` 报"正由另一进程使用"）时，最顺手的解法就是"把池清空"，而 `ClearAllPools` 是最好记的那个名字。这里已经做对了一半——每个 fixture 用唯一库文件（`pry-read-{Guid}`），这恰好使"只清自己那一份池"成为可能，因此根本不需要进程级操作。
+
+**防复发：** ① 测试 fixture 里只允许针对**自己的连接**清池：`SqliteConnection.ClearPool(connection)`（同一程序集 `EvaluationPersistenceTests.cs:197` 已经是这种写法，照它改即可），或给连接串加 `Pooling=False`；`tests/**` 里出现 `ClearAllPools` 即视为跨用例耦合。② 补一条源码门（与 `SingleBanJudgeBoundaryTests`、`BoundedWaitBoundaryTests` 同一手法）：扫 `tests/` 命中 `ClearAllPools` 即红，并把消息写成"用 `ClearPool(connection)`"——这条缺陷的形态是"每个文件都这么写"，逐个人工 review 抓不完。③ 判据稳定性按**跑法**记账而不是按红绿记账：本轮同轮复测把 `DEF-P1WALK-03` 钉成"负载下 3/3 确定红"、把 `DEF-P1WALK-04` 钉成"1/10 偶发"，两者对 §5.0"连续 ≥2 次全绿"的阻塞强度不同，混成一句"门禁偶发"就没法派工。④ 关掉整程序集并行能压住这条红，但那是**掩盖不是修**：耦合还在，下一次有人重开并行或在别处再引入进程级操作就复发；真要动并行开关，必须由该层 Owner 显式写下"本程序集内 fixture 不得有进程级副作用"这条不变量并配上门禁。⑤ 归口 Core 测试层（与 `MemoryDatabase` 同一 Owner），零产品代码改动。
