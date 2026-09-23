@@ -2,6 +2,8 @@
 
 日期：2026-09-20 首轮，2026-09-23 增补触发门控。首轮报告对应 `runtime-verification/Pry_Project` 隔离 worktree；不代表共享工作区或发行分支已经集成。
 
+**当前集成状态（2026-09-23 深夜）**：首轮实现已随 `5361dab` 入库；触发层增量（四组件 + 两段式 `TurnScheduler` + 本文与 `docs/phase2-runtime-contract.md`）已成提交 `8e039f9`，状态词按契约 §8.1 记 **`已提交待验`**（QA 判定未做）。本文其余段落里"未提交"的字面描述的是它被写下那一刻的工作树，不是今天。
+
 ## Implemented
 
 接续已有、尚未提交的 ConversationRuntime 实现，修复输入持久化与成轮的竞态、异步旧 Turn 清理污染新 Turn、退避无限续期、Capability 等待误报 Idle、投递异常悬挂、主动候选绕过审核及空闲心跳阻止驱逐等问题。
@@ -12,7 +14,7 @@
 
 ProactiveScheduler 在生成前捕获 Runtime 实例、epoch 和会话进度。候选经过 Runtime 审核与 DeliveryScheduler；宿主在最终提交时再次检查活动、策略与历史水位。消息、Runtime 计划状态、主动配额和投递账本在同一 SQLite 事务提交。删除旧的直接发布主动消息入口。创建 Runtime 不加载模型，真正 Compose 时才解析 Provider。
 
-未实现 Memory、Expression、Satori、插件系统或 Agent Harness。未提交、推送或发布。
+未实现 Memory、Expression、Satori、插件系统或 Agent Harness。未 push、未发布；提交面见开头"当前集成状态"一段。
 
 ## Runtime State Changes
 
