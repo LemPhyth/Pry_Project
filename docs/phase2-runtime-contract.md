@@ -315,14 +315,14 @@ Phase 2 的完成判据不是"本文写完了"，也不是"测试数涨了"，�
 
 四组分别是 **TIM**（节奏与门控）、**ACT**（说不说）、**REC**（打断与恢复）、**PER**（真实模型经济性）。"今天可跑"这一列不是修辞——它记录的是宿主端口未接导致生产路径根本进不去的分支，QA 若照单全收会得到一批 `Blocked`。
 
-| 草案 ID | 层 | 可观察变化与判据 | 现有自动化锚点（本轮逐条回源核过名） | 今天可跑 | 前置 |
+| 草案 ID | 层 | 可观察变化与判据 | 现有自动化锚点（逐条回源核过名；QA `eval-QA-P2TRIGGER-0923` §6 复点 22 条，21 真 1 假——假的是 `P2-Draft-ACT-02` 那一处，已在该行列出并留痕） | 今天可跑 | 前置 |
 |---|---|---|---|---|---|
 | `P2-Draft-TIM-01` | Integration | 缓冲窗口内的连发只开一轮、且一条不丢：模型调用数＝1，落库 user 条数＝实际发言数 | `Rapid_consecutive_inputs_are_merged_into_one_turn_and_one_model_call`、`Inputs_at_zero_fifty_and_three_hundred_fifty_ms_form_one_turn` | 是 | — |
 | `P2-Draft-TIM-02` | Runtime | 攒不够阈值时门控**自己按节奏醒来**成轮，不需要新消息推动；纯沉默（`pending=0`）多久都不成轮 | `A_backlog_below_the_threshold_wakes_itself_without_a_new_message`、`Silence_alone_never_opens_a_turn_how_long_it_lasts` | 部分（假时钟可跑，真机需端口） | §7 第 1 步 |
 | `P2-Draft-TIM-03` | Unit | 未 settle 的半句不进门控：静默期/不完整保持/打字中租约/封顶四条各有独立判据 | `Idle_runtime_without_output_just_buffers_the_input`、`Immediate_flag_short_circuits_the_buffer`、`Repeated_typing_reports_renew_the_lease_but_disconnect_still_expires` | 是 | — |
 | `P2-Draft-TIM-04` | Runtime | 群聊连续空转按指数退避到封顶，积压达门槛立即越过退避；答过话后计数立刻清零 | `Backoff_grows_exponentially_and_stops_at_the_cap`、`Waiting_messages_outrank_a_backoff_window`、`An_answered_turn_clears_the_backoff_immediately` | **否**（`IsGroupChat` 无宿主来源） | §7 第 1 步 + DEV-11 |
 | `P2-Draft-ACT-01` | Runtime | `ReplyFrequency=0` 时：消息**照常落库**、一条不丢，但模型调用数为 0，界面不出现"正在输入" | `Silent_frequency_consumes_the_message_without_opening_a_turn` | 是 | DEV-08（用户可见解释） |
-| `P2-Draft-ACT-02` | Runtime | 必要性模式群聊里没点名 ⇒ 0 次调用；同一会话被 `@角色名` 后 ⇒ 恰好 1 次 | `Group_chater_stays_quiet_in_necessity_mode_until_the_character_is_called` | **否**（默认是计数模式） | §7 第 1、2 步 |
+| `P2-Draft-ACT-02` | Runtime | 必要性模式群聊里没点名 ⇒ 0 次调用；同一会话被 `@角色名` 后 ⇒ 恰好 1 次 | `Group_chatter_stays_quiet_in_necessity_mode_until_the_character_is_called`（2026-09-23 本行原写 `Group_chater_…`，少一个 `t`；QA 复点时抓到，`measure-fixed-eval.ps1` 按方法名实搜源文件会抛 `Stale test mapping`。就地更正并留痕，不静默覆盖） | **否**（默认是计数模式） | §7 第 1、2 步 |
 | `P2-Draft-ACT-03` | Model | DoNothing 是一等结果：门放行但判定不必回时，终局记 `DoNothing` 且历史里不留半条气泡 | `Reply_gate_is_allowed_to_stay_silent`（`ConversationRuntimeTests.cs:198`）、`RuntimeComponentTests.cs:247` | 部分（假建议器可跑，真实模型未跑） | 真实模型档位 |
 | `P2-Draft-ACT-04` | Model | 频率下降时"该沉默"的判断变严，而不是变成"攒更多条再一次性回一大段" | `Necessity_mode_asks_for_a_much_bigger_backlog_as_frequency_falls` | **否** | 标定（DEV-03） |
 | `P2-Draft-REC-01` | Integration | 飞行中插入新消息 ⇒ 旧结果回来后**不得再发**，界面不出现两条互相覆盖的答复 | `Late_model_result_that_ignores_cancellation_is_still_not_delivered`、`Repeated_interruptions_stack_up_without_delivering_any_stale_reply` | 是 | — |
