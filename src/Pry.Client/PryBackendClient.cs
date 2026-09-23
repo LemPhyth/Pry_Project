@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -12,6 +13,12 @@ public sealed class PryBackendClient
     private readonly HttpClient httpClient;
     private readonly TimeSpan defaultRequestBudget;
     private readonly TimeSpan longRequestBudget;
+
+    /// <summary>
+    /// 上一次事件流订阅被拒时打到的回环端口；只有它还在，下一次订阅才先查一次本机监听表。
+    /// 这是整个探测的全部状态：拿到任何响应头就清空，所以后端重启在同一端口上时探测自动失效。
+    /// </summary>
+    private (string Host, int Port)? refusedLoopbackEndpoint;
 
     /// <param name="requestBudget">
     /// 普通请求预算的注入点；默认取 <see cref="PryProtocol.BackendRequestTimeoutMs"/>。
@@ -215,16 +222,55 @@ public sealed class PryBackendClient
     /// </summary>
     private async Task<HttpResponseMessage> OpenEventStreamAsync(HttpRequestMessage request, CancellationToken token)
     {
+        var target = StreamTarget(request);
+        if (refusedLoopbackEndpoint == target && !LoopbackEndpointLiveness.IsListening(target.Host, target.Port))
+        {
+            // 明知会被拒的握手不再打出去：这台机器上一次被拒的回环连接要付约 2.05 秒（RST 已回来、
+            // connect 完成压在 TCP 层），八轮重连的墙上时间几乎全是它。这里报的是同一种失败——
+            // 界面分类、失败计数与退避阶梯一概不变，监听表一旦重新出现该端口，下一次照旧走真连接。
+            throw ConnectionRefused(target);
+        }
         using var headers = CancellationTokenSource.CreateLinkedTokenSource(token);
         headers.CancelAfter(defaultRequestBudget);
         try
         {
-            return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headers.Token);
+            var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headers.Token);
+            // 拿到响应头就说明这个端口在服务：禁令与重试的口径此后只由响应本身决定。
+            refusedLoopbackEndpoint = null;
+            return response;
+        }
+        catch (HttpRequestException error) when (IsConnectionRefused(error))
+        {
+            refusedLoopbackEndpoint = target;
+            throw;
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
             throw new TimeoutException($"本地后端在 {defaultRequestBudget.TotalSeconds:0.#} 秒内没有接受事件流订阅。");
         }
+    }
+
+    /// <summary>本客户端的事件流订阅打到的地址。<see cref="HttpClient.BaseAddress"/> 是发现文件或内嵌宿主给的，界面不再自带端口。</summary>
+    private (string Host, int Port) StreamTarget(HttpRequestMessage request)
+    {
+        var uri = request.RequestUri is { IsAbsoluteUri: true } absolute
+            ? absolute
+            : new Uri(httpClient.BaseAddress!, request.RequestUri!);
+        return (uri.Host, uri.Port);
+    }
+
+    /// <summary>与真被拒同形的失败：内层留一个真正的 <see cref="SocketException"/>，界面据此才落到"本地核心没有启动成功"那一档。</summary>
+    private static HttpRequestException ConnectionRefused((string Host, int Port) target) =>
+        new($"本机监听表显示 {target.Host}:{target.Port} 上没有监听者，这次必然被拒的连接没有发出。",
+            new SocketException((int)SocketError.ConnectionRefused));
+
+    private static bool IsConnectionRefused(Exception error)
+    {
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
+            if (current is SocketException { SocketErrorCode: SocketError.ConnectionRefused }) return true;
+        }
+        return false;
     }
 
     private static async Task<string?> ReadLineWithLivenessAsync(StreamReader reader, TimeSpan liveness,
