@@ -16,7 +16,9 @@
 - 发现文件：`<DataDirectory>/runtime.json`，字段 `{ pid, port, token, protocolVersion, schemaVersion, startedAt }`，由 `RuntimeDescriptorService` 挂在 `ApplicationStarted`/`ApplicationStopping` 上写与删（宿主服务的启动顺序不在契约里，不依赖它）。先写临时名再原子替换；退出时只有内容仍属于本进程（`pid` + `port` 都对得上）才删除，避免抹掉后继实例的入口。
 - 发现顺序：同进程内嵌时**直接读同一个服务对象**（`app.BoundUrl()` / `app.CreateBackendHttpClient()`），不去读自己刚写的文件；独立进程读 `runtime.json`，校验 `pid` 存活与端口一致后再带令牌发请求。
 - 读侧实现是 `Pry.Client.RuntimeDiscovery`（`TryRead` / `TryConnectAsync`），判据是"**不确定就不接**"：文件缺席、半截 JSON、不是对象、端口越界（`<1` 或 `>65535`）、令牌为空、`pid` 已退出、以及 `pid` 就是本进程，全部返回 `null` 而不是猜一个入口——连错比连不上更难诊断，因为陈旧文件里的端口可能已被同机另一个进程占用。未知字段照常忽略（跨进程文件格式只增不改不删）。探测请求走豁免的 `GET /api/v1/info`：那个进程还活着但 HTTP 面已不再服务时也不接。版本是否兼容**不在读侧判定**，仍由协商中间件决定（避免两处事实源）。
-- `Pry.App` 的启动顺序因此是"先发现、后内嵌"：`RuntimeDiscovery.TryConnectAsync() ?? StartEmbeddedBackendAsync()`。这意味着第二个界面实例会接上第一个实例的后端，而不是再起一个宿主去争同一份 `memory.db`。后果要说清：接上别人的后端时，退出本窗口不会关掉那个进程，退出提示按 `_backend` 是否为空分支；发现文件只写在**默认数据目录**（`PryProtocol.DefaultDataDirectory`），显式指定 `Pry:DataDirectory` 的实例（如测试、便携模式）不会被默认启动路径发现，也不应被发现。界面层不再自带任何备用端口，`5078` 只剩服务端 `Pry:Url` 默认值与测试夹具两处。
+- `Pry.App` 的启动顺序因此是"先发现、后内嵌"：`BackendLocator.TryConnectAsync(hostBuilder) ?? StartEmbeddedBackendAsync(hostBuilder)`，而 `hostBuilder` 由 `BackendApplication.CreateHostBuilder()` 建**一次**、两条路径共用同一个配置根。这意味着第二个界面实例会接上第一个实例的后端，而不是再起一个宿主去争同一份 `memory.db`。后果要说清：接上别人的后端时，退出本窗口不会关掉那个进程，退出提示按 `_backend` 是否为空分支。
+- 发现文件所在的目录**读写两侧只有一个解析点**（`RuntimeDescriptorService.ResolveDataDirectory`）：界面不再自认默认值，未配置时两边同样落到 `PryProtocol.DefaultDataDirectory`。跨进程要让界面发现一个不在默认目录里的后端，用环境变量 `Pry__DataDirectory`——`--Pry:DataDirectory` 只抵达被启动的那一个进程，界面拿不到它，这是命令行不共享而不是缺陷。同一次环境设置会同时抵达两个进程，所以在隔离目录里跑"一个后端 + 一个界面"这一对不需要碰 `%LOCALAPPDATA%`（`Pry__ModelsDirectory` 一并给出，否则子进程会去扫真实用户的资源目录）。这三条边界由 `DiscoveryDataDirectoryBoundaryTests` 逐条扫源码钉住：漏传实参、界面另建发现入口、客户端复制目录推断，任一种形状都直接转红。
+- 界面层不再自带任何备用端口，`5078` 只剩服务端 `Pry:Url` 默认值与测试夹具两处。
 - 上一实例遗留（崩溃或未走停机路径）的描述文件被覆盖，并留一条崩溃恢复记录，只写 `pid` 与状态，不复述旧令牌。
 - 已知限制：令牌保护的是 HTTP 面，`1.0` 尚无 WS；未来 WS 握手必须携带同一令牌（§6 第 3 条）。文件权限沿用数据目录现有的当前用户 ACL，未额外收紧。
 

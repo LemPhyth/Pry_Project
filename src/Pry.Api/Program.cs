@@ -13,10 +13,20 @@ namespace Pry.Api
 
     public static class BackendApplication
     {
+        /// <summary>
+        /// 内嵌后端的宿主配置根只有一个建法：界面在进程发现之前先用它解析数据目录，再把同一个 builder
+        /// 交回 <c>BuildAsync(WebApplicationBuilder, ...)</c>。两边各建一次配置根就是两份事实源——
+        /// 读侧少认一项时不会报错，只会静默起第二个宿主去争同一份数据目录。
+        /// </summary>
+        public static WebApplicationBuilder CreateHostBuilder() => WebApplication.CreateBuilder([]);
+
         public static async Task<WebApplication> BuildAsync(string[]? args = null,
+            Action<WebApplicationBuilder>? configure = null, CancellationToken token = default) =>
+            await BuildAsync(WebApplication.CreateBuilder(args ?? []), configure, token);
+
+        public static async Task<WebApplication> BuildAsync(WebApplicationBuilder builder,
             Action<WebApplicationBuilder>? configure = null, CancellationToken token = default)
         {
-            var builder = WebApplication.CreateBuilder(args ?? []);
             configure?.Invoke(builder);
             var listenUrl = builder.Configuration["Pry:Url"] ?? "http://127.0.0.1:5078";
             if (!Uri.TryCreate(listenUrl, UriKind.Absolute, out var listenUri) || !listenUri.IsLoopback)

@@ -41,10 +41,13 @@ public sealed partial class App : Application
     {
         try
         {
+            // 配置根只建一次：发现用的数据目录与内嵌后端写的必须出自同一个 IConfiguration（F-1）。
             // 独立进程模式优先：本机已有别的 Pry 实例在跑后端时接上它，而不是再起一个宿主争同一份数据目录。
-            // 发现只认 runtime.json 里的端口与令牌，界面层没有备用端口；文件缺席、进程已退出或连不上
-            // 都回落到内嵌，那条路径由 Kestrel 自己选端口（:0）再读回来。
-            _backendHttpClient = await RuntimeDiscovery.TryConnectAsync() ?? await StartEmbeddedBackendAsync();
+            // 发现只认那份目录里 runtime.json 的端口与令牌，界面层没有备用端口；文件缺席、进程已退出或连不上
+            // 都回落到内嵌，那条路径由 Kestrel 自己选端口（:0）再读回来，用的还是这同一个 builder。
+            var hostBuilder = BackendApplication.CreateHostBuilder();
+            var discovered = await Pry.App.Services.BackendLocator.TryConnectAsync(hostBuilder);
+            _backendHttpClient = discovered ?? await StartEmbeddedBackendAsync(hostBuilder);
             await CreateMainWindowAsync(desktop);
             CreateTrayIcon(desktop);
             _mainWindow!.HostWindow.Show();
@@ -56,12 +59,12 @@ public sealed partial class App : Application
         }
     }
 
-    private async Task<HttpClient> StartEmbeddedBackendAsync()
+    private async Task<HttpClient> StartEmbeddedBackendAsync(WebApplicationBuilder hostBuilder)
     {
         // 端口交给 Kestrel 自己选（:0）再读回来。先占一个空闲端口再让后端去绑会留一个窗口：
         // 别的进程可以在那个窗口里抢走同一个端口，于是发现文件写的是一个连不上的入口。
-        _backend = await BackendApplication.BuildAsync(
-            configure: builder => builder.Configuration["Pry:Url"] = "http://127.0.0.1:0");
+        hostBuilder.Configuration["Pry:Url"] = "http://127.0.0.1:0";
+        _backend = await BackendApplication.BuildAsync(hostBuilder);
         await _backend.StartAsync();
         // 同进程内嵌时读同一个服务对象，不读 runtime.json：那份文件是给独立进程用的发现入口。
         return _backend.CreateBackendHttpClient();
