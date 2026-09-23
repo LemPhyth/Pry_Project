@@ -338,7 +338,7 @@ internal sealed record RuntimeHarness(
 {
     public static async Task<RuntimeHarness> CreateAsync(ControlledComposer composer,
         ScriptedAdvisor? advisor = null, RuntimeSettings? settings = null, RuntimeLedger? ledger = null,
-        string conversationId = "chat-1")
+        string conversationId = "chat-1", bool isGroupChat = false, double replyFrequency = 1.0)
     {
         var shared = ledger ?? new RuntimeLedger();
         var store = new FakeRuntimeStore(shared);
@@ -349,7 +349,9 @@ internal sealed record RuntimeHarness(
             conversationId, "instance-1", TimeProvider.System, chosen, store, composer,
             chosenAdvisor, ScriptedClassifier.Heuristic(), sink)
         {
-            CharacterNames = ["小予"]
+            CharacterNames = ["小予"],
+            IsGroupChat = isGroupChat,
+            ReplyFrequency = replyFrequency
         });
         return new RuntimeHarness(runtime, shared, store, composer, chosenAdvisor, sink);
     }

@@ -86,8 +86,10 @@ public sealed record RuntimeAttachment(string Reference, RuntimeAttachmentKind K
 }
 
 /// <summary>
-/// Turn 的稳定身份。GenerationId 每次重新规划递增，FencedRevision 记录该轮形成时的失效 epoch，
-/// 三者共同构成 stale-result fencing 的比较依据。
+/// Turn 的稳定身份。TurnId 每成一轮递增，FencedRevision 记录该轮形成时的失效 epoch，
+/// 失效判定（<c>IsStaleLocked</c>）只看 FencedRevision。GenerationId 目前恒为 1：
+/// 一次能力续规划仍属同一物理轮，它预留给"同一逻辑轮的第二次物理轮"（上游 wait 的续接形状，
+/// Pry 尚无对应机制，见 docs/phase2-runtime-contract.md §3.13）。
 /// </summary>
 public sealed record TurnIdentity(long TurnId, long GenerationId, long FencedRevision)
 {

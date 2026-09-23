@@ -9,6 +9,18 @@ public sealed record ConversationRuntimeOptions(string ConversationId, string Ch
 {
     /// <summary>用于"是否像在叫角色"的节奏判断；不是社交决策。</summary>
     public IReadOnlyList<string> CharacterNames { get; init; } = [];
+
+    /// <summary>
+    /// 群聊还是私聊。它改变的是节奏规则而不是内容：群聊里角色是参与者，需要存在感与空转退避；
+    /// 私聊里每条消息都指向它，沉默才是异常。
+    /// </summary>
+    public bool IsGroupChat { get; init; }
+
+    /// <summary>
+    /// 该角色在这个会话里的回复频率（0~1）。0 表示宿主关闭了自动回复。
+    /// 频率折算出触发一轮所需的消息条数，所以它同时是省模型调用和防刷屏的那一道闸。
+    /// </summary>
+    public double ReplyFrequency { get; init; } = 1.0;
 }
 
 /// <summary>一次事件处理后的可观察结果。</summary>
@@ -26,6 +38,8 @@ public sealed record RuntimeReceipt(int RevisionBefore, int RevisionAfter, Runti
 /// </summary>
 public sealed class ConversationRuntime : IAsyncDisposable
 {
+    /// <summary>存在感台账的条数上限。窗口按时间裁剪，这条只挡住极端刷屏下的内存增长。</summary>
+    private const int PresenceLedgerCapacity = 256;
     private readonly ConversationRuntimeOptions _options;
     private readonly TimeProvider _clock;
     private readonly RuntimeSettings _settings;
@@ -37,6 +51,8 @@ public sealed class ConversationRuntime : IAsyncDisposable
     private readonly ReplyGate _gate;
     private readonly InterruptionController _interruptions;
     private readonly DeliveryScheduler _delivery;
+    private readonly MessageIntervalStats _intervals;
+    private readonly List<(DateTimeOffset At, bool Self)> _presence = [];
     private readonly RuntimeTrace _trace;
     private readonly List<TurnRecord> _recentTurns = [];
     private readonly CancellationTokenSource _lifetime = new();
@@ -78,6 +94,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
         _trace = new RuntimeTrace(_settings.TraceCapacity);
         _delivery = new DeliveryScheduler(options.ConversationId, _clock, _settings, _store, _sink,
             new ReplyPacing(new Random()), IsCurrent, ReportFailure);
+        _intervals = new MessageIntervalStats(_clock, _settings.Intervals);
     }
 
     public string ConversationId => _options.ConversationId;
@@ -357,6 +374,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
         // 无论是否作废了旧轮次，这条输入都必须进入缓冲：用户说过的话不会凭空消失。
         var buffered = _buffer.Add(input, at, forceTurn);
         _conversationProgress++;
+        NoteExternalArrivalLocked(at);
         if (decision.Disposition is InterruptionDisposition.MergeIntoCurrentBuffer or InterruptionDisposition.ContinueDelivery)
         {
             buffered.AbsorbedByReply = true;
@@ -462,6 +480,12 @@ public sealed class ConversationRuntime : IAsyncDisposable
         RecordTurnLocked(turn.Record.Close(Now(), outcome, reason, deliveredCount));
         if (ReferenceEquals(_active, turn)) _active = null;
         if (outcome == RuntimeTurnOutcome.Completed) _scheduler.NoteCleanDelivery();
+        for (var bubble = 0; bubble < deliveredCount; bubble++) NotePresenceLocked(Now(), self: true);
+        // 一轮走完却一个字都没投递 = 看了半天没接话。连续这样空转要推迟下次检查，
+        // 否则安静的群会变成角色反复自问的循环，每次自问都烧掉一次模型调用。
+        _scheduler.NoteCycleEnded(Now(),
+            deliveredCount == 0 && outcome is RuntimeTurnOutcome.Completed or RuntimeTurnOutcome.DoNothing,
+            _options.IsGroupChat);
         TraceLocked(RuntimeTraceKind.Turn, $"closed:{outcome}", null, turn.Identity, reason);
         effects.Add(async () =>
         {
@@ -476,6 +500,59 @@ public sealed class ConversationRuntime : IAsyncDisposable
         _recentTurns.Add(record);
         while (_recentTurns.Count > _settings.RecentTurnHistory) _recentTurns.RemoveAt(0);
     }
+
+    /// <summary>
+    /// 记录一次来自角色之外的到达：同时喂给到达节奏与存在感窗口。
+    /// 只在真正的新消息处调用——恢复、退回缓冲、迟到补投都不算"用户又说了一句"。
+    /// </summary>
+    private void NoteExternalArrivalLocked(DateTimeOffset at)
+    {
+        _intervals.Record(at, fromCharacter: false);
+        NotePresenceLocked(at, self: false);
+    }
+
+    private void NotePresenceLocked(DateTimeOffset at, bool self)
+    {
+        _presence.Add((at, self));
+        var cutoff = at - _settings.Necessity.PresenceWindow;
+        while (_presence.Count > PresenceLedgerCapacity || (_presence.Count > 0 && _presence[0].At < cutoff))
+            _presence.RemoveAt(0);
+    }
+
+    /// <summary>存在感窗口内角色自己说了多少条、总共多少条。角色说得越多，下一轮越该克制。</summary>
+    private (int Self, int Total) PresenceLocked(DateTimeOffset at)
+    {
+        var cutoff = at - _settings.Necessity.PresenceWindow;
+        int self = 0, total = 0;
+        for (var index = _presence.Count - 1; index >= 0 && _presence[index].At >= cutoff; index--)
+        {
+            total++;
+            if (_presence[index].Self) self++;
+        }
+
+        return (self, total);
+    }
+
+    private (bool HasAt, bool HasMention) AddressLocked()
+    {
+        bool hasAt = false, hasMention = false;
+        foreach (var item in _buffer.Items)
+        {
+            var text = item.Input.Text;
+            if (string.IsNullOrEmpty(text)) continue;
+            if (!hasAt) hasAt = text.Contains('@');
+            if (!hasMention)
+                hasMention = _options.CharacterNames.Any(name => !string.IsNullOrWhiteSpace(name) &&
+                    text.Contains(name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return (hasAt, hasMention);
+    }
+
+    private IReadOnlyList<string> ExternalTextsLocked() =>
+        [.. _buffer.Items.Select(item => string.IsNullOrWhiteSpace(item.Input.Text)
+            ? InputProbe.Summarize([item.Input])
+            : item.Input.Text)];
 
     private TurnIdentity NewTurnIdentityLocked() => new(_nextTurnId++, 1, _epoch);
 
@@ -554,9 +631,16 @@ public sealed class ConversationRuntime : IAsyncDisposable
         }
 
         var assessment = _buffer.Assess(at, _delivery.PendingCount > 0);
+        var (hasAt, hasMention) = AddressLocked();
+        var presence = PresenceLocked(at);
+        var trigger = new TriggerFacts(ExternalTextsLocked(), _buffer.Count, hasAt, hasMention, _options.IsGroupChat,
+            _options.ReplyFrequency, _intervals.AverageInterval(at), _intervals.IdleFor(at) ?? TimeSpan.Zero,
+            _intervals.IdleReachedAverage(at), presence.Self, presence.Total, _options.CharacterNames);
         var context = new SchedulingContext(at, _phase, true, assessment, _delivery.PendingCount > 0, false, 0,
-            _settings.MaxPendingTurns, _buffer.HasForcedInput);
+            _settings.MaxPendingTurns, _buffer.HasForcedInput, trigger);
         var outcome = _scheduler.Decide(context);
+        if (outcome.TriggerDetail is { Length: > 0 } detail)
+            TraceLocked(RuntimeTraceKind.Gate, $"trigger:{outcome.Decision.Disposition}", null, null, detail);
         switch (outcome.Decision.Disposition)
         {
             case GateDisposition.Run:
@@ -565,6 +649,14 @@ public sealed class ConversationRuntime : IAsyncDisposable
             case GateDisposition.Backoff:
                 SetPhaseLocked(RuntimePhase.WaitingForTurn, "state_machine");
                 ArmWakeupLocked(at, outcome.Decision.RetryIn ?? assessment.Remaining);
+                break;
+            case GateDisposition.Cancel:
+                // 静默消费：输入由平台层落库，Runtime 不替关闭了自动回复的角色成轮，也不把它攒成无界缓冲。
+                var discarded = _buffer.Drain().Count;
+                TraceLocked(RuntimeTraceKind.Buffer, "consumed_silently", null, null,
+                    $"{outcome.Decision.Reason} discarded={discarded}");
+                SetPhaseLocked(_delivery.PendingCount == 0 ? RuntimePhase.Idle : RuntimePhase.Delivering,
+                    outcome.Decision.Reason);
                 break;
             default:
                 SetPhaseLocked(RuntimePhase.CollectingInput, "state_machine");

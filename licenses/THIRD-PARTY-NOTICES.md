@@ -68,4 +68,44 @@ Release packaging must include that directory.
 
 | Pry file | Upstream source (`repo@commit:path`) | Type | Verified |
 |---|---|---|---|
-| _(none yet — first port adds a row here)_ | | | |
+| `src/Pry.Core/Runtime/MessageIntervalStats.cs` | `Mai-with-u/MaiBot@fb4a8bd917d6fe373df9e3c22289d229e7f1b344:src/maisaka/runtime.py` (`_record_external_message_interval`, `_prune_recent_external_message_intervals`, `_get_recent_average_external_message_interval`) | ported | 2026-09-23 |
+| `src/Pry.Core/Runtime/ReplyNecessity.cs` | `Mai-with-u/MaiBot@fb4a8bd917d6fe373df9e3c22289d229e7f1b344:src/maisaka/reply_necessity.py` (`score_reply_necessity` and helpers) | ported | 2026-09-23 |
+| `src/Pry.Core/Runtime/TurnGates.cs` | `Mai-with-u/MaiBot@fb4a8bd917d6fe373df9e3c22289d229e7f1b344:src/maisaka/turn_gates.py`, `src/maisaka/mode_policy.py`, `src/maisaka/runtime.py` (`_get_message_trigger_threshold`) | ported | 2026-09-23 |
+| `src/Pry.Core/Runtime/IdleBackoffController.cs` | `Mai-with-u/MaiBot@fb4a8bd917d6fe373df9e3c22289d229e7f1b344:src/maisaka/idle_backoff.py`, `src/maisaka/mode_policy.py` | ported | 2026-09-23 |
+| `src/Pry.Core/Runtime/TurnScheduler.cs` | `Mai-with-u/MaiBot@fb4a8bd917d6fe373df9e3c22289d229e7f1b344:src/maisaka/turn_scheduler.py` (`schedule_message_turn` gate ordering only; the surrounding state fences are Pry-original) | mechanism | 2026-09-23 |
+
+The four `ported` files carry a provenance header naming the upstream repo,
+commit and path. `TurnScheduler.cs` borrowed only the order of the gate chain,
+so its source is recorded in this table and in its own type documentation
+rather than in a header.
+
+**Parameter provenance — re-checked 2026-09-23 against the upstream files at the
+locked commit.** The scoring layers, curve shapes and most numeric magnitudes in
+`ReplyNecessity.cs` and `MessageIntervalStats.cs` were taken from upstream's
+source-level constants. Pry changed only three of them — the trigger score
+(80 → 70), the private-chat / focus relevance (40 → 45) and the interval sample
+window (1800 s → 900 s) — and left the rest equal to upstream. §4.3 of
+`docs/upstream-license-compatibility.md` forbids importing group-chat tuned
+thresholds, so these values are recorded here as **upstream-derived and
+uncalibrated**, not as Pry parameters. Consequently none of them is a release
+default: the whole trigger chain ships inert (`ReplyTriggerMode.MessageCount`,
+frequency 1.0, private chat) — which is also upstream's own shipping posture
+(`official_configs.py:537-614`: `reply_trigger_mode = "frequency"`, talk
+frequencies default to 1).
+
+Two further provenance facts from the same re-check. `IdleBackoffController.cs`
+takes its four magnitudes from upstream's *shipped* defaults
+(`src/config/official_configs.py:645-709`): Pry changed the base (15 s → 10 s),
+the cap (300 s → 180 s) and the start count (2 → 3), while
+`BypassPendingCount = 6` equals upstream — so that file mixes tuned and
+inherited values and all four remain uncalibrated. And the detection vocabulary
+in `ReplyNecessityOptions` (question / request / opinion term lists and the
+short-reaction set) is upstream's group-chat corpus, copied as part of the
+`ported` type; the upstream character name and the competitor-assistant list
+were deliberately not carried over (`CharacterNames` comes from the input
+snapshot, `OtherAssistantNames` defaults to empty). The vocabulary is lawful
+here but is still borrowed, unaudited wording and is registered as
+calibration-scope debt.
+
+The per-value table, the deviation register and the open author decision are in
+`docs/phase2-runtime-contract.md` §5 and §6.

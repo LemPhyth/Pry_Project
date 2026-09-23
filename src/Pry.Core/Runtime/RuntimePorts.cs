@@ -144,6 +144,22 @@ public sealed record RuntimeSettings
     /// <summary>一次干净投递之后退避衰减比例。</summary>
     public double BackoffDecay { get; init; } = 0.5;
 
+    /// <summary>
+    /// 进入一轮之前由谁裁决：只看攒够几条，还是看回复必要性评分。
+    /// 评分模式的阈值必须经 Eval 标定后才可作为发行默认值，因此默认走计数模式——
+    /// 它在频率为 1 时与"有输入即成轮"的旧行为完全等价。
+    /// </summary>
+    public ReplyTriggerMode TriggerMode { get; init; } = ReplyTriggerMode.MessageCount;
+
+    /// <summary>回复必要性评分参数。</summary>
+    public ReplyNecessityOptions Necessity { get; init; } = new();
+
+    /// <summary>连续空转后的检查退避参数（只作用于群聊）。</summary>
+    public IdleBackoffOptions IdleBackoff { get; init; } = new();
+
+    /// <summary>外部消息到达节奏的统计参数。</summary>
+    public MessageIntervalOptions Intervals { get; init; } = new();
+
     public int MaxPendingTurns { get; init; } = 1;
 
     public int RecentTurnHistory { get; init; } = 12;
