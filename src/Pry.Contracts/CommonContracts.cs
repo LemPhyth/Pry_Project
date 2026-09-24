@@ -37,6 +37,13 @@ public sealed record TurnTakingSettings
 {
     public int DebounceMs { get; init; } = 1200;
     public int MaxPendingMs { get; init; } = 5000;
+
+    /// <summary>
+    /// 这个角色回复得多勤（0~1）。运行时据此折算"攒够几条才开一轮"，所以它同时是防刷屏与省模型调用的那道闸。
+    /// 默认 1.0 保持与"有输入即成轮"完全一致；0 是宿主主动关闭自动回复——消息照常落库，但永不成轮。
+    /// </summary>
+    public double ReplyFrequency { get; init; } = 1.0;
+
     public bool SplitReplies { get; init; } = true;
     public bool AutoClassifyInterrupts { get; init; } = true;
     public TypingStyle TypingStyle { get; init; } = new();

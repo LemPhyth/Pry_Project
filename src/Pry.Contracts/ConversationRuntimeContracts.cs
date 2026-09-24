@@ -28,6 +28,12 @@ public sealed record ConversationRuntimeStateResponse
     public bool? Evictable { get; init; }
     public int? InvalidatedTurns { get; init; }
     public double? SchedulerBackoffMs { get; init; }
+    /// <summary>本实例生效的回复频率（宿主注入）。null 表示运行时不在内存里。</summary>
+    public double? ReplyFrequency { get; init; }
+    /// <summary>触发模式：`MessageCount` 或 `ReplyNecessity`。发行默认恒为前者。</summary>
+    public string? TriggerMode { get; init; }
+    /// <summary>Pry 1.0 只有私聊，此值恒为 false；它让"群聊分支今天不可达"成为可观察事实而不是 grep 结论。</summary>
+    public bool? IsGroupChat { get; init; }
     public IReadOnlyList<RuntimeTurnSummary> RecentTurns { get; init; } = [];
     public RuntimePersistenceSummary? Persisted { get; init; }
 }

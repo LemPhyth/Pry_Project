@@ -547,6 +547,10 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         if (value.DebounceMs is < 0 or > 30_000 || value.MaxPendingMs is < 200 or > 60_000 ||
             value.ListeningSignalDelayMs is < 0 or > 60_000)
             throw new ApiValidationException("turnTaking", "回合等待参数超出范围");
+        // 频率 0 是"消息照常落库、永不成轮"，界面上不会有任何解释（契约 §6 DEV-08）。越界值不该被读成这个意思，
+        // 所以在边界拒绝掉，而不是让一个 NaN 或 1.5 悄悄变成一次静默。
+        if (!double.IsFinite(value.ReplyFrequency) || value.ReplyFrequency is < 0 or > 1)
+            throw new ApiValidationException("turnTaking.replyFrequency", "回复频率必须是 0 到 1 之间的有限数值");
         if (value.MinReplyMessages is < 1 or > 20 || value.MaxReplyMessages is < 1 or > 20 ||
             value.MaxReplyMessages < value.MinReplyMessages)
             throw new ApiValidationException("turnTaking.replyMessages", "回复消息数量范围无效");

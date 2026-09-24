@@ -6,6 +6,12 @@ namespace Pry.App.Services;
 
 public sealed class ConversationSettingsEditor
 {
+    /// <summary>
+    /// 面板打开时的那份生效值。BuildDraft 必须从它出发改，而不是从零构造：面板不显示的字段
+    /// （今天是 replyFrequency）一旦走默认构造，保存这个面板就会把用户在别处配好的值悄悄抹掉，
+    /// 而这个结果会整份写进 TurnTakingOverride 并直接决定运行时开不开口。
+    /// </summary>
+    private readonly TurnTakingSettings _source;
     private readonly TextBox _style;
     private readonly NumericUpDown _minimumReplies;
     private readonly NumericUpDown _maximumReplies;
@@ -23,6 +29,7 @@ public sealed class ConversationSettingsEditor
 
     public ConversationSettingsEditor(TurnTakingSettings value, SettingsUiFactory ui)
     {
+        _source = value;
         Panel = new StackPanel { Margin = new Thickness(28), Spacing = 14 };
         ui.AddHeader(Panel, "回复风格与轮次");
         _style = ui.CreateTextBox(value.StyleInstruction, 110);
@@ -58,7 +65,7 @@ public sealed class ConversationSettingsEditor
 
     public StackPanel Panel { get; }
 
-    public TurnTakingSettings BuildDraft() => new()
+    public TurnTakingSettings BuildDraft() => _source with
     {
         DebounceMs = (int)(_debounce.Value ?? 1200),
         MaxPendingMs = (int)(_maximumPending.Value ?? 5000),

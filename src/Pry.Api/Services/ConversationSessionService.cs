@@ -277,6 +277,9 @@ public sealed class ConversationSessionService(MemoryDatabase database, BackendR
         var store = new DatabaseRuntimeStore(database);
         ConversationRuntime? built = null;
         var sink = new ConversationRuntimeEventSink(events, logger, () => built);
+        // preferences.json 是用户可编辑文件，PATCH 上的校验管不到它；越界频率在这里收回合法区间，
+        // NaN 按"未配置"处理。理由见 §3.1：0 会让消息落库却永不成轮，不该由一个坏值意外达成。
+        var configuredFrequency = runtime.TurnSettings.ReplyFrequency;
         built = await ConversationRuntime.CreateAsync(new ConversationRuntimeOptions(conversationId,
             character.Id, TimeProvider.System, RuntimeSettings.FromTurnTaking(runtime.TurnSettings),
             store, composer,
@@ -284,7 +287,8 @@ public sealed class ConversationSessionService(MemoryDatabase database, BackendR
             new StickerInterruptClassifier(new InterruptClassifier(runtime.Stickers)), sink)
         {
             CharacterNames = new[] { character.Name, character.CardName }
-                .Where(x => !string.IsNullOrWhiteSpace(x)).ToArray()
+                .Where(x => !string.IsNullOrWhiteSpace(x)).ToArray(),
+            ReplyFrequency = double.IsFinite(configuredFrequency) ? Math.Clamp(configuredFrequency, 0d, 1d) : 1.0
         }, token);
         events.Publish("session.ready", new { conversationId, characterId = character.Id });
         return new ConversationSession(built, events, store);
@@ -456,6 +460,9 @@ public sealed class ConversationSessionService(MemoryDatabase database, BackendR
             Evictable = runtime.CanEvict(at),
             InvalidatedTurns = runtime.InvalidatedTurns,
             SchedulerBackoffMs = runtime.SchedulerBackoffMs,
+            ReplyFrequency = runtime.ReplyFrequency,
+            TriggerMode = runtime.TriggerMode.ToString(),
+            IsGroupChat = runtime.IsGroupChat,
             RecentTurns = [.. observed.RecentTurns.Select(x => new RuntimeTurnSummary(x.Identity.TurnId,
                 x.Identity.GenerationId, x.Identity.FencedRevision, x.OpenedAt, x.CompletedAt, x.Outcome.ToString(),
                 x.OutcomeReason, x.InputCount, x.PlannedCount, x.DeliveredCount))]

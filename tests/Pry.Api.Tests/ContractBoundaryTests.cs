@@ -123,7 +123,7 @@ public class ContractBoundaryTests
             Wire(new ModelTuningPreferences()));
         Assert.Equal("""{"send":"Enter","sendImmediately":"Ctrl+Enter","newLine":"Shift+Enter","cancelReply":"Escape","newConversation":"Ctrl+N","openStickers":"Ctrl+E","openCharacterEditor":"Ctrl+Shift+C"}""",
             Wire(new ShortcutSettings()));
-        Assert.Equal("""{"debounceMs":1200,"maxPendingMs":5000,"splitReplies":true,"autoClassifyInterrupts":true,"typingStyle":{"speed":1,"burstiness":0.75,"minDelayMs":450,"maxDelayMs":3200},"minReplyMessages":1,"maxReplyMessages":4,"maxMessageCharacters":90,"enableListeningSignals":true,"listeningSignalDelayMs":4500,"styleInstruction":"像即时通讯聊天一样自然、简短，不要一次倾倒过多信息。"}""",
+        Assert.Equal("""{"debounceMs":1200,"maxPendingMs":5000,"replyFrequency":1,"splitReplies":true,"autoClassifyInterrupts":true,"typingStyle":{"speed":1,"burstiness":0.75,"minDelayMs":450,"maxDelayMs":3200},"minReplyMessages":1,"maxReplyMessages":4,"maxMessageCharacters":90,"enableListeningSignals":true,"listeningSignalDelayMs":4500,"styleInstruction":"像即时通讯聊天一样自然、简短，不要一次倾倒过多信息。"}""",
             Wire(new TurnTakingSettings()));
     }
 

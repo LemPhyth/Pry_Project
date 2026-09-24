@@ -35,6 +35,22 @@ public sealed class ConversationSettingsEditorTests
     }
 
     [Fact]
+    public void Saving_the_panel_keeps_a_frequency_the_panel_never_shows()
+    {
+        // 回复频率不在这块面板上出现，但它决定运行时开不开口：保存其他字段绝不能把它抹回 1.0。
+        var source = new TurnTakingSettings { ReplyFrequency = 0.25, DebounceMs = 800 };
+        var editor = new ConversationSettingsEditor(source, new SettingsUiFactory());
+        var style = Assert.Single(editor.Panel.Children.OfType<TextBox>());
+        style.Text = "简洁回复";
+
+        var result = editor.BuildDraft();
+
+        Assert.Equal(0.25, result.ReplyFrequency);
+        Assert.Equal("简洁回复", result.StyleInstruction);
+        Assert.Equal(800, result.DebounceMs);
+    }
+
+    [Fact]
     public void BuildDraft_reads_current_values_and_trims_style()
     {
         var editor = new ConversationSettingsEditor(new TurnTakingSettings(), new SettingsUiFactory());

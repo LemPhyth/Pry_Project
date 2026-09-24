@@ -109,6 +109,14 @@ public sealed class ConversationRuntime : IAsyncDisposable
 
     /// <summary>当前连续插话退避时长，Developer Mode 用来解释"为什么这次没有立刻回"。</summary>
     public double SchedulerBackoffMs { get { lock (_sync) return _scheduler.Backoff.TotalMilliseconds; } }
+
+    /// <summary>
+    /// 本实例创建时生效的触发配置，由宿主注入、进程内不再变。诊断端点用它直接回答
+    /// "我改的频率真的走到运行时了吗"，不必靠翻轨迹或数消息反推。
+    /// </summary>
+    public double ReplyFrequency => _options.ReplyFrequency;
+    public bool IsGroupChat => _options.IsGroupChat;
+    public ReplyTriggerMode TriggerMode => _settings.TriggerMode;
     public IReadOnlyList<TurnRecord> RecentTurns { get { lock (_sync) return _recentTurns.ToArray(); } }
     public IReadOnlyList<RuntimeTraceEntry> TraceEntries => _trace.Entries();
     public IReadOnlyList<RuntimeTraceEntry> TraceSince(int sequence) => _trace.Since(sequence);

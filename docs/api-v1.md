@@ -170,8 +170,9 @@ schema v7 为 conversations 增加 last_read_message_id（非空、默认0，无
 
 Developer Mode 与 Eval 用来回答“这一轮现在到底处在什么状态”。两个入口都**只读**：读取不会创建、唤醒或改变运行时，也不会推进任何水位。
 
-- `GET /api/v1/conversations/{id}/runtime-state` → `200`：`conversationId`、`characterId`、`started`、`phase`、`revision`、`epoch`、`conversationProgress`、`userTyping`、`pendingInputCount`、`pendingOutputCount`、`pendingOutputTurns[]`、`activeTurn`、`deliveringTurn`、`lastUserActivity`、`lastCharacterActivity`、`idleForMs`、`evictable`、`invalidatedTurns`、`schedulerBackoffMs`、`recentTurns[]`、`persisted{epoch,lastSpeakerWasCharacter,lastActivityAt,consecutiveCharacterTurns}`。
+- `GET /api/v1/conversations/{id}/runtime-state` → `200`：`conversationId`、`characterId`、`started`、`phase`、`revision`、`epoch`、`conversationProgress`、`userTyping`、`pendingInputCount`、`pendingOutputCount`、`pendingOutputTurns[]`、`activeTurn`、`deliveringTurn`、`lastUserActivity`、`lastCharacterActivity`、`idleForMs`、`evictable`、`invalidatedTurns`、`schedulerBackoffMs`、`replyFrequency`、`triggerMode`、`isGroupChat`、`recentTurns[]`、`persisted{epoch,lastSpeakerWasCharacter,lastActivityAt,consecutiveCharacterTurns}`。
   `started=false` 表示运行时不在内存（从未启动或已被空闲驱逐），此时除 `epoch`/`persisted` 外全部为 `null`；连续性事实仍可读，这正是运行时可被驱逐而对话不丢的原因。`recentTurns[]` 每项为 `{turnId,generationId,fenceEpoch,openedAt,completedAt,outcome,outcomeReason,inputCount,plannedCount,deliveredCount}`。
+  `replyFrequency`/`triggerMode`/`isGroupChat` 是**该实例创建时**生效的触发配置（`replyFrequency` 来自 `PATCH /api/v1/preferences` 的 `turnTaking.replyFrequency`，`triggerMode` 取值为 `MessageCount` 或 `ReplyNecessity`，发行默认恒为前者且 `isGroupChat` 恒为 `false`）。它们存在只为让"配置到底走到运行时没有"可以直接读到，不必靠翻轨迹或数消息反推；改偏好会重建内存中的运行时，因此改完之后的第一个会话轮即用新值。
 - `GET /api/v1/conversations/{id}/runtime-trace?limit=80` → `200`：`{conversationId,revision,epoch,entries[]}`，`entries[]` 每项为 `{sequence,kind,action,event,turnId,generationId,fenceEpoch,reason,revisionBefore,revisionAfter,at}`。`limit` 缺省或非正数按 80，上限 300（超出按 300 截断，不报错）。
 - 错误语义：会话不存在 → `404 resource_not_found`（`conversation '<id>' 不存在`）；会话存在但运行时未启动时读轨迹 → `404 resource_not_found`（`runtime_not_started '<id>' 不存在`），不回空数组冒充“没有发生任何事件”。
 - **隐私边界**：诊断负载与轨迹都不含消息正文、提示词或用户输入原文；`TurnRecord.CombinedInput` 在投影时被丢弃，只留 `inputCount`。这些诊断面与所有非豁免端点一样受本机会话令牌门保护，其边界仍是"本机同用户进程"，公开网络部署前必须归其他任务补上真正的授权（同 `docs/phase1-platform-baseline.md` §6.3）。
@@ -459,6 +460,8 @@ RT-002：输入更新持续 ConversationRuntime。后端可等待更多输入或
 - `GET /api/v1/appearance/user-avatar`
 
 背景和头像 URL 仅在资源存在时返回。客户端不能通过这些接口设置任意磁盘路径。
+
+回合节奏 `turnTaking` 含一个影响"要不要开口"的字段 `replyFrequency`（0 到 1 的有限数）。它是运行时触发门的输入：值越低，一条回复之前需要攒够的消息越多；0 表示关闭自动回复——用户消息照常落库、一条不丢，但永不成轮，界面上不会出现"正在输入"。超出范围、NaN、Infinity 一律 `400 validation_error`（字段 `turnTaking.replyFrequency`），因为把一个坏值读成"这条会话我不要回复了"是不可逆的用户可见后果。未显式配置时沿用运行时内部默认，发行链条仍按 `docs/phase2-runtime-contract.md` §5.1 的惰性默认走，本文件不把它当作推荐值表。偏好写入成功后后端会排空并重建内存中的会话运行时，所以新值对之后的第一个轮次即刻生效（见 `runtime-state` 的 `replyFrequency`）。另需注意 `turnTaking` 段是**整段替换、不是逐字段合并**：请求里出现该段时，段内没写的字段按类型默认取回（`replyFrequency` 会被带回 `1.0`），因此只想改一个字段也要把该段现有值一并送全；完全省略该段才会原样保留。
 
 主题偏好包含 `mainWindowLayoutMode`，稳定值为：
 
