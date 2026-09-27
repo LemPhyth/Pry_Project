@@ -14,30 +14,51 @@ public interface ICharacterStateRepository
         CancellationToken cancellationToken = default);
 
     Task<bool> SaveAsync(CharacterStateRecord record, CancellationToken cancellationToken = default);
+
+    /// <summary>Clears every user's state for a character that is being deleted, so learned state
+    /// cannot outlive the card it belongs to. Returns the number of records cleared.</summary>
+    Task<int> PurgeAsync(string characterId, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Read side must be deterministic: <c>updated_at DESC</c> then the pattern id ascending, ordinal.
+/// Returned objects are detached copies — mutating one must never change what the next read gives back.
+/// </summary>
 public interface IBehaviorPatternRepository
 {
     Task<IReadOnlyList<BehaviorPattern>> ListForCharacterAsync(string characterInstanceId,
         CancellationToken cancellationToken = default);
     Task<BehaviorPattern?> FindAsync(string behaviorPatternId, CancellationToken cancellationToken = default);
     Task SaveAsync(BehaviorPattern pattern, CancellationToken cancellationToken = default);
+    Task<int> PurgeAsync(string characterInstanceId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Raw per-turn record. Patterns are derived from these; the log itself is the audit trail.</summary>
+/// <summary>
+/// Raw per-turn record. Patterns are derived from these; the log itself is the audit trail.
+/// Append-only and bounded per character instance, oldest evicted first, so one busy character
+/// cannot erase another's trail. Reads come back most recently appended first, which is what an
+/// <c>ORDER BY observed_at DESC, id DESC</c> yields.
+/// </summary>
 public interface IBehaviorExperienceRepository
 {
     Task AppendAsync(BehaviorExperience experience, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<BehaviorExperience>> ListForCharacterAsync(string characterInstanceId, int limit,
         CancellationToken cancellationToken = default);
+    Task<int> PurgeAsync(string characterInstanceId, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Same deterministic read order as <see cref="IBehaviorPatternRepository"/>. Suppression and the
+/// two accepted-evidence replay guards are part of the stored state, not runtime extras: a store
+/// that cannot return them unchanged has not implemented this interface.
+/// </summary>
 public interface IExpressionPatternRepository
 {
     Task<IReadOnlyList<ExpressionPattern>> ListForCharacterAsync(string characterInstanceId,
         CancellationToken cancellationToken = default);
     Task SaveAsync(ExpressionPattern pattern, CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(string expressionPatternId, CancellationToken cancellationToken = default);
+    Task<int> PurgeAsync(string characterInstanceId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -85,31 +106,62 @@ public sealed class InMemoryCharacterStateRepository : ICharacterStateRepository
             return Task.FromResult(true);
         }
     }
+
+    public Task<int> PurgeAsync(string characterId, CancellationToken cancellationToken = default)
+    {
+        lock (_records)
+        {
+            // Match on the record's own field, not on a split of the composite key: a character id
+            // is host-supplied text and may contain the separator.
+            var keys = _records.Where(x => x.Value.CharacterId == characterId).Select(x => x.Key).ToArray();
+            foreach (var key in keys) _records.Remove(key);
+            return Task.FromResult(keys.Length);
+        }
+    }
 }
 
 public sealed class InMemoryBehaviorPatternRepository : IBehaviorPatternRepository
 {
     private readonly Dictionary<string, BehaviorPattern> _patterns = [];
 
+    /// <summary>A SQL store returns a detached row per read. Handing out the live object here would
+    /// let a caller change persisted state without saving, and the two stores would then disagree
+    /// on the same assertions — the shape that makes an in-process fake report a false green.</summary>
+    private static BehaviorPattern Detach(BehaviorPattern value) =>
+        value with { EvaluatedTurnKeys = [.. value.EvaluatedTurnKeys] };
+
     public Task<IReadOnlyList<BehaviorPattern>> ListForCharacterAsync(string characterInstanceId,
         CancellationToken cancellationToken = default)
     {
         lock (_patterns)
             return Task.FromResult<IReadOnlyList<BehaviorPattern>>(
-                _patterns.Values.Where(x => x.CharacterInstanceId == characterInstanceId)
-                    .OrderByDescending(x => x.UpdatedAt).ToArray());
+                [.. _patterns.Values.Where(x => x.CharacterInstanceId == characterInstanceId)
+                    .OrderByDescending(x => x.UpdatedAt)
+                    .ThenBy(x => x.BehaviorPatternId, StringComparer.Ordinal)
+                    .Select(Detach)]);
     }
 
     public Task<BehaviorPattern?> FindAsync(string behaviorPatternId, CancellationToken cancellationToken = default)
     {
         lock (_patterns)
-            return Task.FromResult(_patterns.TryGetValue(behaviorPatternId, out var found) ? found : null);
+            return Task.FromResult(_patterns.TryGetValue(behaviorPatternId, out var found) ? Detach(found) : null);
     }
 
     public Task SaveAsync(BehaviorPattern pattern, CancellationToken cancellationToken = default)
     {
-        lock (_patterns) _patterns[pattern.BehaviorPatternId] = pattern;
+        lock (_patterns) _patterns[pattern.BehaviorPatternId] = Detach(pattern);
         return Task.CompletedTask;
+    }
+
+    public Task<int> PurgeAsync(string characterInstanceId, CancellationToken cancellationToken = default)
+    {
+        lock (_patterns)
+        {
+            var ids = _patterns.Values.Where(x => x.CharacterInstanceId == characterInstanceId)
+                .Select(x => x.BehaviorPatternId).ToArray();
+            foreach (var id in ids) _patterns.Remove(id);
+            return Task.FromResult(ids.Length);
+        }
     }
 }
 
@@ -117,18 +169,27 @@ public sealed class InMemoryExpressionPatternRepository : IExpressionPatternRepo
 {
     private readonly Dictionary<string, ExpressionPattern> _patterns = [];
 
+    private static ExpressionPattern Detach(ExpressionPattern value) =>
+        value with
+        {
+            AcceptedEvidenceIds = [.. value.AcceptedEvidenceIds],
+            AcceptedTurnKeys = [.. value.AcceptedTurnKeys]
+        };
+
     public Task<IReadOnlyList<ExpressionPattern>> ListForCharacterAsync(string characterInstanceId,
         CancellationToken cancellationToken = default)
     {
         lock (_patterns)
             return Task.FromResult<IReadOnlyList<ExpressionPattern>>(
-                _patterns.Values.Where(x => x.CharacterInstanceId == characterInstanceId)
-                    .OrderByDescending(x => x.UpdatedAt).ToArray());
+                [.. _patterns.Values.Where(x => x.CharacterInstanceId == characterInstanceId)
+                    .OrderByDescending(x => x.UpdatedAt)
+                    .ThenBy(x => x.Id, StringComparer.Ordinal)
+                    .Select(Detach)]);
     }
 
     public Task SaveAsync(ExpressionPattern pattern, CancellationToken cancellationToken = default)
     {
-        lock (_patterns) _patterns[pattern.Id] = pattern;
+        lock (_patterns) _patterns[pattern.Id] = Detach(pattern);
         return Task.CompletedTask;
     }
 
@@ -136,12 +197,24 @@ public sealed class InMemoryExpressionPatternRepository : IExpressionPatternRepo
     {
         lock (_patterns) return Task.FromResult(_patterns.Remove(expressionPatternId));
     }
+
+    public Task<int> PurgeAsync(string characterInstanceId, CancellationToken cancellationToken = default)
+    {
+        lock (_patterns)
+        {
+            var ids = _patterns.Values.Where(x => x.CharacterInstanceId == characterInstanceId)
+                .Select(x => x.Id).ToArray();
+            foreach (var id in ids) _patterns.Remove(id);
+            return Task.FromResult(ids.Length);
+        }
+    }
 }
 
-/// <summary>Append-only experience log, bounded so a long-lived instance cannot grow without limit.</summary>
+/// <summary>Append-only experience log, bounded per character instance so a long-lived process
+/// cannot grow without limit and one active character cannot evict another's audit trail.</summary>
 public sealed class InMemoryBehaviorExperienceRepository : IBehaviorExperienceRepository
 {
-    private const int Retained = 500;
+    public const int RetainedPerInstance = 500;
     private readonly List<BehaviorExperience> _experiences = [];
 
     public Task AppendAsync(BehaviorExperience experience, CancellationToken cancellationToken = default)
@@ -149,7 +222,11 @@ public sealed class InMemoryBehaviorExperienceRepository : IBehaviorExperienceRe
         lock (_experiences)
         {
             _experiences.Add(experience);
-            if (_experiences.Count > Retained) _experiences.RemoveRange(0, _experiences.Count - Retained);
+            var excess = _experiences.Count(x => x.CharacterInstanceId == experience.CharacterInstanceId)
+                - RetainedPerInstance;
+            for (var i = 0; i < excess; i++)
+                _experiences.RemoveAt(_experiences.FindIndex(x =>
+                    x.CharacterInstanceId == experience.CharacterInstanceId));
         }
         return Task.CompletedTask;
     }
@@ -158,9 +235,22 @@ public sealed class InMemoryBehaviorExperienceRepository : IBehaviorExperienceRe
         CancellationToken cancellationToken = default)
     {
         lock (_experiences)
+            // Reversed first: the sort below is stable, so experiences sharing one timestamp keep
+            // the store's own "latest append first" order instead of collapsing to insertion order.
             return Task.FromResult<IReadOnlyList<BehaviorExperience>>(
-                _experiences.Where(x => x.CharacterInstanceId == characterInstanceId)
-                    .OrderByDescending(x => x.ObservedAt).Take(Math.Max(1, limit)).ToArray());
+                [.. _experiences.AsEnumerable().Reverse()
+                    .Where(x => x.CharacterInstanceId == characterInstanceId)
+                    .OrderByDescending(x => x.ObservedAt)
+                    .Take(Math.Max(1, limit))]);
+    }
+
+    public Task<int> PurgeAsync(string characterInstanceId, CancellationToken cancellationToken = default)
+    {
+        lock (_experiences)
+        {
+            var removed = _experiences.RemoveAll(x => x.CharacterInstanceId == characterInstanceId);
+            return Task.FromResult(removed);
+        }
     }
 }
 

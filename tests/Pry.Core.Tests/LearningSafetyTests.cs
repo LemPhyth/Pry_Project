@@ -323,5 +323,7 @@ public sealed class LearningSafetyTests
         }
         public Task<bool> DeleteAsync(string expressionPatternId, CancellationToken cancellationToken = default) =>
             _inner.DeleteAsync(expressionPatternId, cancellationToken);
+        public Task<int> PurgeAsync(string characterInstanceId, CancellationToken cancellationToken = default) =>
+            _inner.PurgeAsync(characterInstanceId, cancellationToken);
     }
 }
