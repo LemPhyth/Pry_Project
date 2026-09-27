@@ -11,6 +11,9 @@ namespace Pry.Core.TurnTaking;
 
 public sealed class ReplyPlanner
 {
+    /// <summary>本轮没有可落库的可见答复时的占位，与"模型一个字没输出"同档，不复用原始输出。</summary>
+    private const string UnansweredPlaceholder = "……";
+
     public ReplyPlanner(MemoryDatabase database, PromptBuilder promptBuilder, ModelRouter router,
         CharacterDefinition character, RuntimeState state, StickerCatalog stickerCatalog)
         : this(database, database, promptBuilder, router, character, state, stickerCatalog) { }
@@ -60,22 +63,45 @@ public sealed class ReplyPlanner
         var directImagePaths = _router.UsesVisionBridge ? null : imagePaths;
         await foreach (var token in model.StreamAsync(planningPrompt, modelMessages, directImagePaths,
                            new ChatRequestOptions(StructuredReplyPlan: true), cancellationToken)) raw.Append(token);
-        return ParseOrFallback(raw.ToString(), turnSettings.SplitReplies, stickers, maxMessages);
+        return Parse(raw.ToString(), turnSettings, stickers, maxMessages);
     }
 
-    private static IReadOnlyList<PlannedReplyMessage> ParseOrFallback(string raw, bool splitReplies,
+    /// <summary>
+    /// 信封与内部草稿一律不落库：抽取判据在 <see cref="ModelReplyFormat"/> 一处，这里只决定它落成什么。
+    /// 解析不出可见内容时回落到与"模型一个字没输出"同一档的占位，而不是整段原始输出——
+    /// 落库的助手内容会进界面历史并被后续轮次当上文引用，泄漏撤不回，沉默可以。
+    /// </summary>
+    internal static IReadOnlyList<PlannedReplyMessage> Parse(string raw, TurnTakingSettings turnSettings,
         IReadOnlyCollection<StickerDefinition> stickers, int maxMessages)
+    {
+        var (shape, payload) = ModelReplyFormat.Extract(raw);
+        if (shape == ModelReplyShape.StructuredPlan)
+        {
+            var messages = ParsePlan(payload, stickers, maxMessages);
+            if (messages is { Length: > 0 }) return turnSettings.SplitReplies ? messages : Merge(messages);
+        }
+        else if (shape == ModelReplyShape.PlainText)
+        {
+            var visible = ModelReplyFormat.ToVisiblePlainText(payload,
+                Math.Clamp(turnSettings.MaxMessageCharacters, 20, 500));
+            if (visible.Length > 0)
+                return [new PlannedReplyMessage { Type = ReplyMessageType.Text, Content = visible, Sequence = 0 }];
+        }
+        return [new PlannedReplyMessage { Type = ReplyMessageType.Text, Content = UnansweredPlaceholder, Sequence = 0 }];
+    }
+
+    private static PlannedReplyMessage[]? ParsePlan(string payload, IReadOnlyCollection<StickerDefinition> stickers,
+        int maxMessages)
     {
         try
         {
-            var normalized = StripCodeFence(raw);
-            using var document = JsonDocument.Parse(normalized);
+            using var document = JsonDocument.Parse(payload);
             var root = document.RootElement;
             var items = root.ValueKind == JsonValueKind.Array ? root
                 : root.ValueKind == JsonValueKind.Object && root.TryGetProperty("messages", out var messagesElement) &&
                   messagesElement.ValueKind == JsonValueKind.Array ? messagesElement
                 : default;
-            if (items.ValueKind != JsonValueKind.Array) throw new JsonException("Reply plan has no message array.");
+            if (items.ValueKind != JsonValueKind.Array) return null;
             var rawMessages = new List<RawMessage>();
             foreach (var item in items.EnumerateArray())
             {
@@ -92,29 +118,15 @@ public sealed class ReplyPlanner
                     rawMessages.Add(new RawMessage(type, content, stickerId));
                 }
             }
-            var messages = rawMessages.Select((x, index) => new PlannedReplyMessage
+            return rawMessages.Select((x, index) => new PlannedReplyMessage
             {
                 Type = x.Type.Equals("sticker", StringComparison.OrdinalIgnoreCase) ? ReplyMessageType.Sticker : ReplyMessageType.Text,
-                Content = x.Content?.Trim(),
+                Content = ModelReplyFormat.SanitizeMessageContent(x.Content),
                 StickerId = stickers.Any(s => s.Id == x.StickerId) ? x.StickerId : null,
                 Sequence = index
             }).Where(x => x.Type == ReplyMessageType.Text ? !string.IsNullOrWhiteSpace(x.Content) : x.StickerId is not null).Take(maxMessages).ToArray();
-            if (messages is { Length: > 0 }) return splitReplies ? messages : Merge(messages);
         }
-        catch (JsonException) { }
-        var visible = raw.Trim();
-        if (visible.Length == 0) visible = "……";
-        return [new PlannedReplyMessage { Type = ReplyMessageType.Text, Content = visible, Sequence = 0 }];
-    }
-
-    private static string StripCodeFence(string value)
-    {
-        var text = value.Trim();
-        if (!text.StartsWith("```", StringComparison.Ordinal)) return text;
-        var firstLineEnd = text.IndexOf('\n');
-        if (firstLineEnd >= 0) text = text[(firstLineEnd + 1)..];
-        if (text.EndsWith("```", StringComparison.Ordinal)) text = text[..^3];
-        return text.Trim();
+        catch (JsonException) { return null; }
     }
 
     private static IReadOnlyList<PlannedReplyMessage> Merge(IReadOnlyList<PlannedReplyMessage> messages)

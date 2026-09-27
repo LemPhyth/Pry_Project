@@ -112,6 +112,24 @@ Character State (Identity / Relationship / Mood)
 - **未接线**：`Pry.Core/Runtime`（RT-002）目前自行引用了 `Pry.Core.Intelligence.ResponseIntent`。该目录与我的目录都是未跟踪状态，任一方单独提交都会让另一方编译失败——集成时必须同一提交链落地，或由 Runtime 负责人确认引用关系。
 - **与 MEM-005 收敛**：`RelevantMemoryView` / `MemoryObservation` 是过渡投影，M1 之后必须删掉。归属已定（MEM-005 R1）：`MemoryQueryOutcome` 等跨模块记忆契约的唯一定居处是 `Pry.Core/Abstractions`，本文件与 `Intelligence/SituationSnapshot.cs` 里的声明是先行占位，由我在与 Memory Owner 同批的提交中删除并改 `using Pry.Core.Abstractions`——不提前搬，以免出现第二个定义点。
 - **持久化**：`ICharacterStateRepository / IBehaviorPatternRepository / IExpressionPatternRepository / IBehaviorExperienceRepository` 只有进程内实现。SQLite 实现、索引与 schema v8 迁移属于 Persistence Owner；版本乐观并发（`StateVersion` 落后即拒绝）和"删除角色实例时级联清库"必须在真实仓储里保持同等语义。RT-003 "Relationship 可持久化"的验收在真实仓储落地前只能算部分完成。落库时有三处必须原样往返，否则学习安全性会在重启后失效：`ExpressionPattern.Suppressed`（含零置信度占位记录）——丢了就等于用户明确的"别这么说话"只生效到下次重启；`BehaviorPattern.EvaluatedTurnKeys` 与 `ExpressionPattern.AcceptedEvidenceIds / AcceptedTurnKeys`——丢了同一 Turn 的反馈会被重复折叠，两者各自只需保留最近 64 条（滑窗语义，超出的旧值不可回放）；`BehaviorExperience.FeedbackIsExplicit` 与 `FollowUpEvidence`——含糊/明确必须可分，否则审计学习来源时无法判断某次权重变化是谁授权的。`FollowUpEvidence` 存**反馈引用的 ID**，不要复制聊天正文。
+- **自动记忆抽取未接线（`memories` 0 行的定性）**：真机走查里"聊了很久但 `memories` 一条没有"不是解析缺陷，而是产品链路根本没有生产者。全仓只有三处写 `memories`：`Pry.Api/Services/MemoryApplicationService.cs:25`（手动 `POST /memories`，界面"记住这条"）、`Pry.Core/Conversation/ConversationService.cs:53`（该类在 `src/` 与 `tests/` 里除自身声明外零引用，是死类）、`Pry.Core/TurnTaking/ConversationTurnManager.cs:185`（只有 `tests/Pry.Core.Tests/CoreTests.cs:373` 构造过它）。运行时真实链路 `ConversationRuntime → ReplyGate/TurnScheduler → ReplyPlannerComposer → ReplyPlanner` 只写 `messages`，从不写 `memories` ⇒ 自动抽取属于 MEM/RT 的接线工作，不在本判据的修复面内。
 - **Developer Mode UI**：`Rationale` 与 `Gates` 已经是可读字符串数组，但界面展示归 UI Owner。
 - **表达抽取质量**：当前是启发式（插入语 + 句尾语气词 + 短独立片段）。要更接近"情境→表达"需要后台模型抽取，属于 RT-004 后续；本轮刻意没有为它预留接口。
 - **关系信号初始化**：新角色实例从 `Familiarity 0.12 / Trust 0.35` 起步，这个先验没有用户数据支撑，需要靠 §7.2 的纵向内测回访校准。
+
+## 9. 模型输出到落库之间的可见性判据（`DEF-P1WALK-01`）
+
+思考型模型把内部草稿连同答复信封一起吐进 `delta.content`（`OpenAiCompatibleChatModel` 只读 `delta.content`，且 thinking 关闭时才挂 `reply_plan` 的 `response_format`，所以信封是 chat template 原样输出的）。草稿一旦落库就进界面历史、并被后续轮次当上文复读，撤不回来。
+
+判据因此只有一条：**认不出可见答复就这一轮不说话（`……`，与"模型一个字没输出"同档），绝不回落成整段原始输出。** 形状识别全部集中在 `Pry.Core/TurnTaking/ModelReplyFormat.cs` 一处（四档：`Empty` / `PlainText` / `StructuredPlan` / `OnlyInternalDraft`），`ReplyPlanner.Parse` 只决定它落成什么，`Pry.Client`、界面与持久化层一律不认形状——这条由 `ModelReplyFormatTests.No_other_layer_recognises_the_reply_envelope` 扫产品源码守住（判据 ③）。
+
+抽取用的全是结构信号，不做语义判定、不按字数放宽：
+
+- 配对的答复信封优先，取**最后一个**配对体（草稿段里逐字复读的示例信封不能顶掉真答复）；
+- 闭合的推理标签之前一律算草稿（走查 W1），未闭合的起始标签裁到文本末尾；
+- 停在半截的标签名也算标签——只有整段文本以已知标签名的前缀收尾时才成立，且名字后面紧跟字母/数字/`:`/`-`/`_` 时判为"这不是完整标签名"（W3 的 `…</thinkin` 正是靠这条不被 `think` 的前缀命中蒙过去）；
+- 没有信封但明显"想当计划"的残体（以 `{`/`[`/代码围栏开头，或留着 `"messages"` 键）判 `OnlyInternalDraft`，不按散文放行（第九、十一轮的裸 JSON 形状）；
+- 结构化条目的正文同样剥推理段，剥不干净（16 趟预算用尽仍留标签）就整条丢弃；
+- 散文答复只取第一条完整行，首行超出预算判空而不是截断——半截话与草稿长得太像。
+
+判据载体：`tests/Pry.Core.Tests/ModelReplyFormatTests.cs` 16 例——13 条形状与拒绝档用例、2 条反向用例（正文里的合法尖括号、正文里引用的小段配置 JSON 都不许被这条判据改成沉默）、1 条扫产品源码的归属门禁。六条守卫各自被反证过一次——去掉回落拒绝、去掉信封优先、去掉推理剥离、去掉计划残体判据、去掉散文预算、在 `Pry.Api` 放一个含标签的临时文件，分别有点名的用例转红，跑完即还原。
