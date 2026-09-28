@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Pry.Contracts;
 using Pry.Core.Configuration;
+using Pry.Core.Intelligence;
 using Pry.Core.Memory;
 using Pry.Core.Models;
 
@@ -8,6 +9,7 @@ namespace Pry.Api.Services;
 
 public sealed partial class ConfigurationApplicationService(IConfiguration configuration, BackendRuntime runtime,
     ConversationSessionService sessions, MediaAssetStore media, MemoryDatabase database,
+    CharacterLearningCleanup learning,
     MemoryEmbeddingService? embeddings = null, CharacterInteractionProfileService? interactionProfiles = null,
     CompanionOperationCoordinator? operations = null)
 {
@@ -39,6 +41,8 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
             var path = Path.Combine(CharacterDirectory, id + ".json");
             if (!File.Exists(path))
                 throw new ResourceConflictException("character", id, "内置角色卡不能删除，可以创建或编辑自定义角色卡。");
+            // 学习状态故意不在这条 EXISTS 里：它一存在就永远存在，加进判定等于把角色卡变成删不掉。
+            // 它的处理方式是跟着卡片一起清掉（下面 learning.PurgeAsync 那一步），不是拦住删除。
             if (await database.CharacterHasReferencesAsync(id, token))
                 throw new ResourceConflictException("character", id, "角色卡仍被对话或长期记忆引用，请先删除相关数据。");
 
@@ -53,6 +57,11 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
             if (interactionBackup is not null) File.Move(interactionPath!, interactionBackup);
             try
             {
+                // 学习状态跟着卡片走，且必须落在"卡片还能原样退回去"这一段里：这四条删除各自是一个
+                // 事务，过了下面 Reconfigure 那条线，内存里的角色表就已经不含这张卡了——那时再失败，
+                // catch 只能把 JSON 文件放回去，列表里却看不见她，删除变得无法重试，剩下的行也就永远
+                // 没人能清（QA-P3STATE-03 记的正是这个终态：用户删过的角色，其关系与经验仍在库里）。
+                await learning.PurgeAsync(id, token);
                 await sessions.ReconfigureAsync(async ct =>
                 {
                     if (runtime.Preferences.SelectedCharacterId == id)

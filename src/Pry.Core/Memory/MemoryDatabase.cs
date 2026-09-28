@@ -139,6 +139,7 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
         await InitializeReadStateAsync(connection, cancellationToken);
         await InitializeRuntimeStateAsync(connection, cancellationToken);
         await InitializeProtocolEventsAsync(connection, cancellationToken);
+        await InitializeIntelligenceAsync(connection, cancellationToken);
         await SetSchemaVersionAsync(connection, SchemaVersion, cancellationToken);
         // 版本、表与列名是标识符不是内容；这里不写文件名也不写任何用户数据（PLAT-006 "secrets 不进日志"）。
         _logger.LogInformation("持久层就绪：schema {VersionBefore} → {SchemaVersion}，用时 {ElapsedMilliseconds} 毫秒",
@@ -149,8 +150,10 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
     /// 数据库结构的唯一写侧编号。任何断言版本的测试必须读这个常量，不得再写第二个字面量——
     /// 同一工作区里两份硬编码值一旦不同就自相矛盾，而 QA 只能判其中之一。
     /// 编号的分配权归 PLAT-003（§5.0 冻结中）：这里只是将既有推进登记为单点，不据此宣告 v8→v9 的迁移注册表方案已裁定。
+    /// v9→v10 是 DEF-P3STATE-01 追加的学习状态五张表（character_state、behavior_pattern 及其守卫子表、
+    /// expression_pattern 及其两张守卫子表、behavior_experience）：只追加钩子，不改写他人那几片的次序。
     /// </summary>
-    public const int SchemaVersion = 9;
+    public const int SchemaVersion = 10;
 
     public async Task<long> AddMessageAsync(string conversationId, ChatRole role, string content,
         string? imagePath, CancellationToken cancellationToken = default, string? stickerId = null,

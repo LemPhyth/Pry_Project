@@ -25,11 +25,12 @@ public sealed class PromptBuilder
         if (c.PromptMode == CharacterPromptMode.Structured && c.WorldFacts.Count > 0)
             builder.AppendLine("不可擅自修改的设定：").AppendLine(string.Join("\n", c.WorldFacts.Select(x => $"- {x}")));
 
+        // 卡片自带那份初始状态里的 trust/familiarity 是 0–100 的整数刻度，今天没有任何生产者会移动它，
+        // 把它写进提示词等于让模型演一段"已经熟的"固定关系。地点/情绪/目标是可观察的场景事实，照旧保留。
         builder.AppendLine("当前状态：")
             .AppendLine($"- 地点：{s.Location}")
             .AppendLine($"- 情绪：{s.Mood}")
-            .AppendLine($"- 当前目标：{s.CurrentGoal}")
-            .AppendLine($"- 信任：{s.Trust}/100；熟悉度：{s.Familiarity}/100");
+            .AppendLine($"- 当前目标：{s.CurrentGoal}");
 
         if (context.Memories.Count > 0)
             builder.AppendLine("与当前话题相关的长期记忆（仅在自然相关时使用）：")

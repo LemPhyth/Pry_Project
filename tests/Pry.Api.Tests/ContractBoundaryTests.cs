@@ -113,7 +113,7 @@ public class ContractBoundaryTests
         Assert.Equal("\"Structured\"", Wire(CharacterPromptMode.Structured));
         Assert.Equal("\"User\"", Wire(ChatRole.User));
         Assert.Equal("\"BuiltIn\"", Wire(StickerSource.BuiltIn));
-        Assert.Equal("""{"location":"日常空间","mood":"平静","currentGoal":"陪伴用户","trust":50,"familiarity":10}""", Wire(new RuntimeState()));
+        Assert.Equal("""{"location":"日常空间","mood":"平静","currentGoal":"陪伴用户"}""", Wire(new RuntimeState()));
         Assert.Equal("""{"speed":1,"burstiness":0.75,"minDelayMs":450,"maxDelayMs":3200}""", Wire(new TypingStyle()));
         Assert.Equal("""{"text":true,"vision":false,"embeddings":false,"imageGeneration":false,"toolCalling":false}""", Wire(new ModelCapabilities()));
         Assert.Equal("""{"focusX":0.5,"focusY":0.5,"zoom":1}""", Wire(new ImageDisplayPreferences()));

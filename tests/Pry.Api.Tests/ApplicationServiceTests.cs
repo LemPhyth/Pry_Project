@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Pry.Contracts;
 using Pry.Api.Middleware;
 using Pry.Api.Services;
+using Pry.Core.Intelligence;
 using Pry.Core.Memory;
 using Pry.Core.Models;
 using Xunit;
@@ -383,7 +384,7 @@ public sealed class ApplicationServiceTests
         await using var sessions = new ConversationSessionService(fixture.Database, runtime, media,
             NullLogger<ConversationSessionService>.Instance, null, profiles);
         var configurationService = new ConfigurationApplicationService(configuration, runtime, sessions, media,
-            fixture.Database);
+            fixture.Database, Learning(fixture.Database));
         var network = await configurationService.CreateNetworkModelAsync(new SaveNetworkModelRequest("测试文字模型",
             "test", "http://127.0.0.1:1/v1", new ModelCapabilities(), 2048, 64, .5, 0, "remote", false, null),
             TestContext.Current.CancellationToken);
@@ -409,7 +410,8 @@ public sealed class ApplicationServiceTests
         await using var sessions = new ConversationSessionService(fixture.Database, runtime,
             new MediaAssetStore(configuration), NullLogger<ConversationSessionService>.Instance);
         var managedMedia = new MediaAssetStore(configuration);
-        var service = new ConfigurationApplicationService(configuration, runtime, sessions, managedMedia, fixture.Database);
+        var service = new ConfigurationApplicationService(configuration, runtime, sessions, managedMedia, fixture.Database,
+            Learning(fixture.Database));
         var created = await service.CreateCharacterAsync(new SaveCharacterRequest(
             "新角色", "新角色-正式-v1", "你", "陪伴者", "沉稳", "简洁", ["尊重用户"], [],
             new RuntimeState(), "你好。", CharacterPromptMode.Structured, "", null, false, new ImageDisplayPreferences()),
@@ -545,7 +547,7 @@ public sealed class ApplicationServiceTests
         await using var sessions = new ConversationSessionService(fixture.Database, runtime, media,
             NullLogger<ConversationSessionService>.Instance);
         var service = new ConfigurationApplicationService(configuration, runtime, sessions, media, fixture.Database,
-            null, profiles);
+            Learning(fixture.Database), null, profiles);
         var builtIn = runtime.Characters[0];
         await Assert.ThrowsAsync<ResourceConflictException>(() =>
             service.DeleteCharacterAsync(builtIn.Id, TestContext.Current.CancellationToken));
@@ -657,7 +659,8 @@ public sealed class ApplicationServiceTests
         var media = new MediaAssetStore(configuration);
         await using var sessions = new ConversationSessionService(fixture.Database, runtime, media,
             NullLogger<ConversationSessionService>.Instance);
-        var service = new ConfigurationApplicationService(configuration, runtime, sessions, media, fixture.Database);
+        var service = new ConfigurationApplicationService(configuration, runtime, sessions, media, fixture.Database,
+            Learning(fixture.Database));
 
         var local = service.GetModels().Where(x => x.Source == "local").ToArray();
         Assert.Equal(2, local.Length);
@@ -707,7 +710,7 @@ public sealed class ApplicationServiceTests
         await using var sessions = new ConversationSessionService(fixture.Database, runtime, media,
             NullLogger<ConversationSessionService>.Instance);
         var configurationService = new ConfigurationApplicationService(configuration, runtime, sessions, media,
-            fixture.Database);
+            fixture.Database, Learning(fixture.Database));
         var profile = await configurationService.CreateNetworkModelAsync(new SaveNetworkModelRequest(
             "不可用向量服务", "embedding", "http://127.0.0.1:1/v1",
             new ModelCapabilities(false, Embeddings: true), 2048, 1, 0, 0, "remote", false, null),
@@ -742,6 +745,12 @@ public sealed class ApplicationServiceTests
         }
         finally { System.IO.Directory.Delete(directory, true); }
     }
+
+    // 删角色卡时要清空学习状态（RT-003 缺口 ②）：服务现在必须拿到一份真的清理器，构造点由这里给。
+    // 判据本体在 CharacterLearningDeletionTests.cs，这里只是让既有构造点保持可编译。
+    private static CharacterLearningCleanup Learning(MemoryDatabase database) => new(
+        new SqliteCharacterStateRepository(database), new SqliteBehaviorPatternRepository(database),
+        new SqliteBehaviorExperienceRepository(database), new SqliteExpressionPatternRepository(database));
 
     private sealed class DatabaseFixture(string path, MemoryDatabase database) : IAsyncDisposable
     {

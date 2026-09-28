@@ -56,6 +56,18 @@ namespace Pry.Api
             builder.Services.AddSingleton(provider => new MemoryDatabase(Path.Combine(dataDirectory, "memory.db"),
                 provider.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()
                     .CreateLogger<MemoryDatabase>()));
+            // 学习状态的落库实现（RT-003 缺口 ②）。四个适配器都只认自己的接口、内部委托到上面那一份
+            // MemoryDatabase；这里把它们接进来，唯一的生产者是删角色卡时的那次清空——学习本身的写入
+            // 仍然没有生产者，接线归 RT-002/RT-003 的双向接缝，不在这一刀。
+            builder.Services.AddSingleton<Pry.Core.Abstractions.ICharacterStateRepository,
+                Pry.Core.Memory.SqliteCharacterStateRepository>();
+            builder.Services.AddSingleton<Pry.Core.Abstractions.IBehaviorPatternRepository,
+                Pry.Core.Memory.SqliteBehaviorPatternRepository>();
+            builder.Services.AddSingleton<Pry.Core.Abstractions.IBehaviorExperienceRepository,
+                Pry.Core.Memory.SqliteBehaviorExperienceRepository>();
+            builder.Services.AddSingleton<Pry.Core.Abstractions.IExpressionPatternRepository,
+                Pry.Core.Memory.SqliteExpressionPatternRepository>();
+            builder.Services.AddSingleton<Pry.Core.Intelligence.CharacterLearningCleanup>();
             builder.Services.AddSingleton<BackendSessionToken>();
             builder.Services.AddSingleton<ConversationApplicationService>();
             builder.Services.AddSingleton<ConversationReadService>();

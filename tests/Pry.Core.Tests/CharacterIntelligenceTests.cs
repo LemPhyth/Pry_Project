@@ -1,7 +1,11 @@
+using System.Text.Json;
+using Pry.Contracts;
 using Pry.Core.Abstractions;
+using Pry.Core.Configuration;
 using Pry.Core.Expression;
 using Pry.Core.Intelligence;
 using Pry.Core.Models;
+using Pry.Core.Prompting;
 using Xunit;
 
 namespace Pry.Core.Tests;
@@ -462,6 +466,52 @@ public sealed class CharacterIntelligenceTests
         Assert.DoesNotContain("Familiarity", rendered, StringComparison.Ordinal);
         Assert.DoesNotContain("信任", rendered, StringComparison.Ordinal);
         Assert.Contains("这一轮：", rendered, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_shipped_card_prompt_never_hands_the_model_a_numeric_affinity()
+    {
+        var prompt = new PromptBuilder().Build(new PromptContext(
+            new CharacterDefinition { Id = "c", Name = "星", Identity = "陪伴者", Personality = "温柔", SpeechStyle = "简洁" },
+            new RuntimeState { Mood = "开心" }, [], [], [], "你好", null));
+        Assert.Contains("开心", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("信任", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("熟悉度", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("/100", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_card_format_carries_no_numeric_affinity_field_to_leak()
+    {
+        // 上一条守的是"不进提示词"，这条守的是源头：卡片格式里没有可供打分的亲密刻度。
+        // 关系深浅只在 RelationshipState 内部按各自的速率变化，渲染成中文，不回流成卡片上的分数。
+        Assert.Null(typeof(RuntimeState).GetProperty("Trust"));
+        Assert.Null(typeof(RuntimeState).GetProperty("Familiarity"));
+        Assert.DoesNotContain(typeof(RuntimeState).GetProperties(), p =>
+            p.PropertyType == typeof(int) || p.PropertyType == typeof(double) || p.PropertyType == typeof(float));
+    }
+
+    [Fact]
+    public async Task A_card_saved_while_the_affinity_fields_existed_still_loads_and_still_shows_no_numbers()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"pry-legacy-card-{Guid.NewGuid():N}.json");
+        var character = new CharacterDefinition
+        {
+            Id = "c", Name = "星", Identity = "陪伴者", Personality = "温柔", SpeechStyle = "简洁"
+        };
+        var json = JsonSerializer.Serialize(character, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+            .Replace("\"initialState\":{", "\"initialState\":{\"trust\":91,\"familiarity\":88,");
+        try
+        {
+            await File.WriteAllTextAsync(path, json, Token);
+            var loaded = await JsonConfiguration.LoadAsync<CharacterDefinition>(path, Token);
+            JsonConfiguration.Validate(loaded);
+            Assert.Equal("日常空间", loaded.InitialState.Location);
+            Assert.DoesNotContain("91",
+                new PromptBuilder().Build(new PromptContext(loaded, loaded.InitialState, [], [], [], "你好", null)),
+                StringComparison.Ordinal);
+        }
+        finally { File.Delete(path); }
     }
 
     [Fact]

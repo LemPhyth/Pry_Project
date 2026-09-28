@@ -16,13 +16,17 @@ public static class MainWindowLayoutModes
     public const string Card = "card";
 }
 
+/// <summary>
+/// 卡片自带的开场状态。刻意只留可观察的场景事实：这里曾经还有 `trust`/`familiarity` 两个 0–100 的
+/// 整数刻度，而没有任何生产者会移动它们，写进提示词就等于让模型演一段"已经熟到某个分数"的固定关系。
+/// 关系深浅的唯一归属是 `Pry.Core.Intelligence.RelationshipState`（内部信号，渲染成中文、不外露数值）。
+/// 旧存档里多出的那两个键会被忽略，读得进来。
+/// </summary>
 public sealed record RuntimeState
 {
     public string Location { get; init; } = "日常空间";
     public string Mood { get; init; } = "平静";
     public string CurrentGoal { get; init; } = "陪伴用户";
-    public int Trust { get; init; } = 50;
-    public int Familiarity { get; init; } = 10;
 }
 
 public sealed record TypingStyle
