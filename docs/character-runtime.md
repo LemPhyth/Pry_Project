@@ -4,7 +4,7 @@
 
 **当前集成状态（2026-09-23 深夜）**：首轮实现已随 `5361dab` 入库；触发层增量（四组件 + 两段式 `TurnScheduler` + 本文与 `docs/phase2-runtime-contract.md`）已成提交 `8e039f9`，状态词按契约 §8.1 记 **`已提交待验`**（QA 判定未做）。本文其余段落里"未提交"的字面描述的是它被写下那一刻的工作树，不是今天。
 
-**2026-09-24 增补（契约 §7 第 1 步"宿主端口"）**：触发层的频率半边第一次接到真实产品路径上——`TurnTakingSettings.ReplyFrequency` 进线协议，`PATCH /api/v1/preferences` 可设，`ConversationSessionService.CreateAsync` 供值进 `ConversationRuntimeOptions`，`GET .../runtime-state` 回读该实例生效的 `replyFrequency`/`triggerMode`/`isGroupChat`。群聊半边**没有**接：1.0 没有多参与者概念，`IsGroupChat` 没有诚实的生产者（判定与归属见 `docs/phase2-runtime-contract.md` §7 第 1 步）。发行默认仍是惰性链，未配置即与移植前逐位等价。状态词：**已落地主工作区未提交**（§8.1 段①；段② 的前置是一次可指认提交）。
+**2026-09-24 增补（契约 §7 第 1 步"宿主端口"）**：触发层的频率半边第一次接到真实产品路径上——`TurnTakingSettings.ReplyFrequency` 进线协议，`PATCH /api/v1/preferences` 可设，`ConversationSessionService.CreateAsync` 供值进 `ConversationRuntimeOptions`，`GET .../runtime-state` 回读该实例生效的 `replyFrequency`/`triggerMode`/`isGroupChat`。群聊半边**没有**接：1.0 没有多参与者概念，`IsGroupChat` 没有诚实的生产者（判定与归属见 `docs/phase2-runtime-contract.md` §7 第 1 步）。发行默认仍是惰性链，未配置即与移植前逐位等价。状态词：**已提交待验**（§8.1 段① 自证完成后由作者点头入库为 **`44e52fc`**；段② 的前置自此解除，QA 从该提交建干净 worktree 复跑）。
 
 ## Implemented
 

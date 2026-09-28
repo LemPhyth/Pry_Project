@@ -94,13 +94,27 @@ public sealed class TurnScheduler
             // 否则每轮重新施加退避会让角色永远不再开口。
             _backoffConsumedUntil = context.At + applied;
             decision = GateDecision.Backoff("interrupt_backoff", applied);
+            detail = BackoffDetail(detail, applied);
         }
         else if (decision.Disposition == GateDisposition.Run && !context.ForcedByImmediate &&
                  _backoffConsumedUntil is { } until && context.At < until)
+        {
             decision = GateDecision.Backoff("interrupt_backoff", until - context.At);
+            detail = BackoffDetail(detail, until - context.At);
+        }
         else if (decision.Disposition == GateDisposition.Run) _backoffConsumedUntil = null;
         return new SchedulingOutcome(decision, applied, detail);
     }
+
+    /// <summary>
+    /// 把决策改写为打断退避时必须同时改写这句自述：宿主只把 detail 写进 Gate 轨迹
+    /// （<c>ConversationRuntime.cs</c> 的 trigger:{Disposition} 条目），沿用内层门控那句
+    /// "pending=N 达到阈值=M" 会让一次"因上一轮被打断而仍在退避"的等待长得像"消息没攒够"，
+    /// 而与它同形的另一行却是真的放行了。内层事实仍带在括号里，供人对照两者是否一致。
+    /// </summary>
+    private static string BackoffDetail(string? inner, TimeSpan remaining) =>
+        $"interrupt_backoff 剩余={remaining.TotalMilliseconds:F0}ms" +
+        (inner is { Length: > 0 } text ? $"（内层已判定: {text}）" : "");
 
     private GateDecision Evaluate(SchedulingContext context)
     {

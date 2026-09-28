@@ -228,6 +228,8 @@ Phase 2 的核心问题是"一个长期存在的角色此刻处于什么状态�
 
 **处置（`DEF-P2TRIGGER-01`，交作者裁定）**：`docs/upstream-license-compatibility.md` §4.3 第三条禁止照搬上游群聊调出来的阈值/频率/容量参数。上表标"同值"的行全部在禁止面内。两条出路——(a) 换一组 Pry 自定值；(b) 保留量级、由 Eval 标定覆盖后替换——**都不允许这些数字今天成为发行默认值**。(a) 的风险是"把巧合换成任意"，本文不建议在没有判据前换数。(b) 是建议路线，需要 EVAL-001 新增永久场景承接标定协议（新增 ID 归 QA）。
 
+**本段已裁定，读它时带上 §5.2**：作者 2026-09-24 选 (b)。因此上表凡是"值押后"的行，含义是**已决定走 (b)、尚未执行**，不是"还没决定"；凡是"待标定"的行，可达性按 §5.2 第 3 条实判——不可达的那几组走出口 ③，不产出数值结论。
+
 ## 5.1 裁决记录（2026-09-23 深夜 · 作者）
 
 三条路线里作者选的是第三条：**只裁"暂不进发行默认"，逐值处置押后**。据此：
@@ -238,16 +240,26 @@ Phase 2 的核心问题是"一个长期存在的角色此刻处于什么状态�
 
 本文对那两条押后路线的技术意见不变（(a) 的风险是把"巧合"换成"任意"；(b) 需要 EVAL-001 新增永久场景承接标定协议，ID 归 QA），但那只是意见，不是裁决。
 
+## 5.2 逐值处置已裁（2026-09-24 · 作者），判据文本尚未采纳
+
+作者 2026-09-24 在 §8 结案标准轮末对 `DEF-P2TRIGGER-01` 落笔：**"保留量级，押 Eval 标定"**——即上一节的两条出路里选 **(b)**。据此：
+
+- §5 处置列凡是"值押后"的行，含义从"未决定"变成**已决定走 (b) 但尚未执行**：数值不回退上游、也不逐项换成 Pry 自定值，由 Phase 2 发行前的一轮 Eval 标定覆盖。§5.1 那条"不得由本 Owner 代拍"的约束**已经解除**（拍的是作者），但"不得写进发行说明、配置模板或对外默认值表"照旧生效——那是 09-23 的另一条裁决，没有被 09-24 这条覆盖。
+- 每个参数最终只能归入三种出口之一，没有第四种：**① 保留并记录裁决**（契约 §5 与 §5.1 写明"经 YYYY-MM-DD 标定保留"）／**② 以标定值替换**（改 Pry 默认，同步 §5、发行说明与该参数的测试锚点）／**③ 显式声明 1.0 不启用该机制**（写清受影响判据与 DEV 行，转 `NotApplicable` 并保留编号）。
+- **今天不可标定的组必须走出口 ③，不得为其造"标定通过"**。三条实测理由（QA 标定协议 §1 的 F1/F3/F4，本 Owner 逐条回源确认）：必要性箱在发行默认 `TriggerMode=MessageCount` 下整箱不可达（`TurnScheduler.cs:135-137` 的分岔）；`FocusActive: false` 硬编码（`:144`）；空转退避只作用在群聊分支，而 1.0 内 `IsGroupChat` 没有诚实生产者（§7 第 1 步判定）。
+- **判据文本的当前状态是 `提案 · 未采纳 · 未运行`**：`docs/eval/calibration-protocol.md`（QA 起草，2026-09-24）。它自己写明执行顺序第 1 步是"作者 + Owner 采纳或修订本文，把 §6 的 `目标值` 写死——这步没做完，后面全部不成立"。因此 §8 第 2 条**仍不成立**：现在具备的是"逐值方向已裁 + 一套尚未采纳的判据"，不是"每个值有一种处置"。本 Owner 不在这里替作者采纳该协议，也不在 `目标值` 留空时引用它充当已生效判据。
+- 一个必须先回答再开工的耦合（QA 标定协议 §6 末）：①B 已把频率旋钮押到标定轮之后。若标定轮的最终出口是"1.0 不提供该旋钮"，则频率侧标定的 1.0 净收益为零，整轮目标就从"调成可用默认值"变成"给已关掉的功能补文档"。**作者采纳该协议时必须同时说明这一点**，否则这轮工作会朝错误的目标优化。
+
 ## 6. 偏差登记表
 
 | ID | 偏差 | 判定 | 严重度 | 归属 | 状态 |
 |---|---|---|---|---|---|
 | DEV-01 | 触发链两段式、双门控、空窗补偿、必要性四层、退避、间隔统计已按源移植并留痕 | Adopt | — | Runtime | 已提交 `8e039f9`（按 §8.1 记 `已提交待验`） |
-| DEV-02 | §5 全部"同值"行：沿用上游参数，§4.3 禁止面内 | 合规缺陷 | High | 作者裁定 | **部分裁决**（`DEF-P2TRIGGER-01`：作者已裁"暂不进发行默认"，逐值处置押后，见 §5.1）⇒ 仍未结案 |
-| DEV-03 | 未接入真实模型的必要性标定 | Pending | High | Runtime + EVAL-001 | 开，是 DEV-02 的解法 |
-| DEV-04 | 缺连续打断预算与"一次飞行只打断一次"约束（上游默认 0 即不打断） | Pending | High | Runtime | 开 |
-| DEV-05 | 无模型可见 wait 原语与逻辑轮续接 | Pending | Medium | RT-003 / RT-007 | 开，不排进本轮 |
-| DEV-06 | `FocusActive` 恒 false，缺焦点仲裁与退避豁免 | Pending | Medium | Runtime + RT-003 | 开 |
+| DEV-02 | §5 全部"同值"行：沿用上游参数，§4.3 禁止面内 | 合规缺陷 | High | 作者裁定 | **逐值处置已裁**（2026-09-24：路线 (b)"保留量级，押 Eval 标定"，见 §5.2）⇒ 未结案，结案动作落在标定轮之后 |
+| DEV-03 | 未接入真实模型的必要性标定 | Pending | High | Runtime + EVAL-001 | **1.0 内不标定**（作者 2026-09-24 显式降级），由 §5.2 的标定轮承接。**不得读成"§7 第 2 步已在文档层关掉"**：那一步的判据此刻仍是 QA 名下 `提案 · 未采纳`（§5.2） |
+| DEV-04 | 缺连续打断预算与"一次飞行只打断一次"约束（上游默认 0 即不打断） | Pending | High | Runtime | **1.0 不实现，转入后续阶段**（作者 2026-09-24 显式降级；保留编号） |
+| DEV-05 | 无模型可见 wait 原语与逻辑轮续接 | Pending | Medium | RT-003 / RT-007 | **1.0 不实现，转入后续阶段**（作者 2026-09-24 显式降级；保留编号） |
+| DEV-06 | `FocusActive` 恒 false，缺焦点仲裁与退避豁免 | Pending | Medium | Runtime + RT-003 | **1.0 不实现，转入后续阶段**（作者 2026-09-24 显式降级；保留编号）。配套事实：`FocusActive: false` 是 `TurnScheduler.cs:144` 的硬编码 ⇒ 该项**今天不可标定**，不是"待标定" |
 | DEV-07 | 上游类型未进领域层、只取其机制/评分形状 | 符合边界 | — | Runtime | 已满足（§4.3 第 4 条） |
 | DEV-08 | `ReplyFrequency=0` 静默无用户可见解释 | Adapt 副作用 | Medium | PLAT（投影）/作者 | 开。**2026-09-24 起从理论形状变成可达**：频率已进用户可设偏好（§7 第 1 步），用户真能配出"消息照收、永不回、界面无解释"。本轮只交付边界校验（越界 `400`）与文档，"已静默"投影未做，判定与归属不变 |
 | DEV-09 | "提及即回"无条件放行，上游默认关闭 | Adapt | Medium | Runtime | 开，随提及判定接线复判 |
@@ -261,7 +273,7 @@ Phase 2 的核心问题是"一个长期存在的角色此刻处于什么状态�
 按依赖排序，不并行：
 
 1. **宿主端口**：`IsGroupChat` 与用户可设 `ReplyFrequency` 进 `ConversationRuntimeOptions`（Api 侧，Runtime 不查库）。今天整条链在生产上仍是惰性分支，这一步之后新行为才真的跑过。
-   - **`ReplyFrequency`（2026-09-24 已落地，段① 自证）**：`TurnTakingSettings.ReplyFrequency` 进线协议，`PATCH /api/v1/preferences` 可设，`ConversationSessionService.CreateAsync` 供值进 `ConversationRuntimeOptions`；越界值在边界 `400`（`turnTaking.replyFrequency`），`preferences.json` 被手改坏时宿主侧收回合法区间。默认与发行链仍为惰性（未配置即等价于"有输入即成轮"），本文 §5 那一行"同值、无需改"不构成把它写进配置模板的许可——§5.1 的约束照旧，`src/Pry.Resources/appsettings.json` 本轮**没有**新增该字段。客户端侧只做了**不被抹掉**、没做**可调**：`ConversationSettingsEditor.BuildDraft()` 原本从零构造记录，加字段之后会变成"保存一次面板就把频率静默重置回 1.0"（该面板从不显示这个值，而结果整份进 `TurnTakingOverride`），已改为从打开时的源记录 `with`；是否把这块旋钮摆到界面上属产品决定，已记在 `docs/character-runtime.md` 的 Deferred Work，不在本 Owner 权限内。
+   - **`ReplyFrequency`（2026-09-24 段① 自证后由作者入库 `44e52fc`）**：`TurnTakingSettings.ReplyFrequency` 进线协议，`PATCH /api/v1/preferences` 可设，`ConversationSessionService.CreateAsync` 供值进 `ConversationRuntimeOptions`；越界值在边界 `400`（`turnTaking.replyFrequency`），`preferences.json` 被手改坏时宿主侧收回合法区间。默认与发行链仍为惰性（未配置即等价于"有输入即成轮"），本文 §5 那一行"同值、无需改"不构成把它写进配置模板的许可——§5.1 的约束照旧，`src/Pry.Resources/appsettings.json` 本轮**没有**新增该字段。客户端侧只做了**不被抹掉**、没做**可调**：`ConversationSettingsEditor.BuildDraft()` 原本从零构造记录，加字段之后会变成"保存一次面板就把频率静默重置回 1.0"（该面板从不显示这个值，而结果整份进 `TurnTakingOverride`），已改为从打开时的源记录 `with`；是否把这块旋钮摆到界面上属产品决定，已记在 `docs/character-runtime.md` 的 Deferred Work，不在本 Owner 权限内。
    - **`IsGroupChat`（本轮判定：1.0 内没有诚实的生产者）**：全仓没有任何多参与者概念——`ConversationRoom`（`Pry.Contracts/CommonContracts.cs`）只有标题/角色/文件夹/置顶，`src/` 内没有 channel、群、成员或 Satori 适配层；架构立场同样关死了这条路（`Pry_1.0_Rewrite_Architecture_Plan_v3.md:93` "不引入群聊人格或社交平台运营功能"，`PROJECT_PLAN.md:93` 把 Satori Gateway 与外部 IM 列入 1.0 之外）。因此这一半**不是"待接的端口"，而是"没有来源"**：加一个恒 false 的开关或让用户手勾"当群聊用"都是伪造生产者，本 Owner 不做。按 §8 第 1 条，`Pending → 显式降级到后续阶段`的落笔权在作者，本节只把降级对象与归属写清楚：归属 = 外部渠道/协议 lane（Satori 边界，Post-1.0），受影响判据 = §9 的 `P2-Draft-TIM-04`、`P2-Draft-ACT-02` 与 §3.9 的提及必回复判（DEV-09）。**§8 第 3 条那四条行为不含群聊分支**，故此降级不挡 Phase 2 出口；它挡的是这两条草案场景，而它们本来就记着"今天不可跑"。
 2. **标定**：`ReplyNecessityOptions`、`MessageIntervalOptions`、`IdleBackoffOptions` 三个参数箱过 Eval；标定通过才允许把默认 `TriggerMode` 切到 `ReplyNecessity`。同时裁 §3.7 的借来词表。
 3. **打断预算**（DEV-04）与强制触发复位退避（DEV-10）。
@@ -322,9 +334,9 @@ Phase 2 的完成判据不是"本文写完了"，也不是"测试数涨了"，�
 | `P2-Draft-TIM-01` | Integration | 缓冲窗口内的连发只开一轮、且一条不丢：模型调用数＝1，落库 user 条数＝实际发言数 | `Rapid_consecutive_inputs_are_merged_into_one_turn_and_one_model_call`、`Inputs_at_zero_fifty_and_three_hundred_fifty_ms_form_one_turn` | 是 | — |
 | `P2-Draft-TIM-02` | Runtime | 攒不够阈值时门控**自己按节奏醒来**成轮，不需要新消息推动；纯沉默（`pending=0`）多久都不成轮 | `A_backlog_below_the_threshold_wakes_itself_without_a_new_message`、`Silence_alone_never_opens_a_turn_how_long_it_lasts` | 部分（假时钟可跑，真机需端口） | §7 第 1 步 |
 | `P2-Draft-TIM-03` | Unit | 未 settle 的半句不进门控：静默期/不完整保持/打字中租约/封顶四条各有独立判据 | `Idle_runtime_without_output_just_buffers_the_input`、`Immediate_flag_short_circuits_the_buffer`、`Repeated_typing_reports_renew_the_lease_but_disconnect_still_expires` | 是 | — |
-| `P2-Draft-TIM-04` | Runtime | 群聊连续空转按指数退避到封顶，积压达门槛立即越过退避；答过话后计数立刻清零 | `Backoff_grows_exponentially_and_stops_at_the_cap`、`Waiting_messages_outrank_a_backoff_window`、`An_answered_turn_clears_the_backoff_immediately` | **否**（1.0 无多参与者概念，`IsGroupChat` 无来源 ⇒ §7 第 1 步已判定为降级项而非待办项） | 外部渠道 lane + DEV-11 |
+| `P2-Draft-TIM-04` | Runtime | 群聊连续空转按指数退避到封顶，积压达门槛立即越过退避；答过话后计数立刻清零 | `Backoff_grows_exponentially_and_stops_at_the_cap`、`Waiting_messages_outrank_a_backoff_window`、`An_answered_turn_clears_the_backoff_immediately` | **`NotApplicable`（1.0 不启用该机制；作者 2026-09-24 显式降级，编号保留）**——1.0 无多参与者概念，`IsGroupChat` 无诚实生产者 ⇒ 按 §5.2 出口 ③ 落笔，不是待办 | 外部渠道 lane + DEV-11 |
 | `P2-Draft-ACT-01` | Runtime | `ReplyFrequency=0` 时：消息**照常落库**、一条不丢，但模型调用数为 0，界面不出现"正在输入" | `Silent_frequency_consumes_the_message_without_opening_a_turn`；2026-09-24 起另有一条经 HTTP 偏好路径的同判据锚点：`Silent_frequency_reaches_the_live_runtime_and_never_opens_a_turn` | 是（假时钟与真机两条都可跑：真机侧 `PATCH turnTaking.replyFrequency=0` → 发一条消息 → `runtime-state` 读 `replyFrequency`/`recentTurns` 空） | DEV-08（用户可见解释） |
-| `P2-Draft-ACT-02` | Runtime | 必要性模式群聊里没点名 ⇒ 0 次调用；同一会话被 `@角色名` 后 ⇒ 恰好 1 次 | `Group_chatter_stays_quiet_in_necessity_mode_until_the_character_is_called`（2026-09-23 本行原写 `Group_chater_…`，少一个 `t`；QA 复点时抓到，`measure-fixed-eval.ps1` 按方法名实搜源文件会抛 `Stale test mapping`。就地更正并留痕，不静默覆盖） | **否**（默认是计数模式；群聊半边同 TIM-04，无来源） | §7 第 2 步 + 外部渠道 lane |
+| `P2-Draft-ACT-02` | Runtime | 必要性模式群聊里没点名 ⇒ 0 次调用；同一会话被 `@角色名` 后 ⇒ 恰好 1 次 | `Group_chatter_stays_quiet_in_necessity_mode_until_the_character_is_called`（2026-09-23 本行原写 `Group_chater_…`，少一个 `t`；QA 复点时抓到，`measure-fixed-eval.ps1` 按方法名实搜源文件会抛 `Stale test mapping`。就地更正并留痕，不静默覆盖） | **`NotApplicable`（群聊半边按 §5.2 出口 ③ 落笔，作者 2026-09-24 显式降级；编号保留）**；必要性模式本身另按 §5.2 第 3 条记"发行默认下不可达"，两者都不是待办 | §7 第 2 步 + 外部渠道 lane |
 | `P2-Draft-ACT-03` | Model | DoNothing 是一等结果：门放行但判定不必回时，终局记 `DoNothing` 且历史里不留半条气泡 | `Reply_gate_is_allowed_to_stay_silent`（`ConversationRuntimeTests.cs:198`）、`RuntimeComponentTests.cs:247` | 部分（假建议器可跑，真实模型未跑） | 真实模型档位 |
 | `P2-Draft-ACT-04` | Model | 频率下降时"该沉默"的判断变严，而不是变成"攒更多条再一次性回一大段" | `Necessity_mode_asks_for_a_much_bigger_backlog_as_frequency_falls` | **否** | 标定（DEV-03） |
 | `P2-Draft-REC-01` | Integration | 飞行中插入新消息 ⇒ 旧结果回来后**不得再发**，界面不出现两条互相覆盖的答复 | `Late_model_result_that_ignores_cancellation_is_still_not_delivered`、`Repeated_interruptions_stack_up_without_delivering_any_stale_reply` | 是 | — |

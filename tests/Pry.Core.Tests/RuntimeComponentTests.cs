@@ -170,6 +170,29 @@ public sealed class RuntimeComponentTests
     }
 
     [Fact]
+    public void An_interrupt_backoff_rewrite_names_itself_in_the_detail_it_hands_to_the_trace()
+    {
+        var scheduler = new TurnScheduler(RuntimeSettingsFactory.Fast(debounceMs: 1000, maxBufferMs: 60_000));
+        scheduler.NoteTurnInvalidatedBeforeDelivery();
+        var assessment = new BufferAssessment(true, TimeSpan.Zero, "silence_elapsed");
+        // 内层触发门控在这里是**放行**的：频率 1.0 折算阈值 1 条，缓冲里已有 2 条。
+        SchedulingContext At(int milliseconds) => new(T + TimeSpan.FromMilliseconds(milliseconds),
+            RuntimePhase.CollectingInput, true, assessment, false, false, 0, 1, false,
+            new TriggerFacts(["第一段", "第二段"], 2, false, false, false, 1.0, null, TimeSpan.Zero, false, 0, 2,
+                ["普莱"]));
+
+        var justArmed = scheduler.Decide(At(0));
+        Assert.Equal(GateDisposition.Backoff, justArmed.Decision.Disposition);
+        Assert.NotNull(justArmed.TriggerDetail);
+        Assert.StartsWith("interrupt_backoff", justArmed.TriggerDetail!);
+        Assert.Contains("pending=2", justArmed.TriggerDetail!);   // 内层事实保留，供与退避对照
+
+        var stillWaiting = scheduler.Decide(At(500));
+        Assert.Equal(GateDisposition.Backoff, stillWaiting.Decision.Disposition);
+        Assert.StartsWith("interrupt_backoff", stillWaiting.TriggerDetail!);
+    }
+
+    [Fact]
     public void Backchannel_input_while_planning_merges_instead_of_cancelling()
     {
         var controller = new InterruptionController(TestClassifier());
