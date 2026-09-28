@@ -1,6 +1,6 @@
 # Phase 1 最小闭环走查清单（"能跑通"的判据）
 
-制定：EVAL-001（QA / Evaluation）　日期：2026-09-22　§3 于同日按 Core 两项核实结果改判（见该节末"QA 裁定记录"）；同日第七轮走查后补 §3.5/§3.6 与 ① 的一条禁行项
+制定：EVAL-001（QA / Evaluation）　日期：2026-09-22　§3 于同日按 Core 两项核实结果改判（见该节末"QA 裁定记录"）；同日第七轮走查后补 §3.5/§3.6 与 ① 的一条禁行项；2026-09-23 按作者第三次裁定维持 ③b ≤55 s 的档位不变、改由产品达标（`DEF-P1WALK-02` 的本机存活探测），第八轮据 §3.5 的 A′ 复现命令跑通并把该节由"QA 手上跑不了"改写为"已可达"
 依据：**作者 2026-09-22 裁定，Phase 1 出口条件变更为"最小程度的能跑"**——"使用后能得到答复：Client 启动后能通过 Core 调用模型，模型生成回复后 Core 能够保存并且返回给 Client，其他的先不管"（口径参照旧 v0.0.x 发行版：在作者机器上跑得起来）。
 本清单即该裁定的可执行形式。**它取代第六轮判定报告里的阻塞清单作为 Phase 1 的结案判据**；被移出出口条件的项一律记 `NotApplicable`（写明原因），永久场景 ID 全部保留、不删不复用。
 
@@ -120,14 +120,23 @@ Core 在走查前核实出两项，**两项都成立，我按成立处理**：
 3. **原稿的 B 在内嵌拓扑下不成立，已撤销**；顺带把"杀 `llama-server`"从 ③ 挪到 ①（它产生 `turn.failed`，不是事件流断连）。这两条不是我推断的，是读 `App.axaml.cs:47,63-64` 与 `Program.cs:21` 得到的，且 Core 的复现结论与我读到的一致。
 4. **一条留给作者的需求判断（不属本清单能判的范围）**：`Pry:Url` 目前只在**独立运行 `Pry.Api`** 时被尊重（`Program.cs:21`，默认 `http://127.0.0.1:5078`），内嵌时一律被 `:0` 覆盖。如果产品上希望"用户能指定端口"，那是新能力，要走 PLAT 线开任务，**不能**在走查里当成缺陷。
 
-### 3.5 A′ 的可达性（09-22 第七轮实测，QA 手上跑不了）
+### 3.5 A′ 的可达性（09-23 更新：F-1 入库后**已经可达**，QA 自己能跑）
 
-A′ 是**唯一逻辑正确**的形状，但它要求独立后端把 `runtime.json` 写进 UI 会去读的那个目录，而：
+A′ 是**唯一逻辑正确**的形状，它要求独立后端把 `runtime.json` 写进 UI 会去读的那个目录。**第七轮当时不可达**（写侧认 `Pry:DataDirectory`、读侧 `App.axaml.cs` 无参只读默认目录）⇒ 那轮记 Blocked（F-1）。F-1 已由 `3790df9` 修好：**读写两侧现在共用同一个配置根**（`BackendApplication.CreateHostBuilder()` 一个配置根 → `BackendLocator.ResolveDataDirectory(hostBuilder)` → `RuntimeDescriptorService.ResolveDataDirectory`），所以**只要给两个进程设同一个环境变量**就能把整条链搬进隔离目录：
 
-- **写侧认配置**：`RuntimeDescriptorService.ResolveDataConfiguration`→ `Pry:DataDirectory`（`Pry__DataDirectory` 可注入）；
-- **读侧不认**：`App.axaml.cs:47` 调 `RuntimeDiscovery.TryConnectAsync()` **无参** ⇒ 永远读 `PryProtocol.DefaultDataDirectory`（`%LOCALAPPDATA%\PryCompanion`），而 `%LOCALAPPDATA%` 不能按进程改定向。
+```powershell
+$env:Pry__DataDirectory = '<repo>\.local-notes\<round>\walk<N>'   # 两个进程都要设
+# 1) 独立后端（端口随便挑，别撞 live 实例）
+$env:Pry__Url = 'http://127.0.0.1:5097/'
+Start-Process '<repo>\src\Pry.Api\bin\Release\net10.0\Pry.Api.exe' -WindowStyle Hidden   # 记下 pid
+# 2) 界面（同一个 Pry__DataDirectory，不设 Pry:Url）：MainWindowHandle 出现后按 3.3 验拓扑
+Start-Process '<repo>\src\Pry.App\bin\Release\net10.0\Pry.App.exe'
+# 3) 只杀后端，UI 不动，同时开始采样
+taskkill /F /T /PID <apiPid>
+```
 
-⇒ 用隔离数据目录就跑不出"UI 发现独立后端"；要用 live 目录跑，就会让实验打开**作者本人**的 `memory.db` 并触发 `MediaCleanupService`。所以第七轮把 ③ 记 **Blocked（F-1）**，解阻只有两条路：作者授权 QA 对 live 目录跑一次，或作者本人跑一次把两个秒表数与终止态文案交给 QA。**不得**为了走通而把阈值、拓扑或本清单删掉。
+三条实测注意：① `dotnet run --project src/Pry.Api` 是**父子两层**进程，描述符记的是**子进程** pid，结束那行 `dotnet.exe` 不会断开任何东西（第八轮实测前踩过）；② 判"接的是发现来的那条"看 **App 自有 Listen 端口数 = 0** 且描述符 `pid` 等于那个独立后端（3.3）；③ 杀完之后**不要**顺手验"优雅退出删文件"——`/F` 不是优雅退出，见第 2 节。
+**不得**为了走通而把阈值、拓扑或本清单删掉；**不得**让实验写作者的 live 目录（跑前跑后各核对一次 `%LOCALAPPDATA%\PryCompanion` 的最新 mtime）。
 
 ### 3.6 真机 UI 注入方法学（有前台全屏程序的机器上必读）
 
@@ -165,7 +174,13 @@ git diff --check
 
 ## 6. 运行记录（跑完逐格填，空格不算跑过）
 
-> **`eval-QA-P1WALK-0922` 已跑并逐格填毕**，记录在 `reports/2026-09-22-phase1-minimal-loop-walkthrough.md` 第 7 节（该节即本表的填写结果）。结果：**① Pass、② Pass（2.4 一项未手工验证）、③ Blocked（F-1）、④ 待作者裁定 ⇒ Phase 1 未结案，无 Fail 项**。下表留空作为**后续轮次的空白模板**。
+> **`eval-QA-P1WALK-0922` 已跑并逐格填毕**，记录在 `reports/2026-09-22-phase1-minimal-loop-walkthrough.md` 第 7 节（该节即本表的填写结果）。结果：**① Pass、② Pass（2.4 一项未手工验证）、③ Blocked（F-1）、④ 待作者裁定 ⇒ Phase 1 未结案，无 Fail 项**。
+>
+> **`eval-QA-P1WALK-0923`（第八轮）已跑并逐格填毕**，记录在 `reports/2026-09-23-phase1-minimal-loop-walkthrough-rerun.md` 第 7 节。结果：**① Pass（带 High 缺陷 `DEF-P1WALK-01`，第四次复现）、② Pass、③ 首次 Pass（③a 0.01 s／③b 47.44 s ≤ 55 s）、④ 未成立 ⇒ Phase 1 仍未结案**；④ 只差"把 `DEF-P1WALK-02` 那批形成可指认提交 + 从干净 worktree 复跑 ①②③"，属作者决策而非编码。**模型档位务必照填**（F-6）：① 的耗时随档位变化（1.7B 约 22 s vs 4B 约 37 s），不写档位跨轮比较会误判成性能回归。
+>
+> 下表留空作为**后续轮次的空白模板**。
+>
+> 下表留空作为**后续轮次的空白模板**。
 
 | Run ID | `eval-QA-P1WALK-<MMDD>` |
 |---|---|

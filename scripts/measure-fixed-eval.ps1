@@ -37,9 +37,28 @@ foreach ($case in $catalog.scenarios) {
     }
 }
 
-# v1 permanent IDs cannot silently disappear when a feature is deferred or renamed.
-$permanent = @{TIM=8;BEH=7;EXP=5;MEM=8;REL=4;ACT=6;CAP=3;PER=4;PRO=4;REC=4}
+# Permanent IDs cannot silently disappear when a feature is deferred or renamed. The map has to be
+# bumped whenever a new ID is minted, so the cross-check below turns a stale map -- or a map whose
+# assignment line PowerShell swallowed (a UTF-8/no-BOM/LF script with non-ASCII comments can do that
+# under Windows PowerShell 5.1, and it fails open) -- into an error instead of a green no-op.
+$permanent = @{TIM=12;BEH=9;EXP=5;MEM=8;REL=4;ACT=6;CAP=3;PER=5;PRO=4;REC=5;PLT=14}
+$observed = @{}
+foreach ($case in $catalog.scenarios) {
+    $parts = $case.id.Split('-')
+    if ($parts.Count -ne 2) { throw "Malformed scenario id: $($case.id)" }
+    $number = [int]$parts[1]
+    if (-not $observed.ContainsKey($parts[0]) -or $number -gt $observed[$parts[0]]) {
+        $observed[$parts[0]] = $number
+    }
+}
+foreach ($prefix in $observed.Keys) {
+    if (-not $permanent.ContainsKey($prefix)) { throw "Permanent-ID guard missing prefix: $prefix" }
+    if ($permanent[$prefix] -ne $observed[$prefix]) {
+        throw "Permanent-ID guard out of sync for $prefix (map=$($permanent[$prefix]) catalog=$($observed[$prefix]))"
+    }
+}
 foreach ($prefix in $permanent.Keys) {
+    if (-not $observed.ContainsKey($prefix)) { throw "Permanent-ID guard names an absent prefix: $prefix" }
     foreach ($number in 1..$permanent[$prefix]) {
         $id = '{0}-{1:000}' -f $prefix, $number
         if (-not $ids.ContainsKey($id)) { throw "Permanent scenario removed: $id" }

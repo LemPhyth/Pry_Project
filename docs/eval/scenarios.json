@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "suiteVersion": "1.1.2",
+  "suiteVersion": "1.3.1",
   "description": "Permanent behavior scenarios. Test mappings are partial evidence, never full scenario acceptance.",
   "scenarios": [
     {
@@ -14,7 +14,8 @@
       "expectedOutputConstraints": "三条均持久化；输入顺序不变；一次规划",
       "forbiddenOutcome": "每条触发独立回复；漏掉第三条",
       "automatedTests": [
-        "Pry.Core.Tests.ConversationRuntimeTests.Rapid_consecutive_inputs_are_merged_into_one_turn_and_one_model_call"
+        "Pry.Core.Tests.ConversationRuntimeTests.Rapid_consecutive_inputs_are_merged_into_one_turn_and_one_model_call",
+        "Pry.Core.Tests.RuntimeRaceTests.Inputs_at_zero_fifty_and_three_hundred_fifty_ms_form_one_turn"
       ],
       "acceptance": "NotRun"
     },
@@ -29,7 +30,8 @@
       "expectedOutputConstraints": "记录等待原因与释放时间；失联 typing 有上限",
       "forbiddenOutcome": "抢话；失联客户端让会话永久卡住",
       "automatedTests": [
-        "Pry.Core.Tests.RuntimeComponentTests.Typing_holds_the_turn_but_expires_so_a_dead_client_cannot_wedge_it"
+        "Pry.Core.Tests.RuntimeComponentTests.Typing_holds_the_turn_but_expires_so_a_dead_client_cannot_wedge_it",
+        "Pry.Core.Tests.RuntimeRaceTests.Repeated_typing_reports_renew_the_lease_but_disconnect_still_expires"
       ],
       "acceptance": "NotRun"
     },
@@ -120,6 +122,68 @@
       "forbiddenOutcome": "用户打字时旧气泡弹出",
       "automatedTests": [
         "Pry.Core.Tests.ConversationRuntimeTests.Starting_to_type_cancels_output_that_is_still_queued"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "TIM-009",
+      "category": "Timing",
+      "severity": "High",
+      "scenario": "攒不够阈值的消息自己醒来",
+      "initialState": "私聊；ReplyFrequency=0.25（计数模式阈值 4 条）；已有一条待处理输入，之后不再有任何新输入",
+      "input": "提交一条消息后静置，只让时间流逝",
+      "expectedDecision": "门控按到达节奏安排唤醒，到点重新评估并成轮",
+      "expectedOutputConstraints": "唤醒由 Runtime 自己的计时器发起，不依赖新输入；到点恰好成轮一次；已落库输入不得无限期停在缓冲里",
+      "forbiddenOutcome": "这条消息永远要等下一条用户消息才被想起；唤醒被实现成一次拒绝",
+      "automatedTests": [
+        "Pry.Core.Tests.RuntimeTriggerIntegrationTests.A_backlog_below_the_threshold_wakes_itself_without_a_new_message"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "TIM-010",
+      "category": "Timing",
+      "severity": "High",
+      "scenario": "纯沉默多久都不成轮",
+      "initialState": "会话此前有过输入；此刻缓冲里没有任何待处理消息",
+      "input": "把空窗时长推进到远超阈值折算所需的时间",
+      "expectedDecision": "拒绝成轮：pending=0 时不允许纯沉默触发",
+      "expectedOutputConstraints": "空窗折算量封顶在 threshold-1；零模型调用；等待原因可指认",
+      "forbiddenOutcome": "只靠沉默就开口；折算量把阈值整个抹平",
+      "automatedTests": [
+        "Pry.Core.Tests.RuntimeTriggerTests.Silence_alone_never_opens_a_turn_how_long_it_lasts"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "TIM-011",
+      "category": "Timing",
+      "severity": "Medium",
+      "scenario": "群聊连续空转的指数退避",
+      "initialState": "群聊；角色连续多轮未说话；另有积压条数可配",
+      "input": "连续空转触发；再补一条使积压达到 bypass 门槛；期间答一轮话后再触发",
+      "expectedDecision": "退避按指数增长并停在封顶；积压达门槛立即越过退避；答过话后计数立刻清零",
+      "expectedOutputConstraints": "退避只作用于群聊路径；每次放行或延后都留原因；延后必须带下一次唤醒时间",
+      "forbiddenOutcome": "退避无上限地拉长；已经答过话仍背着旧计数；延后被实现成永久等待",
+      "automatedTests": [
+        "Pry.Core.Tests.RuntimeTriggerTests.Backoff_grows_exponentially_and_stops_at_the_cap",
+        "Pry.Core.Tests.RuntimeTriggerTests.Waiting_messages_outrank_a_backoff_window",
+        "Pry.Core.Tests.RuntimeTriggerTests.An_answered_turn_clears_the_backoff_immediately"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "TIM-012",
+      "category": "Timing",
+      "severity": "Medium",
+      "scenario": "多气泡间隔来自阅读时长",
+      "initialState": "一轮规划出多条气泡；TypingStyle 按阅读时长配置",
+      "input": "投递长短不同的两组气泡",
+      "expectedDecision": "延迟由文本长度经 ReplyPacing.DelayFor 得出，随阅读时长变化",
+      "expectedOutputConstraints": "长气泡的间隔大于短气泡；真机 P50/P95 与走查同格式记录（该部分需真实模型档位）",
+      "forbiddenOutcome": "退化成固定字符数切分；间隔与内容长度无关",
+      "automatedTests": [
+        "Pry.Core.Tests.RuntimeComponentTests.Pacing_scales_with_reading_time_and_never_uses_a_fixed_character_split"
       ],
       "acceptance": "NotRun"
     },
@@ -221,7 +285,41 @@
       "expectedDecision": "短确认或 DoNothing",
       "expectedOutputConstraints": "不再开启新话题；不每句解释",
       "forbiddenOutcome": "追问为何离开；重复告别轰炸",
-      "automatedTests": [],
+      "automatedTests": [
+        "Pry.Core.Tests.ConversationRuntimeTests.Reply_gate_is_allowed_to_stay_silent",
+        "Pry.Core.Tests.RuntimeComponentTests.Reply_gate_returns_do_nothing_as_a_first_class_result"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "BEH-008",
+      "category": "Behavior",
+      "severity": "High",
+      "scenario": "回复频率调到零：只收不回",
+      "initialState": "会话可用；ReplyFrequency=0.0",
+      "input": "发一条普通消息后静置",
+      "expectedDecision": "消息照常落库但不成轮（frequency_silent）",
+      "expectedOutputConstraints": "落库条数等于发言条数；模型调用数为 0；轨迹记 consumed_silently；用户可见的“已静默”解释仍挂在 DEV-08",
+      "forbiddenOutcome": "静默被实现成丢消息；输入停在缓冲里等下一条才被处理",
+      "automatedTests": [
+        "Pry.Core.Tests.RuntimeTriggerIntegrationTests.Silent_frequency_consumes_the_message_without_opening_a_turn",
+        "Pry.Api.Tests.ReplyFrequencyHostPortTests.Silent_frequency_reaches_the_live_runtime_and_never_opens_a_turn"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "BEH-009",
+      "category": "Behavior",
+      "severity": "High",
+      "scenario": "群聊里没被点名就不开口",
+      "initialState": "IsGroupChat=true 且 TriggerMode=ReplyNecessity；角色名“小予”",
+      "input": "先一条普通陈述；随后一条 @小予 的请求",
+      "expectedDecision": "普通陈述零次调用并记 trigger:Wait；被点名后恰好一次成轮",
+      "expectedOutputConstraints": "未成轮的那条按空转记账而不是丢弃；被点名不得被上一轮退避拖住",
+      "forbiddenOutcome": "没被点名也抢话；点名后仍沉默",
+      "automatedTests": [
+        "Pry.Core.Tests.RuntimeTriggerIntegrationTests.Group_chatter_stays_quiet_in_necessity_mode_until_the_character_is_called"
+      ],
       "acceptance": "NotRun"
     },
     {
@@ -717,10 +815,10 @@
       "category": "Recovery",
       "severity": "High",
       "scenario": "Model timeout / malformed response",
-      "initialState": "HTTP 替身支持超时、断流、无效 JSON、401/429/500",
+      "initialState": "HTTP 替身支持超时、断流、无效 JSON、401/429/500；客户端按请求分档配预算（转写那一档比共享档宽），`HttpClient` 兜底在最外一层",
       "input": "请求模型；取消；再发正常输入",
-      "expectedDecision": "有界失败；稳定错误语义；下一回合可用",
-      "expectedOutputConstraints": "失败不写成功消息；用户取消与 timeout 可区分",
+      "expectedDecision": "有界失败；稳定错误语义；下一回合可用；宽档请求在自己的那一档里跑完，不被共享兜底顶掉",
+      "expectedOutputConstraints": "失败不写成功消息；用户取消与 timeout 可区分；兜底必须严格宽于最宽的逐请求预算（否则声明的那档永远轮不到做主），且每一档都是正数——负数在 .NET 里是“永不超时”而不是“超时很长”",
       "forbiddenOutcome": "无限等待；部分坏输出当完整成功",
       "automatedTests": [
         "Pry.Api.Tests.ProactiveSchedulerTests.Failed_or_invalid_generation_backs_off_without_messages",
@@ -729,7 +827,8 @@
         "Pry.Core.Tests.ModelProviderErrorTests.Stopping_a_turn_stays_a_cancellation_and_is_not_recorded_as_a_model_failure",
         "Pry.Client.Tests.PryErrorPresentationTests.Each_provider_code_gets_its_own_action",
         "Pry.Client.Tests.PryErrorPresentationTests.Timeout_reads_as_slow_not_as_an_error_code",
-        "Pry.Client.Tests.BackendRequestBudgetTests.An_exhausted_whole_request_budget_reports_a_timeout_instead_of_a_cancellation"
+        "Pry.Client.Tests.BackendRequestBudgetTests.An_exhausted_whole_request_budget_reports_a_timeout_instead_of_a_cancellation",
+        "Pry.Client.Tests.BackendRequestBudgetTests.Transcription_gets_its_own_budget_without_loosening_the_shared_one"
       ],
       "acceptance": "NotRun"
     },
@@ -926,17 +1025,18 @@
       "category": "Protocol",
       "severity": "Medium",
       "scenario": "半开连接有界检出",
-      "initialState": "服务端建立事件流后既不发也不关",
+      "initialState": "服务端建立事件流后既不发也不关；另一档初态是订阅连响应头都不作答",
       "input": "保持零字节；再对照密于心率的心跳与稀于窗口的心跳",
-      "expectedDecision": "在两个心跳周期加抖动余量内判半开并退出等待",
-      "expectedOutputConstraints": "正常 EOF 与超时是两条不同退出路径；:ping 打乱事件顺序或撑破刷写窗口都算失败",
-      "forbiddenOutcome": "前台订阅者永远阻塞；一次服务端刷写延迟就把安静会话误判断连",
+      "expectedDecision": "已建立的那条在两个心跳周期加抖动余量内判半开并退出等待；起头无响应的那条按本机逐请求预算失败并把重试交给上层退避，两档各用自己的时钟",
+      "expectedOutputConstraints": "正常 EOF 与超时是两条不同退出路径；:ping 打乱事件顺序或撑破刷写窗口都算失败；起头阶段的预算不得跟着 `HttpClient` 的兜底一起放宽",
+      "forbiddenOutcome": "前台订阅者永远阻塞；一次服务端刷写延迟就把安静会话误判断连；把兜底那一档当作起头上限，于是一次无人应答的订阅把界面钉在四分多钟",
       "automatedTests": [
         "Pry.Client.Tests.EventStreamLivenessTests.Silent_stream_is_declared_half_open_instead_of_blocking_forever",
         "Pry.Client.Tests.EventStreamLivenessTests.Pings_spaced_within_the_window_keep_the_subscription_alive",
         "Pry.Api.Tests.EventStreamHeartbeatTests.Idle_stream_emits_ping_frames_and_keeps_event_order",
         "Pry.Api.Tests.EventStreamHeartbeatTests.Liveness_window_covers_at_least_two_heartbeat_periods",
-        "Pry.Client.Tests.BackendRequestBudgetTests.Idle_subscription_still_fits_inside_the_request_budget"
+        "Pry.Client.Tests.BackendRequestBudgetTests.Idle_subscription_still_fits_inside_the_request_budget",
+        "Pry.Client.Tests.BackendRequestBudgetTests.An_event_subscription_that_never_gets_headers_fails_on_the_local_budget"
       ],
       "acceptance": "NotRun"
     },
@@ -1030,6 +1130,23 @@
         "Pry.App.Tests.MessengerEventStreamControllerTests.A_stream_from_the_room_the_user_left_touches_nothing",
         "Pry.App.Tests.MessengerEventStreamControllerTests.Attaching_wires_every_callback_the_runner_can_call",
         "Pry.App.Tests.MessengerEventStreamControllerTests.A_new_message_refetches_this_rooms_history_then_the_room_list"
+      ],
+      "acceptance": "NotRun"
+    },
+    {
+      "id": "PLT-014",
+      "category": "Protocol",
+      "severity": "High",
+      "scenario": "回复频率经宿主配置走到活运行时：可校验、可回读、改值换实例",
+      "initialState": "一个后端实例配一套独立临时数据目录；配置里不写 replyFrequency（协议默认 1.0），且没有可用的模型档位",
+      "input": "PATCH /api/v1/preferences 依次发 0.25、1.5、-0.1；再把值改成 0.0 提交一条消息；最后改回 0.25 并再提交一条",
+      "expectedDecision": "越界值返回 400 且错误字段为 turnTaking.replyFrequency；合法值返回 200 并原样回读；配置一变，内存里那个运行时实例随之替换",
+      "expectedOutputConstraints": "被拒的那一次不留半个配置（重读仍是上一个合法值）；runtime-state 的 replyFrequency／triggerMode／isGroupChat 三处只读投影与活实例一致；静默频率下消息照常落库而 recentTurns 为空、轨迹记 consumed_silently；客户端设置面板保存时不得把面板从未展示过的频率字段抹成默认值",
+      "forbiddenOutcome": "配置只落库、要重启才生效（改值后旧实例继续按旧频率跑）；400 之后留下部分写入；面板保存把不可见字段静默重置",
+      "automatedTests": [
+        "Pry.Api.Tests.ReplyFrequencyHostPortTests.Reply_frequency_round_trips_and_rejects_values_outside_zero_to_one",
+        "Pry.Api.Tests.ReplyFrequencyHostPortTests.Changing_the_frequency_replaces_the_live_runtime_and_the_new_one_carries_the_new_value",
+        "Pry.App.Tests.ConversationSettingsEditorTests.Saving_the_panel_keeps_a_frequency_the_panel_never_shows"
       ],
       "acceptance": "NotRun"
     },
