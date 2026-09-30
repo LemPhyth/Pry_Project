@@ -40,6 +40,65 @@ public sealed class EventStreamHeartbeatTests
     }
 
     [Fact]
+    public async Task Abandoning_the_stream_after_one_heartbeat_frame_releases_the_in_flight_cursor()
+    {
+        // DEF-P1WALK-03：编译器生成的流在自己那笔 MoveNextAsync 结束前被释放必定抛 NotSupportedException。
+        // 心跳能递出就说明内层一定还在飞，所以这条路径的干净必须是构造出来的，不能靠机器安静时内层恰好先落地：
+        // 这里的到达等待不认取消、也不会自己结束，放弃流的那一刻它是唯一还没落地的一笔。
+        var ct = TestContext.Current.CancellationToken;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        await using var frames = SseEventStream
+            .FramesAsync(QuietArrivalWait(Task.Delay(TimeSpan.FromSeconds(1), CancellationToken.None)),
+                TimeSpan.FromMilliseconds(20), cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        Assert.Equal(PryProtocol.HeartbeatFrame, await NextAsync(frames, ct));
+        // 离开作用域＝消费方放弃流：这里没有第二帧心跳可等、也没有事件到达，只有那笔在飞的 MoveNextAsync。
+    }
+
+    [Fact]
+    public async Task Disconnect_after_one_heartbeat_frame_reports_cancellation_instead_of_a_dispose_failure()
+    {
+        // 生产侧唯一的离开路径是客户端断开（ChatController.cs:71 的 await foreach + 请求 token）。
+        // 那一次取消必须原样出场：被 Dispose 的 NotSupportedException 顶掉之后，一次正常断连在日志里
+        // 就与真实故障同形，下一次归因会被它带偏。内层的到达等待认这个 token，所以结算是有界的。
+        var ct = TestContext.Current.CancellationToken;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var frames = SseEventStream
+            .FramesAsync(QuietArrivalWait(Task.Delay(TimeSpan.FromSeconds(1), cancellation.Token)),
+                TimeSpan.FromMilliseconds(20), cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        Assert.Equal(PryProtocol.HeartbeatFrame, await NextAsync(frames, ct));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => frames.MoveNextAsync().AsTask());
+        await frames.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Settling_the_advance_before_release_still_releases_the_cursor()
+    {
+        // 判据 ① 是"先结算那笔 MoveNextAsync，再 DisposeAsync"两半。只把 Dispose 删掉的假修法在上面两条用例里
+        // 都不会红（不抛、也不改离开原因），所以这里给内层记一笔账：让它停在"已交出一帧、尚未结束"的可释放状态。
+        var ct = TestContext.Current.CancellationToken;
+        var trace = new List<string>();
+        var arrival = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using (var frames = SseEventStream
+            .FramesAsync(GatedCursor(arrival.Task, trace), TimeSpan.FromMilliseconds(20), ct)
+            .GetAsyncEnumerator(ct))
+        {
+            Assert.Equal(PryProtocol.HeartbeatFrame, await NextAsync(frames, ct));
+            arrival.SetResult();
+            var eventFrame = await NextTypedAsync(frames, ct, "message.created");
+            Assert.StartsWith("id: 1\nevent: message.created\ndata: ", eventFrame, StringComparison.Ordinal);
+        }
+
+        // 释放发生过，而且只发生一次：内层的 finally 只能由 DisposeAsync 跑到（它还挂在这一帧之后的等待上）。
+        Assert.Equal(["released"], trace);
+    }
+
+    [Fact]
     public void Default_heartbeat_sits_inside_the_tunable_band() =>
         Assert.InRange(PryProtocol.HeartbeatIntervalMs, 1_000, PryProtocol.LivenessTimeoutMs / 2);
 
@@ -135,7 +194,7 @@ public sealed class EventStreamHeartbeatTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(Path.Combine(directory, "memory.db"));
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     }
@@ -173,11 +232,45 @@ public sealed class EventStreamHeartbeatTests
         return frames.Current;
     }
 
-    /// <summary>一上来就结束的游标，用于区分"没有事件"与"仍在等待事件"。</summary>
+    /// <summary>
+    /// 一上来就结束的游标，用于区分"没有事件"与"仍在等待事件"。
+    /// 这里刻意用已完成的 await 而不是 <c>Task.Yield()</c>：线程换手会让 30 ms 的心跳抢在那笔推进落地之前，
+    /// "已经结束的游标不该被心跳撑长"这条判据就变成去赢一场比赛（#27 防复发 ③）。
+    /// </summary>
     private static async IAsyncEnumerable<ConversationEvent> Empty()
     {
-        await Task.Yield();
+        await Task.CompletedTask;
         yield break;
+    }
+
+    /// <summary>
+    /// 安静会话的内层游标：一笔只由 <paramref name="arrival"/> 放行的到达等待。这里刻意不用
+    /// <c>[EnumeratorCancellation]</c>——那个特性会让参数拿到 <c>GetAsyncEnumerator</c> 的 token 而丢掉实参，
+    /// "内层此刻一定还在飞"就必须由调用方交进来的这笔任务决定，而不是由游标的取消 token 决定。
+    /// </summary>
+    private static async IAsyncEnumerable<ConversationEvent> QuietArrivalWait(Task arrival)
+    {
+        await arrival;
+        yield break;
+    }
+
+    /// <summary>
+    /// 门控内层游标：推进停在 <paramref name="arrival"/> 上，交出一帧事件后再挂到一次不会结束的等待上，
+    /// 并把释放记进 <paramref name="trace"/>。停在"已交出、尚未结束"的那一刻正是 <c>DisposeAsync</c> 唯一能跑到
+    /// <c>finally</c> 的状态，因此这条 trace 量的就是游标有没有真的被释放。
+    /// </summary>
+    private static async IAsyncEnumerable<ConversationEvent> GatedCursor(Task arrival, List<string> trace)
+    {
+        try
+        {
+            await arrival;
+            yield return new ConversationEvent(1, "message.created", DateTimeOffset.UtcNow, new { messageId = 1 });
+            await Task.Delay(Timeout.InfiniteTimeSpan, CancellationToken.None);
+        }
+        finally
+        {
+            trace.Add("released");
+        }
     }
 
     private static async Task<List<ConversationEvent>> TakeAsync(ConversationEventLog log, CancellationToken ct)

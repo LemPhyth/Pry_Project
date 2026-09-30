@@ -16,23 +16,42 @@ public static class SseEventStream
     public static async IAsyncEnumerable<string> FramesAsync(IAsyncEnumerable<ConversationEvent> events,
         TimeSpan heartbeat, [EnumeratorCancellation] CancellationToken token)
     {
-        await using var cursor = events.GetAsyncEnumerator(token);
-        while (true)
+        var cursor = events.GetAsyncEnumerator(token);
+        // 编译器生成的异步流在自己那笔 MoveNextAsync 结束前被释放是固定抛 NotSupportedException 的非法状态，
+        // 而心跳能递出就说明那笔任务还在飞，所以每一条离开路径都要先把它结算掉再 Dispose（见 #27/DEF-P1WALK-03）。
+        // 代价是对内层的一条要求：它必须认这个 token，否则"等到它自己结束"没有上界。
+        Task<bool>? inFlight = null;
+        try
         {
-            // MoveNextAsync 不能被取消后复用，所以这里只等它，超时时改写下一条心跳，游标保持原位。
-            var moved = cursor.MoveNextAsync().AsTask();
-            var idle = Task.Delay(heartbeat, token);
-            while (!moved.IsCompleted)
+            while (true)
             {
-                await Task.WhenAny(moved, idle);
-                if (moved.IsCompleted) break;
-                token.ThrowIfCancellationRequested();
-                yield return PryProtocol.HeartbeatFrame;
-                idle = Task.Delay(heartbeat, token);
+                // MoveNextAsync 不能被取消后复用，所以这里只等它，超时时改写下一条心跳，游标保持原位。
+                var moved = cursor.MoveNextAsync().AsTask();
+                inFlight = moved;
+                var idle = Task.Delay(heartbeat, token);
+                while (!moved.IsCompleted)
+                {
+                    await Task.WhenAny(moved, idle);
+                    if (moved.IsCompleted) break;
+                    token.ThrowIfCancellationRequested();
+                    yield return PryProtocol.HeartbeatFrame;
+                    idle = Task.Delay(heartbeat, token);
+                }
+
+                inFlight = null;
+                if (!await moved) yield break;
+                yield return Format(cursor.Current);
+            }
+        }
+        finally
+        {
+            if (inFlight is { } pending)
+            {
+                // 只等它结束，不取它的结果：离开原因已经由上面抛出，Dispose 路径再抛一次只会把它顶掉。
+                _ = await Task.WhenAny(pending);
             }
 
-            if (!await moved) yield break;
-            yield return Format(cursor.Current);
+            await cursor.DisposeAsync();
         }
     }
 
