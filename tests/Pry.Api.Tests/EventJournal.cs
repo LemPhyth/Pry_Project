@@ -30,7 +30,7 @@ public sealed class EventJournal(string root, MemoryDatabase database, string co
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
+        SqliteTestPools.Clear(Path.Combine(root, "memory.db"));
         if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
     }
 }

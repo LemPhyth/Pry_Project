@@ -188,7 +188,7 @@ public sealed class ProactivePolicyTests
         public DatabaseFixture() => Database = new(Path.Combine(DirectoryPath, "memory.db"));
         public void Dispose()
         {
-            SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(Path.Combine(DirectoryPath, "memory.db"));
             if (Directory.Exists(DirectoryPath)) Directory.Delete(DirectoryPath, true);
         }
     }

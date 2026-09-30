@@ -141,7 +141,7 @@ public sealed class CoreTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(path);
             foreach (var suffix in new[] { "", "-wal", "-shm" }) if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
     }
@@ -174,7 +174,7 @@ public sealed class CoreTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(path);
             foreach (var suffix in new[] { "", "-wal", "-shm" }) if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
     }
@@ -200,7 +200,7 @@ public sealed class CoreTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(path);
             foreach (var suffix in new[] { "", "-wal", "-shm" }) if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
     }
@@ -238,7 +238,7 @@ public sealed class CoreTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools(); foreach (var suffix in new[] { "", "-wal", "-shm" }) if (File.Exists(path + suffix)) File.Delete(path + suffix);
+            SqliteTestPools.Clear(path); foreach (var suffix in new[] { "", "-wal", "-shm" }) if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
     }
 
@@ -264,7 +264,7 @@ public sealed class CoreTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(path);
             foreach (var suffix in new[] { "", "-wal", "-shm" }) if (File.Exists(path + suffix)) File.Delete(path + suffix);
         }
     }
@@ -323,7 +323,7 @@ public sealed class CoreTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(databasePath);
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }
     }
@@ -352,7 +352,7 @@ public sealed class CoreTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(Path.Combine(root, "memory.db"));
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }
     }
@@ -382,7 +382,7 @@ public sealed class CoreTests
         }
         finally
         {
-            SqliteConnection.ClearAllPools(); if (Directory.Exists(root)) Directory.Delete(root, true);
+            SqliteTestPools.Clear(Path.Combine(root, "memory.db")); if (Directory.Exists(root)) Directory.Delete(root, true);
         }
     }
 

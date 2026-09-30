@@ -110,6 +110,6 @@ public sealed class ProactiveDeliveryTests
             return (await Database.SaveProactivePolicyAsync(new ProactivePolicy("character", "room", true,
                 DailyLimit: 1, TimeZoneId: "UTC", QuietHoursEnabled: false), 0, ct))!;
         }
-        public void Dispose() { SqliteConnection.ClearAllPools(); Directory.Delete(System.IO.Path.GetDirectoryName(Path)!, true); }
+        public void Dispose() { SqliteTestPools.Clear(Path); Directory.Delete(System.IO.Path.GetDirectoryName(Path)!, true); }
     }
 }

@@ -78,7 +78,7 @@ public sealed class ProactivePolicyTests
             await database.DeleteConversationAsync("room", token);
             Assert.Null(await restarted.GetProactivePolicyAsync("character", token));
         }
-        finally { SqliteConnection.ClearAllPools(); Directory.Delete(Path.GetDirectoryName(path)!, true); }
+        finally { SqliteTestPools.Clear(path); Directory.Delete(Path.GetDirectoryName(path)!, true); }
     }
 
     private static ProactiveEligibility Evaluate(ProactivePolicy? policy = null, DateTimeOffset? now = null,

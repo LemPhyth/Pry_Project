@@ -313,7 +313,7 @@ public sealed class ProtocolEventJournalTests
         public Fixture() => Database = new(Path);
         public void Dispose()
         {
-            SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(Path);
             var root = System.IO.Path.GetDirectoryName(Path)!;
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }

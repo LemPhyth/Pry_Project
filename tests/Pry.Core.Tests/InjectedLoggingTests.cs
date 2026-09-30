@@ -103,7 +103,7 @@ public sealed class InjectedLoggingTests
 
         public void Dispose()
         {
-            SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(Path);
             if (System.IO.Directory.Exists(Directory)) System.IO.Directory.Delete(Directory, true);
         }
     }

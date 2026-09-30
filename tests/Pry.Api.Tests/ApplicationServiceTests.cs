@@ -767,7 +767,7 @@ public sealed class ApplicationServiceTests
         }
         public ValueTask DisposeAsync()
         {
-            SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(path);
             var root = Path.GetDirectoryName(path)!;
             if (System.IO.Directory.Exists(root)) System.IO.Directory.Delete(root, true);
             return ValueTask.CompletedTask;

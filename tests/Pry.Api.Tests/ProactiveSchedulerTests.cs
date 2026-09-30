@@ -238,7 +238,7 @@ public sealed class ProactiveSchedulerTests
         public async ValueTask DisposeAsync()
         {
             Scheduler.Dispose(); await Sessions.DisposeAsync(); await Runtime.StopAsync(CancellationToken.None);
-            await _registry.DisposeAsync(); SqliteConnection.ClearAllPools(); Directory.Delete(_directory, true);
+            await _registry.DisposeAsync(); SqliteTestPools.Clear(Path.Combine(_directory, "memory.db")); Directory.Delete(_directory, true);
         }
     }
 }

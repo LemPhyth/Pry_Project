@@ -39,7 +39,7 @@ public sealed class EmbeddedBackendEndpointTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(Path.Combine(dataDirectory, "memory.db"));
             Directory.Delete(dataDirectory, recursive: true);
         }
     }

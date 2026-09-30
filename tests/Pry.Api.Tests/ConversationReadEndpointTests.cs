@@ -77,6 +77,6 @@ public sealed class ConversationReadEndpointTests
                 finally { await app.StopAsync(ct); }
             }
         }
-        finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+        finally { SqliteTestPools.Clear(Path.Combine(directory, "memory.db")); if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
 }

@@ -76,7 +76,7 @@ public sealed class ProactiveGeneratorTests
         finally
         {
             await server.StopAsync(ct);
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(Path.Combine(directory, "memory.db"));
             if (Directory.Exists(directory)) Directory.Delete(directory, true);
         }
     }

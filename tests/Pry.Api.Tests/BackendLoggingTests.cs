@@ -165,7 +165,7 @@ public sealed class BackendLoggingTests
 
     private static void Cleanup(string directory)
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        SqliteTestPools.Clear(Path.Combine(directory, "memory.db"));
         try { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
         catch (IOException) { }
     }

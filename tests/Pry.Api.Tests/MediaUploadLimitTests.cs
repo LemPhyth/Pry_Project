@@ -182,7 +182,7 @@ public sealed class MediaUploadLimitTests
 
     private static void Cleanup(string directory)
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        SqliteTestPools.Clear(Path.Combine(directory, "memory.db"));
         if (Directory.Exists(directory)) try { Directory.Delete(directory, recursive: true); }
         catch (IOException) { }
     }

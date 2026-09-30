@@ -57,8 +57,15 @@ public sealed class LoopbackBindingTests
 
     private static string NewDirectory() => Path.Combine(Path.GetTempPath(), $"pry-loopback-{Guid.NewGuid():N}");
 
+    /// <summary>
+    /// 先放掉自己那条池再删目录。本刀把别人的进程级清池去掉之后，这个 fixture 才第一次暴露出"从不清池"：
+    /// 之前那份 <c>memory.db</c> 是被别的 collection 的 <c>ClearAllPools</c> 顺手放开的（DEF-P1WALK-04 的副作用面）。
+    /// 下面吞掉 <c>IOException</c> 仍然保留——杀软扫刚关闭的文件是真的会让删除慢一拍，但因此"漏删"在套件里是静默的，
+    /// 所以这一族的实际读数只能用临时目录计数，不能用"全绿"。
+    /// </summary>
     private static void Delete(string directory)
     {
+        SqliteTestPools.Clear(Path.Combine(directory, "memory.db"));
         try { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }

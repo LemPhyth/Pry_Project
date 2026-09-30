@@ -304,7 +304,7 @@ public sealed class ProtocolEventCursorTests
             app.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
             app.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Http.Dispose();
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(Path.Combine(dataDirectory, "memory.db"));
             if (Directory.Exists(dataDirectory)) Directory.Delete(dataDirectory, recursive: true);
         }
     }

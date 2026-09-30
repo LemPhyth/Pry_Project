@@ -140,7 +140,7 @@ public sealed class ProtocolNegotiationTests
         {
             Http.Dispose();
             await App.DisposeAsync();
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(Path.Combine(dataDirectory, "memory.db"));
             if (System.IO.Directory.Exists(dataDirectory)) System.IO.Directory.Delete(dataDirectory, true);
         }
 

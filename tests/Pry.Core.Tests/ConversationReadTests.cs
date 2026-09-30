@@ -108,6 +108,6 @@ public sealed class ConversationReadTests
         public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"pry-read-{Guid.NewGuid():N}", "memory.db");
         public MemoryDatabase Database { get; }
         public Fixture() => Database = new(Path);
-        public void Dispose() { SqliteConnection.ClearAllPools(); Directory.Delete(System.IO.Path.GetDirectoryName(Path)!, true); }
+        public void Dispose() { SqliteTestPools.Clear(Path); Directory.Delete(System.IO.Path.GetDirectoryName(Path)!, true); }
     }
 }

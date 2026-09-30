@@ -394,7 +394,7 @@ public sealed class SessionTokenTests
 
     private static void Cleanup(string directory)
     {
-        SqliteConnection.ClearAllPools();
+        SqliteTestPools.Clear(Path.Combine(directory, "memory.db"));
         if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
     }
 

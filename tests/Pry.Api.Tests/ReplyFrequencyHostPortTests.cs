@@ -147,7 +147,7 @@ public sealed class ReplyFrequencyHostPortTests
         {
             Http.Dispose();
             await app.DisposeAsync();
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            SqliteTestPools.Clear(Path.Combine(directory, "memory.db"));
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     }
