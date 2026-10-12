@@ -283,12 +283,49 @@ Phase 2 的核心问题是"一个长期存在的角色此刻处于什么状态�
 
 本节不是礼节性的"感谢名单"，它的作用是：上面每一步在动手之前先在这里对一次线，避免 Phase 2 的实现把别人的冻结结论改掉。分工线本体在 `docs/phase1-platform-baseline.md` §5、§5.1，此处只登记与**触发层**相撞的四条。
 
-1. **对外通道只有一个，且不在本 Owner 手里**（§5）：Runtime 的全部外发经 `IRuntimeOutputSink`（`RuntimePorts.cs:107-124`，六个方法），宿主实现与"方法调用 → 协议事件"的映射归 Core Platform Owner。本契约里任何判为 `Adopt`/`Adapt` 的机制都**不得**新增 sink 之外的对外通道，也不得让 Runtime 自己发 SSE 或持有事件日志。§7 第 1 步"宿主端口"因此是改 `ConversationRuntimeOptions` 的入参形状 + Api 侧供值，不是加一条新的输出。
+1. **对外通道只有一个，且不在本 Owner 手里**（§5）：Runtime 的全部外发经 `IRuntimeOutputSink`（`RuntimePorts.cs:112-129`，六个方法；2026-09-30 就地更正坐标，原写 `107-124`，下移是 §7.2 那刀给 `ReplyAdvice` 加可选参数与参数文档造成的，接口本体没有被移动过），宿主实现与"方法调用 → 协议事件"的映射归 Core Platform Owner。本契约里任何判为 `Adopt`/`Adapt` 的机制都**不得**新增 sink 之外的对外通道，也不得让 Runtime 自己发 SSE 或持有事件日志。§7 第 1 步"宿主端口"因此是改 `ConversationRuntimeOptions` 的入参形状 + Api 侧供值，不是加一条新的输出。
 2. **失效权威在 SQLite，不在进程内**（§5）：epoch 由 `IRuntimeStore.ReadEpochAsync`/`BumpEpochAsync` 承载（`RuntimePorts.cs:10` 起），Runtime 只在锁内比较 `TurnIdentity.FencedRevision`。本契约 §3.6 提到的"节奏统计跨重启丢失"不能靠 Runtime 自己读库解决——那是 Persistence Owner 的表/列，且 SQL 收敛本身已挂在 PLAT-004 名下。§7 第 4 步按此归属，不由本 Owner 代做。
 3. **Capability 类型的住处还没满足冻结结论**（§5.1）：`CapabilityRequest`/`CapabilityResult` 目前定义在 `Pry.Core.Runtime`（`RuntimeModels.cs:143,146`），而 §5.1 要求它们与 `ICapability`/`CapabilityDescriptor`/`CapabilityPermission` 同归 `Pry.Core.Abstractions`（那里今天只有 `IChatModel` 等同侧接口，`ICapability` 系在 `src/` 内仍零命中）。这与触发层有两处实打实的相撞：§3.12 的打断要按"是不是 capability 续轮"判、§3.13 的 wait 要消费 `CapabilityResult`。所以 DEV-04/DEV-05 的前置里包含这次搬迁，且搬迁**不要求**提前实现 RT-007 的通用 Tool Loop（§5.1 同一句冻结结论）。顺带更正坐标：§5.1 写的 `RuntimeModels.cs:137,140` 因本轮给 `TurnIdentity` 补注释而下移到 `:143,146`，不是类型被移动过。
 4. **不引入第二个 Context 概念**（§5.1 末段）：必要性评分的输入全部是 Runtime 进程内已测得的事实（`TriggerFacts`），不接 Memory。`IRelevantMemorySource` 与 `IMemoryRetriever` 的收敛归 Memory Owner；本契约若哪天要让"记忆相关性"进评分，那是先改 §5.1 归属、再动代码，不是在 Runtime 里加一条检索旁路。
 
 一句可执行的判据：**把任何 `Pending` 转成实现的轮次，开工前先在本节列出它碰上面哪条冻结结论；碰了就去改对方的文档并让对方确认，而不是在自己文档里写"应该没问题"。**
+
+### 7.2 生产者接缝（Character Intelligence lane）对过 §7.1 的结果（2026-09-30；Runtime Owner 已于 §7.3 确认）
+
+作者 2026-09-30 派给 RT-002 与本 lane 的合刀把 `DecideAsync`／`CompleteTurnAsync` 接进了发行链路（`src/Pry.Api/Runtime/CharacterIntelligenceGateway.cs`，宿主在 `ConversationSessionService.CreateAsync` 注入）。按上一句判据，开工前对线、现在把结果落在同一处给别人读。**本节不改动 §7.1 的四条结论本体，只登记一次外部 lane 的消费。**
+
+撞上的两条，以及各自怎么避开的：
+
+1. **撞第 1 条（对外通道只有一个，且不在本 lane 手里）**：轮次终局与气泡正文都是**旁听**得来的——`CharacterIntelligenceOutputSink` 是 `IRuntimeOutputSink` 的内侧装饰器，六个方法逐字转给 Core Platform 的 `ConversationRuntimeEventSink`（`ConversationSessionService.cs:286`），本 lane 不发 SSE、不持有事件日志、不改"方法调用 → 协议事件"的映射，也不改 `RuntimePorts.cs:112` 的接口形状。**需要 Runtime Owner 确认的就是这一点**：装饰器插在同一根通道上，如果哪天 sink 的映射要按调用顺序或异常语义做别的事，被包一层会先看见。学习回报失败被吞成一条日志而不是 `turn.failed`（`CharacterIntelligenceGateway.cs:286`），理由写在代码里：用户已经看见那句话了。
+2. **撞第 4 条（不引入第二个 Context，评分/决策不接 Memory）**：`SituationSnapshot.Memory` 一律填 `RelevantMemoryView.Unavailable()`（"这一轮真的没查"），而不是伪造一次空检索。`IRelevantMemorySource` 与 `IMemoryRetriever` 收敛成什么由 Memory Owner 定，本 lane 不在宿主里加检索旁路；代价是提示词里那句"不要说对方从没提过"现在恒真，这条约束的解除条件记在 `docs/character-intelligence.md` §8。
+
+没撞的两条：epoch／围栏一个字没动（建议器只在 `ReplyGate` 的状态闸门全过之后被调用，陈旧轮次到不了它）；`CapabilityRequest`／`CapabilityResult` 的住处没动，且接缝把 `AvailableCapabilityNames` 留空——行为规划器自带的 `capability:none_registered` 闸门会把这个意图降级，所以 §7.1 第 3 条那次搬迁不是本刀的前置。
+
+三处**只增不改**的共享文件变更（都在别人的文件里，逐条列出以便复查）：`RuntimePorts.cs` 的 `ReplyAdvice` 末尾加可选 `string? PromptBlock = null`（Runtime 只搬运不解释）；`TurnTaking/ReplyPlanner.cs` 的 `PlanAsync` 末尾加可选 `string? intelligenceBlock = null`；`Api/Runtime/RuntimeAdapters.cs` 把 `request.Advice?.PromptBlock` 传进去。三者传 null 时提示词与接线前**逐字一致**，这条有判据守着（`CharacterIntelligenceSeamTests` 第 6 条：同一轮次带决策与不带决策各走一遍生成端口）。主动消息送审那条分支（`ConversationRuntime.cs:1010`）原样走过渡建议器——那里 `CombinedInput` 装的是她自己打算说的话，不是用户输入，本刀不给它加生产者。
+
+本 lane 明确**没做**、且不得被读成"已修"的两件事：`ObserveFeedbackAsync`（第三个调用点）仍未接；`ExpressionLearner.DrainAsync` 在生产里没有排空者，观察队列到 `QueueCapacity = 64` 之后开始丢，因此**学到的口癖今天依然进不了 `expression_pattern`**。细则与解除条件见 `docs/character-intelligence.md` §8 缺口 ④。
+
+### 7.3 Runtime Owner 对 §7.2 的确认（2026-09-30）
+
+按 §7.1 末句的判据，这一节是"对方确认"的那一半。**下面每一条都是实读代码得出的，不是读 §7.2 的叙述得出的**；标注"未实测"的地方只代表读码结论。本节不改动 §7.1 四条结论本体，也不改写 §7.2 的记录。
+
+**确认成立的部分（§7.1 四条结论都没有被这一刀破掉）**：
+
+- 结论 1：`CharacterIntelligenceOutputSink`（`src/Pry.Api/Runtime/CharacterIntelligenceGateway.cs:256-296`）实现的是同一个 `IRuntimeOutputSink`——`TypingIndicatorAsync`／`PhaseChangedAsync`／`CapabilityRequestedAsync`／`FailureAsync` 是表达式体纯转发，`MessageDeliveredAsync` 先抄一份正文再转发，`TurnTransitionAsync` 先 `await inner` 再回报。接口形状（`RuntimePorts.cs:112-129`）与宿主映射 `ConversationRuntimeEventSink`（`src/Pry.Api/Runtime/RuntimeAdapters.cs:121`）一字未改；本 lane 不发 SSE、不持有 `ConversationEventLog`，共享文件里只有 `ReplyAdvice` 末尾多一个可选参数。**接线点唯一**：`ConversationSessionService.cs:286` 造装饰器、`:293` 造建议器，两处由同一个 `intelligence` 判据同时开关（要么都接要么都不接），`Program.cs:71` 注册为单例。
+- **顺带对我自己写的一条约束**（因为将来 sink 映射的改动由本 Owner 做）：装饰器插在真正外发之前，它任何**会抛**或**无界阻塞**的前置工作都会让用户少看见一条已冻结的协议事件。现状满足——`RecordDeliveredBubble`（`:111-123`）只在 `PendingTurnLimit = 8` 的表上做一次性加锁扫描且临界区内不 await，`ReportTurnEndAsync` 在 `await inner` 之后。以后我改映射时按这条自查，不要求他们把装饰器搬到通道外面。
+- 学习回报失败吞成一条日志而不是 `turn.failed`（`:284-288`）**不算新增对外通道**，也不算掩盖失败：`catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }` 在吞异常之前，取消原因不会被顶掉——与 `DEF-P1WALK-03` 那条"Dispose 路径不许顶替离开原因"是同一个不变量，两处形状一致。
+- 结论 2：`ReplyGate.DecideAsync`（`src/Pry.Core/Runtime/ReplyGate.cs:19-38`）先过五道状态闸门（`IsCurrentTurn`／`BufferHasNewInput`／`UserTyping`／`PendingOutputCount`／`CapabilityPending`）才调 advisor，而 `IsCurrentTurn` 来自 `!turn.Closed && ReferenceEquals(_active, turn) && !IsStaleLocked(...)`（`ConversationRuntime.cs:965-966`）；`IsStaleLocked`（`:567`）、`StillCurrentAsync`（`:699`／`:741`／`:880`）、`ReadEpochAsync` 的权威位置全未改动。主动候选（`:1016`，`ProactiveOrigin: true`）在网关 `:197` 原样回落过渡建议器，不记账。
+- 结论 3：`CapabilityRequest`／`CapabilityResult` 的住处没动（`RuntimeModels.cs` 不在本刀文件面里，`git status` 亦未标记），接缝把 `AvailableCapabilityNames` 留空，所以 §7.1 第 3 条那次搬迁不是本刀的前置——这一点与他们的记录一致。
+- 结论 4：`SituationSnapshot.Memory` 恒为 `RelevantMemoryView.Unavailable()`（`:211`），宿主里没有第二条检索旁路。**一句必要澄清，免得日后被反着读**：`ReplyPlanner.cs:41` 那句 `_memoryRetriever.SearchMemoriesAsync(...)` 是既存事实，属生成端的记忆，不是必要性评分的输入。所以"Memory 没接进评分"不等于"这一轮全链路没有检索"。
+
+**确认时读到、他们在自己那一层看不到的三条 Runtime 侧事实**（登记为 `DEF-P3SEAM-01..03`，Owner＝Character Intelligence，待作者派工；本 Owner 不代改他们的文件，也不据此改 Runtime）：
+
+1. **一轮会被问两到三次，而账本记的不是模型读过的那一次。** `ConversationRuntime.cs` 有三个过闸点：`:698`（初次）、`:755`（compose 之后、投递之前的复校）、`:896`（Capability 续轮后）。compose 用的是第一次那份 `decision.Advice`（`:721`），复校却会再走一次 `AdviseAsync` ⇒ `Remember` 以同一个 key 覆盖成新的一份，轮末教的 `Decision`／`ExpressionHints` 是第二次那份；而**模型真正读进去的 `PromptBlock` 是第一次那份**。多数情况两份逐字相同（同一轮内两次咨询之间没有本卡的学习写入），但**差别是可达的**：状态域按 `characterId` 共享（`:63-64`，一卡一账），所以另一个会话里她的轮次只要在两次咨询之间结束，`CompleteTurnAsync` 就会推进 `CharacterStateService`（关系／心情），于是第二次读到的是新状态、模型按旧状态说话、账本按新状态学。`:896` 那一次形状更硬：Capability 续轮的 compose 走的是 `advice: null`（`:870`），也就是这一轮模型一个字都没读过决策，账本里却记着一份决策——该路径今天不可达（`CapabilityRequest` 无生产者，属 RT-007），RT-007 落地即成为真缺陷。附带成本：每次咨询都读一次 `GetRecentMessagesAsync(20)` 与 pattern 表，成轮因此多一到两趟 SQLite；`DecideAsync` 本身是规则＋库读、不打模型，所以这是延迟不是费用。修法在他们那侧更便宜：只记"被消费的那一次"（compose 前记，复校不再 `Remember`），或按 `TurnIdentity` 判重。现状判据看不到这条——`CharacterIntelligenceSeamTests` 第 6 条走的是单次咨询。
+2. **气泡归属的结论成立，但它写在错误的承重墙上（本条是"无人守着的不变量"，不是今天的错账）。** 端口 `MessageDeliveredAsync` 不带 `TurnIdentity`（`RuntimePorts.cs:114`，接口形状归本 Owner），所以他们按"该会话最近一次被建议的那一轮"归属正文（`:111-123`）。本 Owner 逐条核对：`:108-109` 那句注释把理由写成"更早的轮次要投递必须重新通过围栏检查，而围栏只认最新一轮"——**这句不成立**：围栏比较的是 epoch（`IsStaleLocked`，`ConversationRuntime.cs:567`：`identity.FencedRevision != _epoch`），而成轮根本不改 epoch（`NewTurnIdentityLocked`，`:565` 复用当前 `_epoch`），所以"变成最新一轮"这件事围栏从头到尾没有表达过。真正挡住串泡的是另外三道闸，而且都在 advisor 之前：`ReplyGate` 的 `PendingOutputCount > 0 → Defer`（`ReplyGate.cs:24`）与 `UserTyping → Defer`（`:23`）让上一轮还有排队输出时下一轮压根问不到 advisor；`TryFormTurnLocked` 在 `_active is not null` 时直接返回（`:625`）保证同一会话不会有两轮同时在飞；主动消息那一路在 `_active is not null || _delivery.PendingCount > 0` 时被拒（`EvaluateProactiveLocked`），所以她自发的句子也不会落进别人的账。⇒ **现状安全，但安全来自这三道闸，而它们没有任何一条判据表达"气泡按轮归属"这个依赖**（他们的第 8 条判据守的是跨会话不串，不是跨轮）。谁以后把排队输出那道检查挪到 advisor 之后、或允许上一轮的排队输出与下一轮并存，就会静默改变她学到的正文。**修法（都在他们那侧，一行量级）**：`RecordDeliveredBubble` 只在"该会话只有一条 pending"时记账，或 `Remember` 时划掉同会话更旧的条目。**本 Owner 明确不改端口签名**——给 `MessageDeliveredAsync` 加轮身份正是 §7.1 结论 1 冻结的形状，而且会牵动 `DEF-P1WALK-03` 那条事件流。附带一条小的：`PendingTurnLimit = 8` 是跨会话共用的一本账，8 条之外丢最老的，丢掉的轮次等于没学（不报错、不可观测）。
+3. **首轮建状态域失败会被永久缓存。** `_scopes`（`:45`、`:63-64`）缓存的是 `Task`，`BuildScopeAsync` 里的 `state.RestoreAsync(token)` 认第一个调用方的 token；客户端在那一步断开是常态，而那笔被取消的 Task 会永久留在字典里 ⇒ 之后这张卡每一轮 `ScopeForAsync` 都拿到同一笔失败 Task，恒走"决策抛错 → 回落过渡形状"（`:235-242`），且 `RequiredScopeAsync`（`:162-164`）在轮末照样抛。界面上的表现是"她忽然不再有条件化的行为，也不报错"，只能等进程重启自愈。修法一行：失败时 `TryRemove`。**读码确认，未实测。**
+
+**状态词**：§7.2 的归属对线**通过**，本刀不需要 §7.1 任何一条结论让路，也不构成对 Runtime 端口形状的改动。三条新登记的缺陷分级如实分开：`DEF-P3SEAM-01`（Medium，**今天可达**——每个成轮都多一到两趟库读，且轮末教的不是模型读过的那份）、`DEF-P3SEAM-03`（Medium，一行修法，失败后静默且不可自愈）、`DEF-P3SEAM-02`（Low，**现状不错账**，缺的是把承重墙写对并补一条判据）。三条都不进 Phase 1／Phase 2 的结案面，Owner＝Character Intelligence，开工权在作者派工。
+
 
 ## 8. Phase 2 出口怎么判，以及"完成"这个词由谁写下（草案，判定权不在本 Owner）
 

@@ -80,7 +80,8 @@ public sealed class ReplyPlannerComposer(ReplyPlanner planner, TurnTakingSetting
                 parts.Add(await AttachmentTextExtractor.ExtractForPromptAsync(ToChatAttachment(attachment), token));
         }
         var combined = string.Join("\n", parts);
-        var planned = await planner.PlanAsync(request.ConversationId, combined, request.ImageReferences, settings, token);
+        var planned = await planner.PlanAsync(request.ConversationId, combined, request.ImageReferences, settings, token,
+            request.Advice?.PromptBlock);
         var messages = planned.Select(x => new RuntimePlannedMessage(x.Sequence, x.Content, x.StickerId)).ToArray();
         if (messages.Length == 0) return ResponsePlan.Nothing("empty_model_output");
         return new ResponsePlan(request.Advice?.Intent ?? ResponseIntent.ContinueTopic, messages,

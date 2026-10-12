@@ -1,3 +1,5 @@
+using Pry.Core.Models;
+
 namespace Pry.Core.Intelligence;
 
 public enum ScenarioKind
@@ -107,9 +109,7 @@ public static class SituationReader
         var isQuestion = EndsAsQuestion(text) || raw.TrimEnd().EndsWith('?') || raw.TrimEnd().EndsWith('？')
             || ContainsQuestionWord(text);
 
-        var lowContent = text.Length == 0
-            || (text.Length <= LowContentCeilingCharacters && LowContentMarkers.Contains(text))
-            || (raw.Trim().Length <= LowContentCeilingCharacters && IsRepeatedNoise(raw.Trim()));
+        var lowContent = IsLowContent(raw);
 
         var contradiction = memoryFacts.Count > 0 && NegationMarkers.Any(text.Contains)
             && memoryFacts.Any(fact => SharesTopicWord(text, fact.Summary));
@@ -150,6 +150,33 @@ public static class SituationReader
             RelationshipCorrectionNearer = relationshipNear && !relationshipFar,
             Confidence = scenario == ScenarioKind.Unknown ? 0.35 : lowContent || hostile ? 0.8 : 0.6
         };
+    }
+
+    /// <summary>
+    /// 低信息量判据本体。宿主手里只有对话记录时用它数"连着几句都是嗯哦好"，
+    /// 不必为每条历史消息各造一个 <see cref="SituationSnapshot"/>。
+    /// </summary>
+    public static bool IsLowContent(string raw)
+    {
+        var text = Normalize(raw);
+        return text.Length == 0
+            || (text.Length <= LowContentCeilingCharacters && LowContentMarkers.Contains(text))
+            || (raw.Trim().Length <= LowContentCeilingCharacters && IsRepeatedNoise(raw.Trim()));
+    }
+
+    /// <summary>
+    /// 记录末尾连续几句低信息量的用户消息（从最新往回数，遇到角色自己的话或非低信息量输入就停）。
+    /// Runtime 来问的时候本轮那句用户消息已经落库，所以单独一句"嗯"读作 1。
+    /// </summary>
+    public static int TrailingLowContentUserInputs(IReadOnlyList<ChatMessage> recent)
+    {
+        var streak = 0;
+        for (var i = recent.Count - 1; i >= 0; i--)
+        {
+            if (recent[i].Role != ChatRole.User || !IsLowContent(recent[i].Content ?? string.Empty)) break;
+            streak++;
+        }
+        return streak;
     }
 
     private static bool IsRepeatedNoise(string trimmed) =>

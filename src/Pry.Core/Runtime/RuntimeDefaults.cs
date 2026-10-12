@@ -3,10 +3,12 @@ using Pry.Core.Intelligence;
 namespace Pry.Core.Runtime;
 
 /// <summary>
-/// 过渡期建议器：在 Phase 3 的 <see cref="Pry.Core.Abstractions.ICharacterIntelligence"/> 接上之前，
-/// 让 Runtime 与宿主可以先接线、先测试。它刻意保持宽松——不替 Intelligence 做社交取舍，
+/// 过渡期建议器：它刻意保持宽松——不替 Intelligence 做社交取舍，
 /// 只把"这轮该做什么"的意图按输入形态机械映射，并把是否沉默交给生成端（空计划即 DoNothing）。
 /// 追踪里会带上本类名字，便于 Developer Mode 看出这一轮并没有真正的行为决策。
+/// 发行链路已不再使用它：宿主在 <c>ConversationSessionService</c> 里换成适配到
+/// <see cref="Pry.Core.Abstractions.ICharacterIntelligence"/> 的建议器。这里保留下来是因为
+/// "行为决策不可用时也要能把话说完"仍然是真实分支，宿主在决策抛错时按同样的形状回落。
 /// </summary>
 public sealed class TransitionalReplyAdvisor : IReplyAdvisor
 {

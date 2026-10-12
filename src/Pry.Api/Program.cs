@@ -68,6 +68,9 @@ namespace Pry.Api
             builder.Services.AddSingleton<Pry.Core.Abstractions.IExpressionPatternRepository,
                 Pry.Core.Memory.SqliteExpressionPatternRepository>();
             builder.Services.AddSingleton<Pry.Core.Intelligence.CharacterLearningCleanup>();
+            // 角色智能的宿主接线处（说话前 DecideAsync / 投递后 CompleteTurnAsync）。一个进程一份：
+            // 同一张卡的长期状态必须只有一个实例，见 CharacterIntelligenceGateway 的归属线注释。
+            builder.Services.AddSingleton<Pry.Api.Runtime.CharacterIntelligenceGateway>();
             builder.Services.AddSingleton<BackendSessionToken>();
             builder.Services.AddSingleton<ConversationApplicationService>();
             builder.Services.AddSingleton<ConversationReadService>();

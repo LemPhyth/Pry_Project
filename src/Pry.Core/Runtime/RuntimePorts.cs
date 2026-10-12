@@ -82,7 +82,12 @@ public interface IReplyAdvisor
     Task<ReplyAdvice> AdviseAsync(ReplyGateContext context, CancellationToken cancellationToken);
 }
 
-public sealed record ReplyAdvice(bool ShouldReply, ResponseIntent Intent, string Reason, DeliveryHints? Hints = null);
+/// <param name="PromptBlock">
+/// 宿主从 Intelligence 侧渲染好的生成提示块。Runtime 只搬运、不解释、不拼进自己的任何文本；
+/// 为空表示这一轮没有行为决策（过渡建议器、沉默轮、失败回落都是空）。
+/// </param>
+public sealed record ReplyAdvice(bool ShouldReply, ResponseIntent Intent, string Reason, DeliveryHints? Hints = null,
+    string? PromptBlock = null);
 
 /// <summary>Reply Gate 交给 Intelligence 侧的事实。全部来自 Runtime 状态，不含数据库或角色内部对象。</summary>
 public sealed record ReplyGateContext(TurnIdentity Turn, string CombinedInput, bool DirectAddress, bool AsksQuestion,

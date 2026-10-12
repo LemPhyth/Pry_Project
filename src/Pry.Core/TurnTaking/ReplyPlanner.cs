@@ -34,7 +34,8 @@ public sealed class ReplyPlanner
     private readonly StickerCatalog _stickerCatalog;
 
     public async Task<IReadOnlyList<PlannedReplyMessage>> PlanAsync(string conversationId, string combinedUserText,
-        IReadOnlyList<string> imagePaths, TurnTakingSettings turnSettings, CancellationToken cancellationToken)
+        IReadOnlyList<string> imagePaths, TurnTakingSettings turnSettings, CancellationToken cancellationToken,
+        string? intelligenceBlock = null)
     {
         var recent = await _database.GetRecentMessagesAsync(conversationId, 20, cancellationToken);
         var memories = await _memoryRetriever.SearchMemoriesAsync(_character.Id, combinedUserText, 6, cancellationToken);
@@ -42,6 +43,9 @@ public sealed class ReplyPlanner
         var imageDescription = imagePaths.Count == 0 ? null : await _router.DescribeImagesAsync(combinedUserText, imagePaths, cancellationToken);
         var basePrompt = _promptBuilder.Build(new PromptContext(_character, _state, memories, recent, stickers, combinedUserText, imagePaths.FirstOrDefault()),
             includeExpressionProtocol: false);
+        // 本轮"该做什么、怎么说"的决策由宿主从 Character Intelligence 渲染好递过来，这里只并进去，不解释它。
+        // 传 null 就是这一轮没有行为决策（主动消息生成链、以及宿主没接上决策时的回落），提示词与接线前逐字一致。
+        if (!string.IsNullOrWhiteSpace(intelligenceBlock)) basePrompt = $"{basePrompt}\n{intelligenceBlock}";
         var minMessages = Math.Clamp(turnSettings.MinReplyMessages, 1, 6);
         var maxMessages = Math.Clamp(turnSettings.MaxReplyMessages, minMessages, 6);
         var planningPrompt = basePrompt + $"\n你正在即时通讯软件中聊天。请规划{minMessages}到{maxMessages}个可独立发送的短消息。"

@@ -1,0 +1,296 @@
+using System.Collections.Concurrent;
+using Pry.Core.Abstractions;
+using Pry.Core.Expression;
+using Pry.Core.Intelligence;
+using Pry.Core.Memory;
+using Pry.Core.Models;
+using Pry.Core.Runtime;
+
+namespace Pry.Api.Runtime;
+
+/// <summary>
+/// 角色智能在宿主侧的唯一接线处：Runtime 说话前那一问（<c>DecideAsync</c>）与消息真正投递后那一报
+/// （<c>CompleteTurnAsync</c>）都由这里发出，其余类不再直接驱动 <see cref="CharacterIntelligenceService"/>。
+///
+/// 开工前对的归属线（<c>docs/phase2-runtime-contract.md</c> §7.1 四条冻结结论）：
+/// 一，不新增对外通道——轮次终局是从 <see cref="IRuntimeOutputSink"/> 的既有调用上旁听来的，
+/// 本类不发 SSE、不持有事件日志，也不改 <c>ConversationRuntimeEventSink</c> 的映射；
+/// 二，不碰失效权威——建议器只在 ReplyGate 的状态闸门全过之后才被调用，陈旧轮次到不了这里；
+/// 三，不动 Capability 的住处——<c>AvailableCapabilityNames</c> 保持为空，
+/// 行为规划器自带的 <c>capability:none_registered</c> 闸门会把该意图降级；
+/// 四，不引入第二个 Context，也不把 Memory 接进评分——<c>SituationSnapshot.Memory</c> 一律填
+/// "这一轮真的没查"（<see cref="RelevantMemoryView.Unavailable"/>）而不是"查了没有"；
+/// MEM-005 把 <see cref="IRelevantMemorySource"/> 与 <c>IMemoryRetriever</c> 收敛成一个适配器之前，
+/// 在这里多接一条检索旁路就是把别人的冻结结论改掉。
+///
+/// 作用域前提（<c>docs/character-intelligence.md</c> §8 缺口 ③，需要被维持）：行为模式／表达模式／
+/// 经验日志按 <c>characterInstanceId</c> 存，宿主在这里传的是 <c>character.Id</c>——与
+/// <c>ConversationRuntimeOptions.CharacterInstanceId</c> 同一个字符串。哪天出现一卡多实例，两处必须一起改，
+/// 否则删卡时的 <c>PurgeAsync</c> 会静默漏掉后建的实例。
+/// </summary>
+public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
+    ICharacterStateRepository stateRepository, IBehaviorPatternRepository patternRepository,
+    IExpressionPatternRepository expressionRepository, IBehaviorExperienceRepository experienceRepository,
+    ILogger<CharacterIntelligenceGateway> logger)
+{
+    /// <summary>1.0 一台机器一个用户。多用户落地时改这一处，不要让调用方各写一份字面量。</summary>
+    public const string LocalUserId = "local";
+
+    /// <summary>
+    /// 在飞轮次的账本上限。一个会话同一刻只可能有一轮在投递，留 8 份是给多会话与
+    /// "建议过但终局没回来"的余量；超了丢最老的——宁可少学一次，也不让一本没人收的账无上限长。
+    /// </summary>
+    private const int PendingTurnLimit = 8;
+
+    private readonly ConcurrentDictionary<string, Task<Scope>> _scopes = new(StringComparer.Ordinal);
+
+    /// <summary>说话前那一问要读对话记录，所以历史消息的读口在这里显式转交给建议器。</summary>
+    private readonly MemoryDatabase _database = database;
+
+    private readonly object _ledgerGate = new();
+    private readonly Dictionary<TurnKey, PendingTurn> _pending = [];
+    private readonly List<TurnKey> _ledgerOrder = [];
+
+    /// <summary>为某个会话构造"说话前那一问"。每个会话一个实例，因为它绑定 conversationId。</summary>
+    public IReplyAdvisor CreateAdvisor(string conversationId, CharacterDefinition character,
+        TurnTakingSettings turnSettings) =>
+        new Advisor(this, conversationId, character, turnSettings);
+
+    /// <summary>
+    /// 一个角色实例一份长期状态：同一张卡在两个会话里必须共用同一个 <see cref="CharacterStateService"/>，
+    /// 否则两边各记半本账，谁写出去的那份都不完整。
+    /// </summary>
+    private Task<Scope> ScopeForAsync(CharacterDefinition character, CancellationToken token) =>
+        _scopes.GetOrAdd(character.Id, key => BuildScopeAsync(key, character, token));
+
+    private async Task<Scope> BuildScopeAsync(string characterInstanceId, CharacterDefinition character,
+        CancellationToken token)
+    {
+        var identity = IdentitySnapshot.From(character);
+        var state = new CharacterStateService(identity, LocalUserId, stateRepository);
+        await state.RestoreAsync(token);
+        return new Scope(state, new CharacterIntelligenceService(state,
+            new ExpressionService(expressionRepository, characterInstanceId), patternRepository,
+            experiences: experienceRepository), identity);
+    }
+
+    /// <summary>把一轮的决策记进账本，等投递结果回来再学。key 含 conversationId：TurnId 是会话内序号，跨会话会撞。</summary>
+    private void Remember(string conversationId, TurnIdentity turn, SituationSnapshot situation,
+        CharacterStateSnapshot state, ReplyGenerationContext generation)
+    {
+        var key = new TurnKey(conversationId, turn.TurnId, turn.GenerationId);
+        lock (_ledgerGate)
+        {
+            _pending[key] = new PendingTurn(situation, state, generation);
+            _ledgerOrder.Remove(key);
+            _ledgerOrder.Add(key);
+            while (_ledgerOrder.Count > PendingTurnLimit)
+            {
+                var oldest = _ledgerOrder[0];
+                _ledgerOrder.RemoveAt(0);
+                _pending.Remove(oldest, out _);
+            }
+        }
+    }
+
+    /// <summary>这一轮不再有机会走到"投递成功"，账本里就不该留着它。</summary>
+    private void Forget(string conversationId, TurnIdentity turn)
+    {
+        var key = new TurnKey(conversationId, turn.TurnId, turn.GenerationId);
+        lock (_ledgerGate)
+        {
+            _pending.Remove(key, out _);
+            _ledgerOrder.Remove(key);
+        }
+    }
+
+    /// <summary>
+    /// 记下一个已投递气泡的正文。气泡回调不带 TurnId，所以按"该会话最近一次被建议的那一轮"归属：
+    /// 更早的轮次要投递必须重新通过围栏检查，而围栏只认最新一轮，因此这一刻在飞的只可能是它。
+    /// </summary>
+    internal void RecordDeliveredBubble(string conversationId, string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        lock (_ledgerGate)
+        {
+            for (var i = _ledgerOrder.Count - 1; i >= 0; i--)
+                if (_ledgerOrder[i].ConversationId == conversationId && _pending.TryGetValue(_ledgerOrder[i], out var entry))
+                {
+                    entry.Delivered.Add(text);
+                    return;
+                }
+        }
+    }
+
+    /// <summary>
+    /// 轮次终局。Completed／PartiallyDelivered 且有实际正文才构造成一次可学的互动；其余终局只把账本条目
+    /// 划掉——取消、被替换、失败、沉默的轮次一个字都不许教（<c>docs/character-intelligence.md</c> §4）。
+    /// </summary>
+    internal async Task ReportTurnEndAsync(string conversationId, TurnIdentity turn, RuntimeTurnOutcome outcome,
+        CancellationToken token)
+    {
+        PendingTurn? entry;
+        lock (_ledgerGate)
+        {
+            var key = new TurnKey(conversationId, turn.TurnId, turn.GenerationId);
+            _pending.Remove(key, out entry);
+            _ledgerOrder.Remove(key);
+        }
+        if (entry is null) return;
+
+        var delivered = string.Join("\n", entry.Delivered);
+        if (outcome is not (RuntimeTurnOutcome.Completed or RuntimeTurnOutcome.PartiallyDelivered) ||
+            delivered.Length == 0) return;
+
+        var scope = await RequiredScopeAsync(entry.Situation.CharacterInstanceId, token);
+        await scope.Intelligence.CompleteTurnAsync(new TurnOutcome(entry.Situation, entry.State,
+            entry.Generation.Decision, entry.Generation.ExpressionHints,
+            // 这一轮只拿到"她说完了"这一个事实，用户怎么反应还没接进来（第三个调用点
+            // ObserveFeedbackAsync 不在本刀范围）。Unknown 的 Signal() 是 null：经验照记，置信度一步不加。
+            InteractionOutcome.Unknown, delivered, DateTimeOffset.UtcNow)
+        { DeliveredToUser = true }, token);
+    }
+
+    internal void LogWarning(Exception error, string message, params object?[] args) =>
+        logger.LogWarning(error, message, args);
+
+    internal void LogTurnReportFailure(Exception error, string conversationId, TurnIdentity turn) =>
+        logger.LogWarning(error, "会话 {Conversation} 的第 {Turn} 轮学习回报失败，本轮不教学", conversationId,
+            turn.TurnId);
+
+    /// <summary>终局回来时状态域一定已经建好了（说话前那一问就是它建的），所以这里只查不建。</summary>
+    private async Task<Scope> RequiredScopeAsync(string characterInstanceId, CancellationToken token) =>
+        _scopes.TryGetValue(characterInstanceId, out var built) ? await built
+            : throw new InvalidOperationException($"角色 {characterInstanceId} 的状态域尚未建立，宿主接线顺序有误。");
+
+    private sealed record Scope(CharacterStateService State, CharacterIntelligenceService Intelligence,
+        IdentitySnapshot Identity);
+
+    private sealed record TurnKey(string ConversationId, long TurnId, long GenerationId);
+
+    private sealed class PendingTurn(SituationSnapshot situation, CharacterStateSnapshot state,
+        ReplyGenerationContext generation)
+    {
+        public SituationSnapshot Situation { get; } = situation;
+        public CharacterStateSnapshot State { get; } = state;
+        public ReplyGenerationContext Generation { get; } = generation;
+        public List<string> Delivered { get; } = [];
+    }
+
+    /// <summary>
+    /// 说话前那一问。"这次要不要说话"的状态闸门仍由 Runtime 的 ReplyGate 把，本类只回答
+    /// "如果要说话，这一轮做什么、怎么说"；<c>DoNothing</c> 是一等结果，不是失败路径。
+    /// </summary>
+    private sealed class Advisor(CharacterIntelligenceGateway gateway, string conversationId,
+        CharacterDefinition character, TurnTakingSettings turnSettings) : IReplyAdvisor
+    {
+        /// <summary>回落只有一处定义：接不上行为决策时，用过渡建议器那套机械映射把话说完。</summary>
+        private static readonly TransitionalReplyAdvisor Fallback = new();
+
+        public string Name => "character_intelligence";
+
+        public async Task<ReplyAdvice> AdviseAsync(ReplyGateContext context, CancellationToken token)
+        {
+            // 主动消息送审时 CombinedInput 装的是她自己打算说的话，不是用户输入
+            // （ConversationRuntime.cs:1010）。拿它当"用户这句话"去做行为决策是编一个不存在的输入，
+            // 所以这条分支原样放行，也不记账——本刀不给主动消息新增生产者。
+            if (context.ProactiveOrigin) return await Fallback.AdviseAsync(context, token);
+
+            try
+            {
+                var scope = await gateway.ScopeForAsync(character, token);
+                var now = DateTimeOffset.UtcNow;
+                var recent = await gateway._database.GetRecentMessagesAsync(conversationId, 20, token);
+                var situation = new SituationSnapshot
+                {
+                    CharacterInstanceId = character.Id,
+                    ConversationId = conversationId,
+                    TurnId = context.Turn.TurnId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    UserInput = context.CombinedInput,
+                    Now = now,
+                    Memory = RelevantMemoryView.Unavailable(),
+                    RecentMessages = recent,
+                    // 被点名或被提问时沉默才是异常；其余场景让她可以不接这句。
+                    RequiresReply = context.DirectAddress || context.AsksQuestion,
+                    SinceLastAssistantReply = context.LastCharacterActivity is null
+                        ? null : context.SinceLastCharacterActivity,
+                    ConsecutiveLowContentInputs = SituationReader.TrailingLowContentUserInputs(recent)
+                };
+                var state = scope.State.Snapshot(now);
+                var generation = await scope.Intelligence.DecideAsync(situation, state, token);
+                gateway.Remember(conversationId, context.Turn, situation, state, generation);
+
+                var intent = generation.Decision.Intent;
+                return new ReplyAdvice(intent != ResponseIntent.DoNothing, intent,
+                    $"intelligence:{generation.Decision.ScenarioTag}:{intent}",
+                    PromptBlock: intent == ResponseIntent.DoNothing ? null
+                        : ReplyGenerationRenderer.Render(generation, scope.Identity, PromptBudget()));
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                // 取消必须仍然是取消，不能被降级成一次普通失败；但这一轮不留账。
+                gateway.Forget(conversationId, context.Turn);
+                throw;
+            }
+            catch (Exception error)
+            {
+                // 行为决策不可用时宁可把话说完也不要静默变哑：回落形状与发行前的过渡建议器逐字一致。
+                gateway.Forget(conversationId, context.Turn);
+                gateway.LogWarning(error, "角色 {Character} 在会话 {Conversation} 的行为决策失败，本轮按过渡形状放行",
+                    character.Id, conversationId);
+                return await Fallback.AdviseAsync(context, token);
+            }
+        }
+
+        /// <summary>提示块不该比她这一轮能说的话还长，所以预算跟着气泡长度与条数走，再封顶在渲染器默认值。</summary>
+        private int PromptBudget() => Math.Clamp(
+            Math.Clamp(turnSettings.MaxMessageCharacters, 20, 500) * Math.Clamp(turnSettings.MaxReplyMessages, 1, 6),
+            160, ReplyGenerationRenderer.DefaultBudgetCharacters);
+    }
+}
+
+/// <summary>
+/// 投递终局的旁听器：六个方法原样转给真正的宿主 sink，只在 <c>MessageDeliveredAsync</c> 上抄一份正文、
+/// 在 <c>TurnTransitionAsync</c> 上补一次学习回报。它是同一个输出通道的内侧装饰器，不是第二条外发路径。
+/// </summary>
+public sealed class CharacterIntelligenceOutputSink(IRuntimeOutputSink inner,
+    CharacterIntelligenceGateway gateway) : IRuntimeOutputSink
+{
+    public Task MessageDeliveredAsync(string conversationId, long messageId, RuntimePlannedMessage message,
+        string source, CancellationToken token)
+    {
+        gateway.RecordDeliveredBubble(conversationId, message.Text);
+        return inner.MessageDeliveredAsync(conversationId, messageId, message, source, token);
+    }
+
+    public Task TypingIndicatorAsync(string conversationId, bool active, CancellationToken token) =>
+        inner.TypingIndicatorAsync(conversationId, active, token);
+
+    public Task PhaseChangedAsync(string conversationId, RuntimePhase phase, RuntimePhase previous,
+        CancellationToken token) => inner.PhaseChangedAsync(conversationId, phase, previous, token);
+
+    public async Task TurnTransitionAsync(string conversationId, TurnIdentity turn, RuntimeTurnOutcome outcome,
+        string reason, CancellationToken token)
+    {
+        await inner.TurnTransitionAsync(conversationId, turn, outcome, reason, token);
+        try
+        {
+            await gateway.ReportTurnEndAsync(conversationId, turn, outcome, token);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception error)
+        {
+            // 学习回报失败不得把一次已经投递成功的轮次变成 turn.failed：客户端已经看见那句话了。
+            gateway.LogTurnReportFailure(error, conversationId, turn);
+        }
+    }
+
+    public Task CapabilityRequestedAsync(string conversationId, CapabilityRequest request, CancellationToken token) =>
+        inner.CapabilityRequestedAsync(conversationId, request, token);
+
+    public Task FailureAsync(string conversationId, TurnIdentity turn, string errorCode, CancellationToken token) =>
+        inner.FailureAsync(conversationId, turn, errorCode, token);
+}

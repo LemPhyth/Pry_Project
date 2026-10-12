@@ -13,7 +13,11 @@ namespace Pry.Api.Services;
 public sealed class ConversationSessionService(MemoryDatabase database, BackendRuntime runtime, MediaAssetStore media,
     ILogger<ConversationSessionService> logger, MemoryEmbeddingService? memoryRetriever = null,
     CharacterInteractionProfileService? interactionProfiles = null,
-    CompanionOperationCoordinator? operations = null) : IAsyncDisposable
+    CompanionOperationCoordinator? operations = null,
+    // 角色智能的宿主接线处。允许缺省是刻意留给测试的形状：不传就保持接线前那份过渡建议器行为，
+    // 不必让每个既有会话用例各自再造一套学习仓储。发行链路一定会注入（Program.cs 注册了它），
+    // 而"哪天被谁悄悄摘掉接线"这个洞由 CharacterIntelligenceSeamTests 里的源码门守着。
+    CharacterIntelligenceGateway? intelligence = null) : IAsyncDisposable
 {
     private static readonly string[] ListeningSignals = ["嗯，我在听。", "慢慢说，我在。", "我听着呢。"];
     private readonly ConcurrentDictionary<string, Lazy<Task<ConversationSession>>> _sessions = new(StringComparer.Ordinal);
@@ -277,14 +281,18 @@ public sealed class ConversationSessionService(MemoryDatabase database, BackendR
         var store = new DatabaseRuntimeStore(database);
         ConversationRuntime? built = null;
         var sink = new ConversationRuntimeEventSink(events, logger, () => built);
+        // 说话前那一问交给角色智能，投递后的终局由同一个输出通道的内侧装饰器旁听回来。
+        // 两者要么都接、要么都不接：只接一半会出现"有决策没人收"或"回报的是没决策过的轮次"。
+        IRuntimeOutputSink output = intelligence is null ? sink : new CharacterIntelligenceOutputSink(sink, intelligence);
         // preferences.json 是用户可编辑文件，PATCH 上的校验管不到它；越界频率在这里收回合法区间，
         // NaN 按"未配置"处理。理由见 §3.1：0 会让消息落库却永不成轮，不该由一个坏值意外达成。
         var configuredFrequency = runtime.TurnSettings.ReplyFrequency;
         built = await ConversationRuntime.CreateAsync(new ConversationRuntimeOptions(conversationId,
             character.Id, TimeProvider.System, RuntimeSettings.FromTurnTaking(runtime.TurnSettings),
             store, composer,
-            new TransitionalReplyAdvisor(),
-            new StickerInterruptClassifier(new InterruptClassifier(runtime.Stickers)), sink)
+            intelligence?.CreateAdvisor(conversationId, character, runtime.TurnSettings)
+                ?? new TransitionalReplyAdvisor(),
+            new StickerInterruptClassifier(new InterruptClassifier(runtime.Stickers)), output)
         {
             CharacterNames = new[] { character.Name, character.CardName }
                 .Where(x => !string.IsNullOrWhiteSpace(x)).ToArray(),
