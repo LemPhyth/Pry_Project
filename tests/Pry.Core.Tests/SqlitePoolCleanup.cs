@@ -20,5 +20,11 @@ internal static class SqliteTestPools
         }.ToString()));
         // 用例直连库做突变（造触发器冲突、改序号）时用的是只带 Data Source 的那条串，那是另一个池键。
         SqliteConnection.ClearPool(new SqliteConnection($"Data Source={databasePath}"));
+        // SqliteMemoryRepository 自带第三条串（外键与默认超时是它的语义，不是Formatting）：漏掉这一条，
+        // 长期记忆的池就没人清，fixture 删目录时拿到的是 memory.db 仍被占用（DEF-P1WALK-04 的同族形状）。
+        SqliteConnection.ClearPool(new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath, ForeignKeys = true, DefaultTimeout = 5
+        }.ToString()));
     }
 }

@@ -100,6 +100,7 @@ namespace Pry.Api
             builder.Services.AddHostedService<MediaCleanupService>();
             builder.Services.AddHostedService<ProtocolEventCleanupService>();
             builder.Services.AddHostedService<RuntimeDescriptorService>();
+            builder.Services.AddHostedService<MemoryConsolidationService>();
             builder.Services.AddHealthChecks();
             // 上传天花板（PLAT-006）：与 MediaController 端点特性同值。特性管这一个端点，
             // 全局 FormOptions 兜住其它表单解析路径，两侧都留出 multipart 余量。

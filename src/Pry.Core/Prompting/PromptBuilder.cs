@@ -6,7 +6,7 @@ namespace Pry.Core.Prompting;
 
 public sealed class PromptBuilder
 {
-    public string Build(PromptContext context, bool includeExpressionProtocol = true)
+    public string Build(PromptContext context, bool includeExpressionProtocol = true, bool includeState = true)
     {
         var c = context.Character;
         var s = context.State;
@@ -27,7 +27,7 @@ public sealed class PromptBuilder
 
         // 卡片自带那份初始状态里的 trust/familiarity 是 0–100 的整数刻度，今天没有任何生产者会移动它，
         // 把它写进提示词等于让模型演一段"已经熟的"固定关系。地点/情绪/目标是可观察的场景事实，照旧保留。
-        builder.AppendLine("当前状态：")
+        if (includeState) builder.AppendLine("当前状态：")
             .AppendLine($"- 地点：{s.Location}")
             .AppendLine($"- 情绪：{s.Mood}")
             .AppendLine($"- 当前目标：{s.CurrentGoal}");

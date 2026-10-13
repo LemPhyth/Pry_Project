@@ -144,7 +144,10 @@ public sealed class ConversationTurnManager : IAsyncDisposable
             var combined = string.Join("\n", parts);
             var images = inputs.SelectMany(x => x.SafeAttachments).Where(x => x.IsImage).Select(x => x.Path).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             var planned = await _planner.PlanAsync(_conversationId, combined, images, _settings, turnToken);
-            var planId = await _database.CreateReplyPlanAsync(_conversationId, planned, turnToken);
+            var memoryInputs = sourceMessageIds.Where((id, index) => id is not null && extractMemory[index])
+                .Select(id => id!.Value).ToArray();
+            var planId = await _database.CreateReplyPlanAsync(_conversationId, planned, turnToken,
+                MemoryScope.ForCharacter(_characterId), memoryInputs);
             activePlanId = planId;
             lock (_gate) SetStateLocked(TurnState.AgentPending);
             foreach (var message in planned)
@@ -156,7 +159,6 @@ public sealed class ConversationTurnManager : IAsyncDisposable
                 if (AgentMessageDelivered is not null) await AgentMessageDelivered(delivered with { Id = messageId });
             }
             lock (_gate) SetStateLocked(TurnState.Idle);
-            await ExtractSimpleMemoriesAsync(inputs, sourceMessageIds, extractMemory, turnToken);
         }
         catch (OperationCanceledException)
         {
@@ -174,18 +176,6 @@ public sealed class ConversationTurnManager : IAsyncDisposable
         return TimeSpan.FromMilliseconds(Math.Clamp(estimate + jitter, style.MinDelayMs, style.MaxDelayMs));
     }
 
-    private async Task ExtractSimpleMemoriesAsync(IReadOnlyList<UserInputPart> inputs, IReadOnlyList<long?> sourceMessageIds, IReadOnlyList<bool> extractMemory, CancellationToken cancellationToken)
-    {
-        for (var index = 0; index < inputs.Count; index++)
-        {
-            if (index < extractMemory.Count && !extractMemory[index]) continue;
-            var input = inputs[index];
-            var text = input.Text.Trim();
-            if (text.Length is < 8 or > 300 || !new[] { "我喜欢", "我不喜欢", "我叫", "记住", "约定", "生日", "以后", "答应" }.Any(text.Contains)) continue;
-            await _database.AddMemoryAsync(_characterId, "user_fact", text,
-                string.Join(',', text.Split([' ', '，', '。'], StringSplitOptions.RemoveEmptyEntries).Take(5)), .65, index < sourceMessageIds.Count ? sourceMessageIds[index] : null, cancellationToken);
-        }
-    }
 
     private void SetStateLocked(TurnState state) { _state = state; StateChanged?.Invoke(state); }
 

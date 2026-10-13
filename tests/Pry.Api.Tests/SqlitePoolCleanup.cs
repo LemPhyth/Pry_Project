@@ -19,5 +19,11 @@ internal static class SqliteTestPools
         {
             DataSource = databasePath, Mode = SqliteOpenMode.ReadWriteCreate, Cache = SqliteCacheMode.Shared
         }.ToString()));
+        // 宿主里的长期记忆仓储（SqliteMemoryRepository）用的是第三条串，漏掉它 memory.db 会带着池里的
+        // 句柄一起留在原地，删临时目录时抛 IOException——症状出现在别人的用例里（DEF-P1WALK-04 同族）。
+        SqliteConnection.ClearPool(new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath, ForeignKeys = true, DefaultTimeout = 5
+        }.ToString()));
     }
 }

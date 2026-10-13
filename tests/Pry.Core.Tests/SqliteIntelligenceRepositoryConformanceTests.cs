@@ -54,9 +54,10 @@ public sealed class SqliteIntelligenceRepositoryConformanceTests : IntelligenceR
             command.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
-        // 只清自己这一条连接串对应的池。ClearAllPools 会把同一进程里别的用例正在用的句柄一起拆掉
-        // （DEF-P1WALK-04 的受害面按 21 个测试文件计，本刀不得成为第 22 处）。
-        SqliteConnection.ClearPool(OpenConnection());
+        // 只清自己这一条库产生的池。ClearAllPools 会把同一进程里别的用例正在用的句柄一起拆掉
+        // （DEF-P1WALK-04 的受害面按 21 个测试文件计，本刀不得成为第 22 处）。MemoryDatabase 现在自带
+        // 长期记忆仓储那条串，只清宿主形状会漏掉它，故走三串齐全的 SqliteTestPools.Clear。
+        SqliteTestPools.Clear(_databasePath);
     }
 
     private SqliteConnection OpenConnection() => new(ConnectionString);
@@ -74,7 +75,7 @@ public sealed class SqliteIntelligenceRepositoryConformanceTests : IntelligenceR
 
     public void Dispose()
     {
-        SqliteConnection.ClearPool(OpenConnection());
+        SqliteTestPools.Clear(_databasePath);
         if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
     }
 

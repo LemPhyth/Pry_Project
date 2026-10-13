@@ -14,21 +14,24 @@ public sealed class ConversationService(MemoryDatabase database, PromptBuilder p
     public async IAsyncEnumerable<ConversationUpdate> SendAsync(string conversationId, string text, string? imagePath,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        await database.EnsureConversationAsync(conversationId, character.Id, cancellationToken);
+        var scope = MemoryScope.ForCharacter(character.Id);
+        await database.LongTerm.BindConversationAsync(scope, conversationId, cancellationToken);
+        var epoch = await database.LongTerm.RevisionAsync(scope, cancellationToken);
         var userId = await database.AddMessageAsync(conversationId, ChatRole.User, text, imagePath, cancellationToken);
         var recent = await database.GetRecentMessagesAsync(conversationId, 20, cancellationToken);
-        var memories = await database.SearchMemoriesAsync(character.Id, text, 6, cancellationToken);
         var stickers = stickerCatalog.Enabled;
-        var prompt = promptBuilder.Build(new PromptContext(character, state, memories, recent, stickers, text, imagePath));
         var imagePaths = imagePath is null ? Array.Empty<string>() : new[] { imagePath };
         var imageDescription = imagePath is null ? null : await router.DescribeImagesAsync(text, imagePaths, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(imageDescription))
-            prompt += $"\n本轮图片理解模块的内部描述：\n{imageDescription}\n请结合用户原话自然回应，不要提及内部模型分工。";
         var model = router.Select(imagePath is not null);
+        var context = await new ContextBuilder(database.LongTerm).BuildConversationAsync(
+            new PromptContext(character, state, [], recent, stickers, text, imagePath), model.Profile,
+            promptBuilder, true, imageDescription: imageDescription, token: cancellationToken);
         var response = new StringBuilder();
         var raw = new StringBuilder();
         var headerResolved = stickers.Count == 0;
         ExpressionIntent? expression = null;
-        await foreach (var token in model.StreamAsync(prompt, recent, router.UsesVisionBridge ? null : imagePaths, null, cancellationToken))
+        await foreach (var token in model.StreamAsync(context.SystemPrompt, context.Messages, router.UsesVisionBridge ? null : imagePaths, null, cancellationToken))
         {
             if (headerResolved)
             {
@@ -49,12 +52,9 @@ public sealed class ConversationService(MemoryDatabase database, PromptBuilder p
         }
         if (!headerResolved && raw.Length > 0) { response.Append(raw); yield return new ConversationUpdate(ConversationUpdateKind.Text, raw.ToString()); }
         if (response.Length > 0 || expression?.StickerId is not null)
-            await database.AddMessageAsync(conversationId, ChatRole.Assistant, response.ToString(), null, cancellationToken, expression?.StickerId);
-        if (LooksMemorable(text)) await database.AddMemoryAsync(character.Id, "user_fact", text.Trim(), ExtractTags(text), 0.65, userId, cancellationToken);
+            await database.AddMessageAsync(conversationId, ChatRole.Assistant, response.ToString(), null, cancellationToken,
+                expression?.StickerId, completedMemoryTurn: new(scope, conversationId, $"stream:{userId}", [userId], []),
+                memoryEpoch: epoch);
     }
 
-    private static bool LooksMemorable(string text) => text.Length is >= 8 and <= 300 &&
-        new[] { "我喜欢", "我不喜欢", "我叫", "记住", "约定", "生日", "以后", "答应" }.Any(text.Contains);
-
-    private static string ExtractTags(string text) => string.Join(',', text.Split([' ', '，', '。', ',', '.'], StringSplitOptions.RemoveEmptyEntries).Take(5));
 }

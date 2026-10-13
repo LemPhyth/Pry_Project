@@ -206,7 +206,7 @@ public sealed class CoreTests
     }
 
     [Fact]
-    public async Task Conversation_mutations_remove_linked_memory_and_can_be_undone()
+    public async Task Conversation_mutations_detach_linked_memory_and_can_be_undone()
     {
         var path = Path.Combine(Path.GetTempPath(), $"pry-test-{Guid.NewGuid():N}.db");
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -225,8 +225,17 @@ public sealed class CoreTests
 
             var branch = await db.DeleteMessageAndFollowingAsync("room", userId, cancellationToken);
             Assert.NotNull(branch); Assert.Empty(await db.GetRecentMessagesAsync("room", 10, cancellationToken)); Assert.Empty(await db.ListMemoriesAsync("c", null, cancellationToken));
+            // Deleting the record hides the fact but must leave the row behind, detached from its evidence.
+            var orphan = Assert.Single(await db.LongTerm.ListAsync(MemoryScope.ForCharacter("c"), cancellationToken));
+            Assert.Equal("orphaned", orphan.Status);
             await db.RestoreConversationMutationAsync(branch!, cancellationToken);
-            Assert.Equal(3, (await db.GetRecentMessagesAsync("room", 10, cancellationToken)).Count); Assert.Single(await db.ListMemoriesAsync("c", null, cancellationToken));
+            Assert.Equal(3, (await db.GetRecentMessagesAsync("room", 10, cancellationToken)).Count);
+            Assert.Equal("用户喜欢红茶", Assert.Single(await db.ListMemoriesAsync("c", null, cancellationToken)).Summary);
+            // Restoring conversation history must not bypass a memory deletion tombstone.
+            await db.DeleteMemoryAsync(orphan.Record.Id, "c", cancellationToken);
+            await db.RestoreConversationMutationAsync(branch, cancellationToken);
+            Assert.Empty(await db.ListMemoriesAsync("c", null, cancellationToken));
+            Assert.Empty(await db.LongTerm.ListAsync(MemoryScope.ForCharacter("c"), cancellationToken));
 
             var folderId = await db.CreateConversationFolderAsync("测试文件夹", cancellationToken);
             await db.MoveConversationToFolderAsync("room", folderId, cancellationToken); await db.SetConversationPinnedAsync("room", true, cancellationToken); await db.RenameConversationAsync("room", "重命名房间", cancellationToken);

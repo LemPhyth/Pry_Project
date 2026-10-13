@@ -59,9 +59,20 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
     /// <summary>
     /// 一个角色实例一份长期状态：同一张卡在两个会话里必须共用同一个 <see cref="CharacterStateService"/>，
     /// 否则两边各记半本账，谁写出去的那份都不完整。
+    ///
+    /// 已结算却坏掉的那一笔不许留在字典里：首轮 restore 期间客户端断开是常态，而缓存按卡片生效，
+    /// 一笔坏 Task 会让这张卡此后每一轮都拿到同一个坏结果，静默退回过渡形状、只能等重启自愈。
+    /// 这里只逐出、不就地重建：断开不会因为再读一次就过去，本轮照旧由建议器那层的 fail-open 把话说完，
+    /// 下一轮自然重建。
     /// </summary>
-    private Task<Scope> ScopeForAsync(CharacterDefinition character, CancellationToken token) =>
-        _scopes.GetOrAdd(character.Id, key => BuildScopeAsync(key, character, token));
+    private async Task<Scope> ScopeForAsync(CharacterDefinition character, CancellationToken token)
+    {
+        var built = _scopes.GetOrAdd(character.Id, key => BuildScopeAsync(key, character, token));
+        if (built.IsCompleted && built.Status != TaskStatus.RanToCompletion)
+            _scopes.TryRemove(new KeyValuePair<string, Task<Scope>>(character.Id, built));
+
+        return await built;
+    }
 
     private async Task<Scope> BuildScopeAsync(string characterInstanceId, CharacterDefinition character,
         CancellationToken token)
@@ -74,13 +85,21 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
             experiences: experienceRepository), identity);
     }
 
-    /// <summary>把一轮的决策记进账本，等投递结果回来再学。key 含 conversationId：TurnId 是会话内序号，跨会话会撞。</summary>
+    /// <summary>
+    /// 把一轮的决策记进账本，等投递结果回来再学。key 含 conversationId：TurnId 是会话内序号，跨会话会撞。
+    ///
+    /// 只认第一次：一轮要过两到三次闸（<c>ConversationRuntime.cs:698</c> 初次、compose 之后投递之前的复校
+    /// <c>:755</c>、Capability 续轮 <c>:896</c>），模型读到的提示块来自第一次那份建议（<c>:721</c>），
+    /// 后面几次照旧要问（复校不能摘，迟到结果防护依赖它），但账本改写成"复校那一份"就等于教她一件事没发生过的决策。
+    /// 每次咨询的条数本来就在 trace 里（<c>DecideGateAsync</c> 每过一道闸写一条 ReplyGate），不必在这里另记一本。
+    /// </summary>
     private void Remember(string conversationId, TurnIdentity turn, SituationSnapshot situation,
         CharacterStateSnapshot state, ReplyGenerationContext generation)
     {
         var key = new TurnKey(conversationId, turn.TurnId, turn.GenerationId);
         lock (_ledgerGate)
         {
+            if (_pending.ContainsKey(key)) return;
             _pending[key] = new PendingTurn(situation, state, generation);
             _ledgerOrder.Remove(key);
             _ledgerOrder.Add(key);
@@ -105,20 +124,30 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
     }
 
     /// <summary>
-    /// 记下一个已投递气泡的正文。气泡回调不带 TurnId，所以按"该会话最近一次被建议的那一轮"归属：
-    /// 更早的轮次要投递必须重新通过围栏检查，而围栏只认最新一轮，因此这一刻在飞的只可能是它。
+    /// 记下一个已投递气泡的正文。气泡回调不带轮身份，而端口签名是冻结的（契约 §7.1 结论 1），
+    /// 所以这里只认"该会话恰好有一轮在飞"这一种情形：认出唯一才记，认不出唯一就一个字都不记。
+    ///
+    /// 平时确实只有一轮在飞，靠的是三道闸而不是运气：<c>ReplyGate</c> 在 <c>UserTyping</c> 或
+    /// <c>PendingOutputCount > 0</c> 时先 <c>Defer</c>（在建议器之前），<c>TryFormTurnLocked</c> 在
+    /// <c>_active is not null</c> 时直接返回，主动候选在同样两个条件成立时被拒。
+    /// 原来这里写的理由是"围栏只认最新一轮"，那句不成立——围栏比的是 epoch，而成轮并不抬 epoch。
     /// </summary>
     internal void RecordDeliveredBubble(string conversationId, string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
         lock (_ledgerGate)
         {
-            for (var i = _ledgerOrder.Count - 1; i >= 0; i--)
+            PendingTurn? sole = null;
+            var inFlight = 0;
+            for (var i = 0; i < _ledgerOrder.Count; i++)
                 if (_ledgerOrder[i].ConversationId == conversationId && _pending.TryGetValue(_ledgerOrder[i], out var entry))
                 {
-                    entry.Delivered.Add(text);
-                    return;
+                    inFlight++;
+                    sole = entry;
                 }
+
+            // 同会话两条以上 = 归属已经说不清了；宁可少学一次，也不把这句话挂到某一轮上去猜。
+            if (inFlight == 1) sole!.Delivered.Add(text);
         }
     }
 

@@ -10,6 +10,8 @@
 | [`PROJECT_PLAN.md`](../PROJECT_PLAN.md) | 当前任务、优先级、验证及发行基线 | 当前本机协作计划；按仓库策略不公开提交 |
 | [`architecture.md`](architecture.md) | 前端、Client、Contracts、API 与 Core 边界 | 架构职责 |
 | [`api-v1.md`](api-v1.md) | 路径、Method、DTO、状态码、错误和 SSE | 稳定接口契约 |
+| [`memory-context-implementation.md`](memory-context-implementation.md) | MEM-005 证据、异步写回、检索、预算及迁移 | 长期记忆实现与集成边界（2026-10-13 已移植进主线） |
+| [`memory-message-deletion-separation.md`](memory-message-deletion-separation.md) | 删聊天记录与删记忆为何是两件事、`orphaned` 中间态、撤销怎么还原 | MEM-006 设计稿与 2-B 落地更正 |
 | [`character-runtime.md`](character-runtime.md) | 持续会话状态机、Gate、打断、Delivery、恢复与验证边界 | RT-002 实现交接记录（Codex 撰写）；2026-09-20 已合回共享工作区，仍未提交 |
 | [`phase1-platform-baseline.md`](phase1-platform-baseline.md) | 分层依赖事实、边界冻结规则、稳定 ID、SSE 事件目录、Runtime↔平台接缝、平台缺陷台账 | RT-001 平台侧冻结；描述现状边界，不表示 1.0 已完成 |
 | [`protocol-versioning-and-websocket-migration.md`](protocol-versioning-and-websocket-migration.md) | 协议版本协商、事件游标持久化、心跳、本机 token 与端口发现、SSE→WebSocket 的 M0～M3 步骤与验收清单 | 目标方案与迁移顺序；Phase 1 内不实施传输改造 |

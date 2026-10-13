@@ -1,5 +1,14 @@
 # Pry Backend API v1
 
+## MEM-005 记忆管理增量
+
+- `GET /api/v1/memories/details?characterId={id}`：返回 `MemoryDetailsResponse[]`，含 status、confidence、origin、revision、topicKey 和 evidence（messageId、conversationId、excerpt）；只读，不运行抽取。
+- `POST /api/v1/memories/clear`：正文 `{"characterId":"c","confirm":true}`。按角色过渡作用域清空，成功返回 204；confirm 缺失/false、空角色或超长 ID 返回 400 validation_error。清空同时取消旧队列并使在途任务失效，即使当前列表为空。
+- `DELETE /api/v1/memories/{id}?characterId={id}` 变为幂等 204，不泄漏其他角色是否拥有该 ID。删除正文及证据，墓碑仅保留 ID、作用域和指纹。重新提交旧 Turn 不恢复记忆；手工重新创建是用户的新操作。
+- 既有创建、编辑、列表响应保持兼容；列表只显示 active。手工编辑清除旧证据关联，避免旧来源冒充新正文的证据。同文手工创建去重；编辑撞同文返回 409 resource_conflict。Behavior/Expression 类型不允许写入记忆，非法字段返回 400。
+- 以上端点使用 `character:{id}`，不接受调用方自报用户身份。实例作用域由 Core 仓储支持并要求宿主绑定会话；实例管理 API 等待 RT-001 的 ID 契约。
+- **删除聊天消息与删除记忆是两件事**（2-B，作者 2026-10-12 裁定 B）：删一条消息或整个会话只撤销证据，记忆行转入 `orphaned`——不再被检索命中，但重新陈述同一事实可以再次学到；只有 `DELETE /api/v1/memories/{id}` 这条显式入口写墓碑。撤销消息删除按字段还原记忆并重建证据，不复活用户显式删掉的记忆。
+
 主动话题契约见 [主动话题调度](proactive-scheduling-api.md)：包含策略、活动上报、状态查询、取消、持久化去重和 SSE 投递；首版仅复用已加载的文字模型。
 
 基础地址：`http://127.0.0.1:<随机端口>`。端口不固定：界面用 `http://127.0.0.1:0` 让 Kestrel 自选并占住该 socket，再从绑定结果读回端口，独立进程从数据目录下的 `runtime.json` 发现它（见下节）。请求和响应使用 UTF-8 JSON，字段名采用 camelCase，枚举使用字符串。时间为 ISO 8601 UTC/带偏移时间。本机单用户，但**不是无认证**：除 `GET /health` 与 `GET /api/v1/info` 之外，每个请求必须带本机会话令牌，缺令牌一律 `401`（契约见 [协议迁移方案](protocol-versioning-and-websocket-migration.md) 第 6 节）。

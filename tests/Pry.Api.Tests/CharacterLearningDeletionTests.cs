@@ -43,8 +43,9 @@ public sealed class CharacterLearningDeletionTests : IAsyncLifetime
 
     public ValueTask DisposeAsync()
     {
-        // 只清自己这条连接串对应的池（DEF-P1WALK-04：进程级 ClearAllPools 会拆掉并行用例的句柄）。
-        SqliteConnection.ClearPool(Open());
+        // 只清自己这条库产生的池（DEF-P1WALK-04：进程级 ClearAllPools 会拆掉并行用例的句柄）。
+        // MemoryDatabase 现在自带长期记忆仓储那条串，只清宿主形状会漏掉它。
+        SqliteTestPools.Clear(_databasePath);
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
         return ValueTask.CompletedTask;
     }

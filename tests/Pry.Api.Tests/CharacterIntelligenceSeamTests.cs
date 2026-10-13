@@ -26,7 +26,9 @@ namespace Pry.Api.Tests;
 /// 各条守的形状：说出去的话要留下状态与经验；没投递、主动消息、决策失败都不许教一个字；
 /// 低信息量时沉默是一等结果而被点名/被提问时不是；决策渲染出的那段话必须真的走到模型跟前，
 /// 而这段里一个数字都不能有；同一张卡在两个会话里共用一本账（TurnId 是会话内序号，故意撞一次）。
-/// 最后一条是源码门：谁把这两处接线悄悄摘掉，绿灯不会跟着他走——接线只在宿主那一处发生，
+/// 另有三条钉住网关自己的归属判断：一轮要过两到三次闸，账本记的是模型真读过的那一份而非复校那一份；
+/// 同会话两轮并飞时气泡一个字都不记（而不是挑最近问过的那轮挂上去）；首轮 restore 被取消不许把这张卡
+/// 永久切成过渡形状。最后一条是源码门：谁把这两处接线悄悄摘掉，绿灯不会跟着他走——接线只在宿主那一处发生，
 /// 没有任何一条行为断言能替它守着。
 /// </para>
 /// </summary>
@@ -48,8 +50,9 @@ public sealed class CharacterIntelligenceSeamTests : IAsyncLifetime
 
     public ValueTask DisposeAsync()
     {
-        // 只清自己这条连接串对应的池（DEF-P1WALK-04：进程级 ClearAllPools 会拆掉并行用例的句柄）。
-        SqliteConnection.ClearPool(Open());
+        // 只清自己这条库产生的池（DEF-P1WALK-04：进程级 ClearAllPools 会拆掉并行用例的句柄）。
+        // 这里必须走 SqliteTestPools.Clear：MemoryDatabase 现在自带长期记忆仓储那条串，只清宿主形状会漏掉它。
+        SqliteTestPools.Clear(_databasePath);
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
         return ValueTask.CompletedTask;
     }
@@ -65,8 +68,10 @@ public sealed class CharacterIntelligenceSeamTests : IAsyncLifetime
         SpeechStyle = "简洁", BehavioralRules = ["不要敷衍用户"], Greeting = "你好。"
     };
 
-    private CharacterIntelligenceGateway Gateway(IBehaviorPatternRepository? patterns = null) => new(_database,
-        new SqliteCharacterStateRepository(_database), patterns ?? new SqliteBehaviorPatternRepository(_database),
+    private CharacterIntelligenceGateway Gateway(IBehaviorPatternRepository? patterns = null,
+        ICharacterStateRepository? stateRepository = null) => new(_database,
+        stateRepository ?? new SqliteCharacterStateRepository(_database),
+        patterns ?? new SqliteBehaviorPatternRepository(_database),
         new SqliteExpressionPatternRepository(_database), new SqliteBehaviorExperienceRepository(_database),
         NullLogger<CharacterIntelligenceGateway>.Instance);
 
@@ -264,6 +269,91 @@ public sealed class CharacterIntelligenceSeamTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task She_learns_the_decision_the_model_read_not_the_one_the_gate_recheck_handed_back()
+    {
+        // 一轮要过两到三次闸，每次都问一遍建议器；模型读到的只有第一次那份（DEF-P3SEAM-01）。
+        // 账本若改写成"最后问过的那一份"，她学的就是一次根本没起作用的决策——今天不改变她说什么，
+        // 改变的是她学到什么，所以这一条必须钉在真库上的经验行，而不是钉在返回值上。
+        var conversationId = await SeedAsync((ChatRole.User, "我今天加班到十点，整个人都不好了"));
+        var gateway = Gateway();
+        var advisor = gateway.CreateAdvisor(conversationId, Card(), new TurnTakingSettings());
+        var sink = new CharacterIntelligenceOutputSink(new CollectingSink(), gateway);
+        var turn = new TurnIdentity(12, 1, 1);
+
+        var consumedByModel = await advisor.AdviseAsync(Gate(turn, "我今天加班到十点，整个人都不好了"), Token);
+        var gateRecheck = await advisor.AdviseAsync(Gate(turn, "周末有什么打算吗"), Token);
+        // 两次咨询给出不同的决策，这条判据才有判别力；哪天规划器把两者收敛成同一份，本条要显式作废而不是静默常绿。
+        Assert.NotEqual(consumedByModel.Reason, gateRecheck.Reason);
+
+        await sink.MessageDeliveredAsync(conversationId, 301, new RuntimePlannedMessage(0, "辛苦你了", null),
+            MessageSources.ModelReply, Token);
+        await sink.TurnTransitionAsync(conversationId, turn, RuntimeTurnOutcome.Completed, "delivered", Token);
+
+        var only = Assert.Single(await new SqliteBehaviorExperienceRepository(_database)
+            .ListForCharacterAsync("card-seam", 10, Token));
+        Assert.Equal(consumedByModel.Reason, $"intelligence:{only.Scenario}:{only.Intent}");
+    }
+
+    [Fact]
+    public async Task A_bubble_is_only_recorded_when_exactly_one_turn_of_that_conversation_is_in_flight()
+    {
+        // 外发端口那句气泡回调不带轮身份，签名是契约 §7.1 结论 1 冻住的（DEF-P3SEAM-02）。
+        // 同会话两轮并飞在生产里到不了（SingleInFlightTurnBoundaryTests 钉着 ReplyGate 那两道闸的顺序），
+        // 这里仍然把它造出来，为的是钉住网关自己那一半：归属说不清时一个字都不记，
+        // 而不是"挑最近被问过的那一轮"——按最近猜，正是把上一轮的正文记到下一轮账上的那个形状。
+        var conversationId = await SeedAsync((ChatRole.User, "我今天加班到十点，整个人都不好了"));
+        var gateway = Gateway();
+        var advisor = gateway.CreateAdvisor(conversationId, Card(), new TurnTakingSettings());
+        var sink = new CharacterIntelligenceOutputSink(new CollectingSink(), gateway);
+
+        await advisor.AdviseAsync(Gate(new TurnIdentity(13, 1, 1), "我今天加班到十点，整个人都不好了"), Token);
+        await advisor.AdviseAsync(Gate(new TurnIdentity(14, 1, 1), "周末有什么打算吗"), Token);
+        await sink.MessageDeliveredAsync(conversationId, 302, new RuntimePlannedMessage(0, "辛苦你了", null),
+            MessageSources.ModelReply, Token);
+        await sink.TurnTransitionAsync(conversationId, new TurnIdentity(13, 1, 1), RuntimeTurnOutcome.Completed,
+            "delivered", Token);
+        await sink.TurnTransitionAsync(conversationId, new TurnIdentity(14, 1, 1), RuntimeTurnOutcome.Completed,
+            "delivered", Token);
+
+        Assert.Empty(await new SqliteBehaviorExperienceRepository(_database)
+            .ListForCharacterAsync("card-seam", 10, Token));
+        Assert.Null(await new SqliteCharacterStateRepository(_database)
+            .LoadAsync("card-seam", CharacterIntelligenceGateway.LocalUserId, Token));
+    }
+
+    [Fact]
+    public async Task A_failed_first_restore_does_not_switch_this_card_off_for_good()
+    {
+        // 状态域是按卡片缓存的，而首轮 restore 恰好是客户端最容易断开的那一刻（DEF-P3SEAM-03）。
+        // 那笔失败的 Task 若留在字典里，这张卡此后每一轮都拿到同一个坏结果：静默退回过渡形状，
+        // 界面看不出任何异常，只能等进程重启自愈。所以第二轮必须自己恢复。
+        var conversationId = await SeedAsync((ChatRole.User, "我今天加班到十点，整个人都不好了"));
+        var state = new CancelFirstRestore(_database);
+        var gateway = Gateway(stateRepository: state);
+        var advisor = gateway.CreateAdvisor(conversationId, Card(), new TurnTakingSettings());
+        var sink = new CharacterIntelligenceOutputSink(new CollectingSink(), gateway);
+
+        var first = await advisor.AdviseAsync(Gate(new TurnIdentity(15, 1, 1), "我今天加班到十点，整个人都不好了"),
+            Token);
+        Assert.Equal("transitional_no_social_judgement", first.Reason);
+
+        var second = await advisor.AdviseAsync(Gate(new TurnIdentity(16, 1, 1), "我今天加班到十点，整个人都不好了"),
+            Token);
+        Assert.StartsWith("intelligence:", second.Reason, StringComparison.Ordinal);
+        Assert.NotNull(second.PromptBlock);
+
+        // 恢复的不只是返回值：轮末那本账走的是另一条取用状态域的路径，它也必须重新有货。
+        await sink.MessageDeliveredAsync(conversationId, 303, new RuntimePlannedMessage(0, "辛苦你了", null),
+            MessageSources.ModelReply, Token);
+        await sink.TurnTransitionAsync(conversationId, new TurnIdentity(16, 1, 1), RuntimeTurnOutcome.Completed,
+            "delivered", Token);
+        var ledger = await new SqliteCharacterStateRepository(_database)
+            .LoadAsync("card-seam", CharacterIntelligenceGateway.LocalUserId, Token);
+        Assert.NotNull(ledger);
+        Assert.Equal(1, ledger.ExchangeCount);
+    }
+
+    [Fact]
     public async Task When_the_decision_cannot_be_made_she_still_answers_instead_of_going_silent()
     {
         var conversationId = await SeedAsync((ChatRole.User, "我今天加班到十点，整个人都不好了"));
@@ -365,6 +455,29 @@ public sealed class CharacterIntelligenceSeamTests : IAsyncLifetime
 
         public Task FailureAsync(string conversationId, TurnIdentity turn, string errorCode,
             CancellationToken token) => Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 首轮 restore 被取消的状态读口（DEF-P3SEAM-03 的触发形状：客户端在断开窗口里问第一句）。
+    /// 只掐第一次读，其余全部转给真正的 SQLite 仓库——恢复那半边必须跑在真库上，否则 fake 与真库的
+    /// 判定分歧（DEF-P2PLAN-01）会让这条判据只在假人身上成立。
+    /// </summary>
+    private sealed class CancelFirstRestore(MemoryDatabase database) : ICharacterStateRepository
+    {
+        private readonly SqliteCharacterStateRepository _inner = new(database);
+        private int _loads;
+
+        public Task<CharacterStateRecord?> LoadAsync(string characterId, string userId,
+            CancellationToken cancellationToken = default) =>
+            Interlocked.Increment(ref _loads) == 1
+                ? Task.FromException<CharacterStateRecord?>(new OperationCanceledException("模拟首轮 restore 被取消"))
+                : _inner.LoadAsync(characterId, userId, cancellationToken);
+
+        public Task<bool> SaveAsync(CharacterStateRecord record, CancellationToken cancellationToken = default) =>
+            _inner.SaveAsync(record, cancellationToken);
+
+        public Task<int> PurgeAsync(string characterId, CancellationToken cancellationToken = default) =>
+            _inner.PurgeAsync(characterId, cancellationToken);
     }
 
     private sealed class UnreadablePatterns : IBehaviorPatternRepository

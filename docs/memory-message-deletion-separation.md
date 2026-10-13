@@ -135,6 +135,26 @@ Stage 1 的代价：跨重启的 undo 不能重建证据行（摘录净化后只
 成本：SQLite 不能 `ALTER` 外键，必须建新表 + 拷贝 + drop + rename（`memory_evidence` 不被任何表引用，重建是安全的），并处理迁移事务内的 CASCADE 语义。
 **触发条件**：只有当"跨重启撤销消息删除"或"按证据逐条展示删除历史"成为产品需求时才做。
 
+### 4.3 Stage 1 落地时对本文的四处收紧（2-B，读代码以本节为准）
+
+实现与 §4.1 的字面步骤有四处差异，都不改变不变量，但会让"照 §4.1 重写一遍"的人写出与判据不符的行为：
+
+1. **支撑集不只数证据行**：`n'` = 存活的 `memory_evidence` 行数 **＋** "主证据消息存活且该记忆没有对应证据行"时的 1。
+   理由：`AddMemoryAsync` 与 legacy 迁移出来的行根本没有证据行，只数证据会把它们在任何一次删除后误判成孤立
+   （`CoreTests` 那条用例走的就是这条形状）。对抽取来源的行，两种数法逐位相同。
+2. **`epoch+1` 只给真正被改写的作用域**：本文写的是"执行一次 `Fence` 等价的 `epoch+1`"，实现改成按
+   `state_version` 实际 +1 的 scope 集合逐个自增。理由：一次什么都没改到的删除不该把无关的 pending 抽取
+   一起 fence 掉。I7（`forget_before` 绝不动）不变——`N10` 同时钉住这两半（把它改回无条件自增，`N10` 红）。
+3. **§4.1 第 4 步（抢在 CASCADE 之前显式 `DELETE FROM memory_evidence`）没有实现**：证据三元组在删除前已整组读进
+   快照，CASCADE 随后自己把它们带走，显式再删一次只是多一笔写、且会让我们误以为"知道删了什么"需要它。
+   摘录净化仍由"快照只在内存、从不落表"+ I4 保证（`N1` 断言摘录只存在于快照里）。
+4. **候选任务清扫不受"有没有记忆被改写"门控**：落地过程中真踩到过一个 bug——`pending.Count == 0` 时提前返回
+   会跳过 `memory_candidates` 的 `abandoned` 清扫，于是一条不含已学事实的删除把待抽取任务留在队列里，
+   下次 `ClaimAsync` 必然撞上 `stale_evidence`。现在清扫与 epoch 自增无条件执行，`N10` 是这条的钉。
+
+`memory_deletion_fence` 触发器本体一字未改：I3 现在由"这些路径根本不再执行 `DELETE FROM memories`"成立，
+不需要拆触发器（工单"不重建外键"的更省实现）。
+
 ---
 
 ## 5. 撤销路径的具体改法（C2）
@@ -157,6 +177,13 @@ INSERT INTO memory_evidence(memory_id,message_id,conversation_id,excerpt) VALUES
 - `state_version+1` 保持现有乐观并发语义（他人 worktree 的 `CharacterIntelligence` 状态仓储依赖"版本落后即拒写"这一类断言）。
 - **不改 S2 触发器**。撤销不再需要绕过它，因为不再有墓碑产生。这是本文与"给 undo 开后门"方案的差别——后门会削弱 D1 的防复活保证。
 - `messages` 的恢复维持 `INSERT OR REPLACE`（`:596`）：消息表没有墓碑触发器，行为不变。
+
+> **2-B 落地更正（判别锚点）**：上面的 `WHERE ... status='orphaned'` 换成了
+> `WHERE id=$id AND scope_key=$scope AND state_version=$本次 detach 写入的版本`（即快照版本 +1）。
+> 理由：一个记忆行在 detach 后**不必然**变成 `orphaned`——佐证仍存活时它保持 `active`、只是重算置信度（I5，N4），
+> 用状态作锚点会正好漏掉这批行；而同一轮 undo 里可能出现"快照之后又被更新的删除改写过"的情况，
+> 状态锚点会把新状态覆盖掉。版本 CAS 让撤销只对"自己写的那一版"生效，可重放、不覆盖他人改写，
+> 由 `N5b` 钉住（去掉 CAS 该用例即红）。`scope_key` 条件与 `state_version+1` 两条保持原样。
 
 ---
 
@@ -206,6 +233,20 @@ INSERT INTO memory_evidence(memory_id,message_id,conversation_id,excerpt) VALUES
 
 若任一 N 用例失败，本文视为未实现；不接受"先合并后补测试"。
 
+> **2-B 落地更正（本节原有一句判断是错的）**：原文写"本设计不翻转任何既有断言"。在 `CoreTests.cs:179`
+> 这一条上不成立——那里的 `Assert.Empty(await db.ListMemoriesAsync(...))` 位于 **undo 之后**，
+> 而裁定 B 之下撤销必须把事实还回来，于是它与 N5"undo 后逐字段相等"互斥。处理方式：
+> **方向不变**（这条用例本意是"撤销不得绕过记忆删除的墓碑"），锚点改为
+> "显式删一条记忆（D1）→ 重放同一次撤销 → 仍为空"，并按工单要求**另加**一条
+> `orphaned` 行仍存在的断言（`:176-177`）；原断言一条都没放宽。测试名同步从
+> `..._remove_linked_memory_...` 改为 `..._detach_linked_memory_...`。
+>
+> 落地覆盖：`tests/Pry.Core.Tests/MemoryDeletionSeparationTests.cs` 共 13 例，
+> 对应 N1、N2、N3、N4、N5、N6、N7、N9、N10 九个编号 + `N5b`（撤销 CAS）+ `N5c`（I8 不动 `superseded`）
+> + `N6b`（撤销重放不复活、不抛）+ `N12`（组件版本 2 可启动、未知版本拒启动）。
+> **N8、N11 未实现**：两条都依赖管理面入口（级联复选框、`status` 进 DTO），归 2-C（`RT-005`），
+> 不属本刀；§6 末的 `scope_key='character:'||$c` 作用域缺陷同样留到那一刀。
+
 ---
 
 ## 9. 分期与非目标
@@ -232,5 +273,44 @@ INSERT INTO memory_evidence(memory_id,message_id,conversation_id,excerpt) VALUES
 
 另外一条提请注意（与本文同源，但属实现方）：D1/D2 与 D3/D4 现在共用 `memory_deletion_fence` 一个触发器承担四种语义。若不采纳本文的 `orphaned`，**至少**要把触发器拆成"仅用户意图墓碑"，否则 C1 与 C4 在任何版本下都存在。这条是底线修复，独立于本文其余部分。
 
+### 10.1 裁定回填（2026-10-12，作者裁 B；守门人基准 `docs/full-scope-sprint.md` §3 第 2 层）
+
+| # | 结论 | 依据强度 |
+|---|---|---|
+| **P1** | **已裁**：删一条聊天消息**只是删记录，不影响她已经学到的事实**；"让她忘掉"由显式入口承担，那个入口就是 `RT-005` 完成标准里本来就有的记忆管理 UI，**不得另造第二套删除语义**。 | 作者原话，直接对应本文全部前提 |
+| **P2** | **按 Stage 1 采纳**：摘录不落表——detach 后 `memory_evidence` 行随消息的 `ON DELETE CASCADE` 一起消失，原文只活在内存里的撤销快照中（`N1` 断言这一条）。 | **推断**：来自裁定 B "只删记录" + 工单"证据随快照走"，作者未单独点名 P2 |
+| **P3** | **按 Stage 1 采纳**：`DeleteConversationAsync` 只孤立该会话教出的事实、零墓碑（`N7`）；级联复选框属管理面，留 2-C。 | **推断**：同上，作者未单独点名 P3 |
+
+P2/P3 若被作者改判，本刀的 `N1`/`N7` 两条判据要跟着翻，其余不变。
+
 ## 11. 关联
 契约 §7.1 / §7.2 / §7.3、§15.1 R3、§15.3 未闭合接缝；`docs/memory-recall-calibration.md` §3 集 B 的 B6（已删/已孤立/跨作用域不得进 `Hits`）；`docs/eval/README.md:72,78`（复活与不可恢复的 Critical 归类）；MEM-005 台账。
+
+## 12. 反证与门禁读数（2-B 落地时）
+
+**门禁（只在 `codex/memory-context` 载体上，基线 `3613a2a`，落后主线 21 个提交，不与主线读数互顶）**：
+Release 构建 `-t:Rebuild` 0 警告 0 错误；解决方案级连续两次 **231 通过 / 0 失败 / 1 跳过**，
+分项逐位相同（Client 4、App 156、Api 17、Core 54 + 1 跳过）；`git diff --check` 干净；
+TRX 落在被忽略的 `tests/*/TestResults/`。本刀新增 13 例使 Core 从 41 涨到 54。
+
+**反证**：每条新写的守卫都被故意破坏过一次，逐个点名转红，然后用 md5 校验的字节还原收回。
+
+| # | 突变（把实现改回错误形状） | 转红的判据 |
+|---|---|---|
+| a | detach 改回 `DELETE FROM memories`（C1/C4 原状） | `CoreTests` 那条 + N1、N2、N3、N4、N5、N5b、N6b、N7（9 红） |
+| b | `Fence` 整条搬过来，连 `forget_before` 一起推进（破 I7） | N1、N7 |
+| c | 孤立置信度 `.4 → .6`（抬到检索闸门之上） | N1 |
+| d | 无视剩余佐证条数、一律孤立（C3 原状） | N3、N4、N5b |
+| e | 撤销写回去掉 `state_version` CAS | N5b |
+| f | 撤销去掉"行还在才重建证据"的存在性守卫 | N6b |
+| g | 组件版本守卫退回 `!= 1` | N12、`Migration_is_repeatable_and_manual_edit_discards_old_evidence` |
+| h | 没有记忆被改写时提前返回、跳过候选清扫（本刀实际写错并修好的 bug） | N10 |
+| i | 去掉"只处理 `active` 行"的守卫，把 `superseded` 一起降级（破 I8） | N5c |
+| j | `epoch+1` 改成无条件自增 | N10 |
+| k | 撤销改回 `INSERT OR REPLACE` 的十列写法（C2 原状） | `CoreTests` 那条 + N5、N5b |
+
+g 有两个读数：第一次跑（N12 尚未收紧时）只有既有那条迁移用例红，N12 对守卫不敏感——它当时只验"未知版本被拒"，
+没验"已是 2 的库必须能启动"。补了这一步之后 N12 才真的钉住这条守卫；那一轮作废、按补后的写法重跑。
+
+h 是这一刀唯一一次自己写出来的产品缺陷：`if (pending.Count == 0) return [];` 把候选任务的
+`abandoned` 清扫一起挡掉了，N10 就是为它加的。

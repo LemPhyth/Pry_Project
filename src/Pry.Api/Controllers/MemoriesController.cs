@@ -8,6 +8,10 @@ namespace Pry.Api.Controllers;
 [ApiController, Route("api/v1/memories")]
 public sealed class MemoriesController(MemoryApplicationService service) : ControllerBase
 {
+    [HttpGet("details")] public Task<IReadOnlyList<MemoryDetailsResponse>> Details(
+        [FromQuery] string characterId, CancellationToken token) => service.DetailsAsync(characterId, token);
+    [HttpPost("clear")] public async Task<IActionResult> Clear(ClearMemoriesRequest request, CancellationToken token)
+    { await service.ClearAsync(request, token); return NoContent(); }
     [HttpGet] public Task<IReadOnlyList<MemoryRecord>> List([FromQuery] string characterId, [FromQuery] string? query, CancellationToken token) => service.ListAsync(characterId, query, token);
     [HttpPost] public async Task<ActionResult<MemoryRecord>> Create(CreateMemoryRequest request, CancellationToken token)
     {

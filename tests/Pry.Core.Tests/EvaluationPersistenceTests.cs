@@ -189,12 +189,10 @@ public sealed class EvaluationPersistenceTests
 
         public void Dispose()
         {
-            // Clear only this fixture's pool; do not disturb concurrently running DB tests.
-            using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
-            {
-                DataSource = Path, Mode = SqliteOpenMode.ReadWriteCreate, Cache = SqliteCacheMode.Shared
-            }.ToString());
-            SqliteConnection.ClearPool(connection);
+            // Clear only this fixture's pools; do not disturb concurrently running DB tests.
+            // MemoryDatabase now opens the long-term repository's own connection string too, so the
+            // three-key SqliteTestPools.Clear helper is required (a single ClearPool leaves memory.db locked).
+            SqliteTestPools.Clear(Path);
             if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
         }
     }

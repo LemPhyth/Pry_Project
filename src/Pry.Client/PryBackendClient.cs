@@ -160,6 +160,10 @@ public sealed class PryBackendClient
     public Task<MemoryRecord> CreateMemoryAsync(CreateMemoryRequest request, CancellationToken token = default) => SendAsync<MemoryRecord>(HttpMethod.Post, "api/v1/memories", request, token);
     public Task<MemoryRecord> UpdateMemoryAsync(long id, string characterId, UpdateMemoryRequest request, CancellationToken token = default) => SendAsync<MemoryRecord>(HttpMethod.Put, $"api/v1/memories/{id}?characterId={Escape(characterId)}", request, token);
     public Task DeleteMemoryAsync(long id, string characterId, CancellationToken token = default) => SendNoContentAsync(HttpMethod.Delete, $"api/v1/memories/{id}?characterId={Escape(characterId)}", null, token);
+    public Task<IReadOnlyList<MemoryDetailsResponse>> GetMemoryDetailsAsync(string characterId, CancellationToken token = default) =>
+        GetAsync<IReadOnlyList<MemoryDetailsResponse>>($"api/v1/memories/details?characterId={Escape(characterId)}", token);
+    public Task ClearMemoriesAsync(ClearMemoriesRequest request, CancellationToken token = default) =>
+        SendNoContentAsync(HttpMethod.Post, "api/v1/memories/clear", request, token);
 
     public async Task<MediaAssetResponse> UploadAsync(Stream content, string fileName, string contentType,
         CancellationToken token = default)

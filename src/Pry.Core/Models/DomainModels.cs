@@ -1,3 +1,4 @@
+using Pry.Core.Memory;
 using System.Text.Json.Serialization;
 
 namespace Pry.Core.Models;
@@ -63,8 +64,10 @@ public sealed record InteractionCommandWriteResult(InteractionCommandWriteStatus
     string CharacterId, long? MessageId, string Outcome, DateTimeOffset AcceptedAt, DateTimeOffset? RetryAt = null,
     string? ExpressionIntent = null);
 
+// Deleting chat records detaches the memories that cited them; the snapshot is the only place the
+// original evidence excerpts survive, and it is never persisted.
 public sealed record ConversationMutationSnapshot(string ConversationId, ConversationRoom Room,
-    IReadOnlyList<ChatMessage> Messages, IReadOnlyList<MemoryRecord> Memories,
+    IReadOnlyList<ChatMessage> Messages, IReadOnlyList<DetachedMemory> DetachedMemories,
     long MaxMessageIdBeforeMutation);
 
 public sealed record StickerDefinition

@@ -7,6 +7,7 @@ namespace Pry.Core.Memory;
 
 public sealed partial class MemoryDatabase(string databasePath, ILogger? logger = null) : Pry.Core.Abstractions.IMemoryRetriever
 {
+    public SqliteMemoryRepository LongTerm { get; } = new(databasePath);
     private readonly string _connectionString = new SqliteConnectionStringBuilder
     {
         DataSource = databasePath,
@@ -135,6 +136,7 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
         await EnsureColumnAsync(connection, "conversations", "folder_id", "TEXT NULL", cancellationToken);
         await EnsureColumnAsync(connection, "conversations", "is_pinned", "INTEGER NOT NULL DEFAULT 0", cancellationToken);
         await UpgradeMemoryIndexAsync(connection, cancellationToken);
+        await LongTerm.InitializeAsync(cancellationToken);
         await InitializeProactivePoliciesAsync(connection, cancellationToken);
         await InitializeReadStateAsync(connection, cancellationToken);
         await InitializeRuntimeStateAsync(connection, cancellationToken);
@@ -157,7 +159,7 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
 
     public async Task<long> AddMessageAsync(string conversationId, ChatRole role, string content,
         string? imagePath, CancellationToken cancellationToken = default, string? stickerId = null,
-        string? source = null)
+        string? source = null, CompletedMemoryTurn? completedMemoryTurn = null, long? memoryEpoch = null)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
@@ -184,6 +186,9 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
         room.Parameters.AddWithValue("$t", content); room.Parameters.AddWithValue("$title", ConversationTitle(content));
         room.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
         await room.ExecuteNonQueryAsync(cancellationToken);
+        if (role == ChatRole.Assistant && completedMemoryTurn is not null)
+            await SqliteMemoryRepository.RecordCompletedAsync(connection, transaction,
+                completedMemoryTurn with { DeliveredMessageIds = [id] }, memoryEpoch, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return id;
     }
@@ -491,9 +496,11 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
     public async Task DeleteConversationAsync(string conversationId, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken); await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        // D4: dropping a conversation drops its records, not the facts it taught (MEM-006).
+        await SqliteMemoryRepository.DetachMemoriesForDeletedMessagesAsync(connection, transaction,
+            conversationId, DoomedMessages.EntireConversation, 0, cancellationToken);
         foreach (var sql in new[]
         {
-            "DELETE FROM memories WHERE source_message_id IN (SELECT id FROM messages WHERE conversation_id=$id)",
             "DELETE FROM reply_plans WHERE conversation_id=$id",
             "DELETE FROM messages WHERE conversation_id=$id",
             "DELETE FROM conversations WHERE id=$id"
@@ -540,17 +547,9 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
     public async Task<long> AddMemoryAsync(string characterId, string kind, string summary, string tags,
         double importance, long? sourceMessageId, CancellationToken cancellationToken = default)
     {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "INSERT INTO memories(character_id, kind, summary, tags, importance, source_message_id, created_at, updated_at) VALUES($c,$k,$s,$t,$i,$m,$at,$at); SELECT last_insert_rowid();";
-        command.Parameters.AddWithValue("$c", characterId);
-        command.Parameters.AddWithValue("$k", kind);
-        command.Parameters.AddWithValue("$s", summary);
-        command.Parameters.AddWithValue("$t", tags);
-        command.Parameters.AddWithValue("$i", Math.Clamp(importance, 0, 1));
-        command.Parameters.AddWithValue("$m", (object?)sourceMessageId ?? DBNull.Value);
-        command.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
-        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+        var saved = await LongTerm.SaveLegacyManualAsync(MemoryScope.ForCharacter(characterId), kind, summary, tags,
+            importance, sourceMessageId, cancellationToken);
+        return saved.Record.Id;
     }
 
     public async Task<IReadOnlyList<MemoryRecord>> ListMemoriesAsync(string characterId, string? query = null,
@@ -562,7 +561,8 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
         command.CommandText = """
             SELECT id,character_id,kind,summary,tags,importance,source_message_id,created_at,updated_at,last_used_at
             FROM memories
-            WHERE character_id=$c AND ($q='' OR summary LIKE $like OR tags LIKE $like OR kind LIKE $like)
+            WHERE character_id=$c AND scope_key='character:'||$c AND status='active'
+              AND ($q='' OR summary LIKE $like OR tags LIKE $like OR kind LIKE $like)
             ORDER BY importance DESC, id DESC
             """;
         command.Parameters.AddWithValue("$c", characterId);
@@ -576,7 +576,7 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
     public async Task<MemoryRecord?> GetMemoryAsync(long id, string characterId, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken); await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT id,character_id,kind,summary,tags,importance,source_message_id,created_at,updated_at,last_used_at FROM memories WHERE id=$id AND character_id=$c";
+        command.CommandText = "SELECT id,character_id,kind,summary,tags,importance,source_message_id,created_at,updated_at,last_used_at FROM memories WHERE id=$id AND character_id=$c AND scope_key='character:'||$c AND status='active'";
         command.Parameters.AddWithValue("$id", id); command.Parameters.AddWithValue("$c", characterId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadMemory(reader) : null;
@@ -594,27 +594,22 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
     public async Task UpdateMemoryAsync(long id, string characterId, string kind, string summary, string tags,
         double importance, CancellationToken cancellationToken = default)
     {
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE memories SET kind=$k,summary=$s,tags=$t,importance=$i,updated_at=$at WHERE id=$id AND character_id=$c";
-        command.Parameters.AddWithValue("$id", id); command.Parameters.AddWithValue("$c", characterId);
-        command.Parameters.AddWithValue("$k", kind); command.Parameters.AddWithValue("$s", summary);
-        command.Parameters.AddWithValue("$t", tags); command.Parameters.AddWithValue("$i", Math.Clamp(importance, 0, 1));
-        command.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await LongTerm.SaveManualAsync(MemoryScope.ForCharacter(characterId), kind, summary, tags, importance,
+            id, cancellationToken);
     }
 
     public async Task DeleteMemoryAsync(long id, string characterId, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM memories WHERE id=$id AND character_id=$c";
+        command.CommandText = "DELETE FROM memories WHERE id=$id AND character_id=$c AND scope_key='character:'||$c";
         command.Parameters.AddWithValue("$id", id); command.Parameters.AddWithValue("$c", characterId);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<long> CreateReplyPlanAsync(string conversationId, IReadOnlyList<PlannedReplyMessage> messages,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, MemoryScope? memoryScope = null,
+        IReadOnlyList<long>? memoryInputIds = null)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
@@ -635,6 +630,9 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
             item.Parameters.AddWithValue("$i", (object?)message.StickerId ?? DBNull.Value);
             await item.ExecuteNonQueryAsync(cancellationToken);
         }
+        if (memoryScope is not null && memoryInputIds is { Count: > 0 })
+            await SqliteMemoryRepository.RegisterPlanAsync(connection, transaction, planId,
+                memoryScope, memoryInputIds, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return planId;
     }
@@ -669,6 +667,7 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
             room.Parameters.AddWithValue("$at", deliveredAt.ToString("O")); room.Parameters.AddWithValue("$p", planId);
             await room.ExecuteNonQueryAsync(cancellationToken);
         }
+        await SqliteMemoryRepository.RecordDeliveryAsync(connection, transaction, planId, messageId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return messageId;
     }
@@ -677,7 +676,11 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE planned_messages SET state='cancelled' WHERE reply_plan_id=$p AND state='pending'";
+        command.CommandText = """
+            UPDATE planned_messages SET state='cancelled' WHERE reply_plan_id=$p AND state='pending';
+            DELETE FROM memory_turn_sources WHERE plan_id=$p;
+            DELETE FROM memory_turn_deliveries WHERE plan_id=$p;
+            """;
         command.Parameters.AddWithValue("$p", planId);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -685,29 +688,9 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
     public async Task<IReadOnlyList<MemoryRecord>> SearchMemoriesAsync(string characterId, string query, int count = 6,
         CancellationToken cancellationToken = default)
     {
-        var terms = Tokenize(query).Take(6).ToArray();
-        if (terms.Length == 0) return [];
-        var result = new List<MemoryRecord>();
-        await using var connection = await OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        var clauses = terms.Select((_, i) => $"(m.summary LIKE $q{i} OR m.tags LIKE $q{i})");
-        command.CommandText = $"SELECT m.id,m.character_id,m.kind,m.summary,m.tags,m.importance,m.source_message_id,m.created_at,m.updated_at,m.last_used_at FROM memories m WHERE m.character_id=$c AND ({string.Join(" OR ", clauses)}) ORDER BY m.importance DESC, m.id DESC LIMIT $n";
-        command.Parameters.AddWithValue("$c", characterId);
-        command.Parameters.AddWithValue("$n", count);
-        for (var i = 0; i < terms.Length; i++) command.Parameters.AddWithValue($"$q{i}", $"%{terms[i]}%");
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-            result.Add(ReadMemory(reader));
-        if (result.Count > 0)
-        {
-            await reader.DisposeAsync();
-            await using var touch = connection.CreateCommand();
-            touch.CommandText = $"UPDATE memories SET last_used_at=$at WHERE id IN ({string.Join(',', result.Select((_, i) => $"$id{i}"))})";
-            touch.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
-            for (var i = 0; i < result.Count; i++) touch.Parameters.AddWithValue($"$id{i}", result[i].Id);
-            await touch.ExecuteNonQueryAsync(cancellationToken);
-        }
-        return result;
+        var context = await new MemoryQueryService(LongTerm).RetrieveAsync(
+            new MemoryQuery(MemoryScope.ForCharacter(characterId), "", query, count), cancellationToken);
+        return context.Hits.Select(x => x.Memory.Record).ToArray();
     }
 
     public async Task<IReadOnlyList<MemoryEmbeddingSource>> ListPendingMemoryEmbeddingsAsync(string modelId,
@@ -854,25 +837,18 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
             await using var reader = await select.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) messages.Add(ReadChatMessage(reader, conversationId));
         }
         if (messages.Count == 0) return null;
-        var memories = new List<MemoryRecord>();
-        await using (var select = connection.CreateCommand())
-        {
-            select.Transaction = transaction;
-            select.CommandText = $"SELECT id,character_id,kind,summary,tags,importance,source_message_id,created_at,updated_at,last_used_at FROM memories WHERE source_message_id IN (SELECT id FROM messages WHERE conversation_id=$c AND id{op}$id)";
-            select.Parameters.AddWithValue("$c", conversationId); select.Parameters.AddWithValue("$id", messageId);
-            await using var reader = await select.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) memories.Add(ReadMemory(reader));
-        }
+        var detached = await SqliteMemoryRepository.DetachMemoriesForDeletedMessagesAsync(connection, transaction,
+            conversationId, includeFollowing ? DoomedMessages.FromMessage : DoomedMessages.SingleMessage,
+            messageId, cancellationToken);
         // 事件行的 payload 含对话明文，所以删除必须与领域写入同事务：先遮蔽再删消息，
         // 顺序反过来就删不到 subject_message_id 的取值范围了。
         await MaskProtocolEventsAsync(connection, transaction, conversationId, op, messageId, cancellationToken);
-        foreach (var sql in new[]
+        await using (var delete = connection.CreateCommand())
         {
-            $"DELETE FROM memories WHERE source_message_id IN (SELECT id FROM messages WHERE conversation_id=$c AND id{op}$id)",
-            $"DELETE FROM messages WHERE conversation_id=$c AND id{op}$id"
-        })
-        {
-            await using var command = connection.CreateCommand(); command.Transaction = transaction; command.CommandText = sql;
-            command.Parameters.AddWithValue("$c", conversationId); command.Parameters.AddWithValue("$id", messageId); await command.ExecuteNonQueryAsync(cancellationToken);
+            delete.Transaction = transaction;
+            delete.CommandText = $"DELETE FROM messages WHERE conversation_id=$c AND id{op}$id";
+            delete.Parameters.AddWithValue("$c", conversationId); delete.Parameters.AddWithValue("$id", messageId);
+            await delete.ExecuteNonQueryAsync(cancellationToken);
         }
         await using (var update = connection.CreateCommand())
         {
@@ -886,21 +862,23 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
             update.Parameters.AddWithValue("$c", conversationId); await update.ExecuteNonQueryAsync(cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
-        return new ConversationMutationSnapshot(conversationId, roomSnapshot, messages, memories, maxMessageId);
+        return new ConversationMutationSnapshot(conversationId, roomSnapshot, messages, detached, maxMessageId);
     }
 
     public async Task RestoreConversationMutationAsync(ConversationMutationSnapshot snapshot, CancellationToken cancellationToken = default)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
-        foreach (var sql in new[]
+        // Messages that arrived after the snapshot are discarded by this undo, so they detach like any other
+        // deleted record before the history itself goes back.
+        await SqliteMemoryRepository.DetachMemoriesForDeletedMessagesAsync(connection, transaction,
+            snapshot.ConversationId, DoomedMessages.AboveMessage, snapshot.MaxMessageIdBeforeMutation, cancellationToken);
+        await using (var sweep = connection.CreateCommand())
         {
-            "DELETE FROM memories WHERE source_message_id IN (SELECT id FROM messages WHERE conversation_id=$c AND id>$max)",
-            "DELETE FROM messages WHERE conversation_id=$c AND id>$max"
-        })
-        {
-            await using var command = connection.CreateCommand(); command.Transaction = transaction; command.CommandText = sql;
-            command.Parameters.AddWithValue("$c", snapshot.ConversationId); command.Parameters.AddWithValue("$max", snapshot.MaxMessageIdBeforeMutation); await command.ExecuteNonQueryAsync(cancellationToken);
+            sweep.Transaction = transaction;
+            sweep.CommandText = "DELETE FROM messages WHERE conversation_id=$c AND id>$max";
+            sweep.Parameters.AddWithValue("$c", snapshot.ConversationId); sweep.Parameters.AddWithValue("$max", snapshot.MaxMessageIdBeforeMutation);
+            await sweep.ExecuteNonQueryAsync(cancellationToken);
         }
         foreach (var message in snapshot.Messages)
         {
@@ -911,14 +889,10 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
             command.Parameters.AddWithValue("$source", message.Source);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
-        foreach (var memory in snapshot.Memories)
-        {
-            await using var command = connection.CreateCommand(); command.Transaction = transaction;
-            command.CommandText = "INSERT OR REPLACE INTO memories(id,character_id,kind,summary,tags,importance,source_message_id,created_at,updated_at,last_used_at) VALUES($id,$c,$k,$s,$t,$i,$source,$created,$updated,$used)";
-            command.Parameters.AddWithValue("$id", memory.Id); command.Parameters.AddWithValue("$c", memory.CharacterId); command.Parameters.AddWithValue("$k", memory.Kind); command.Parameters.AddWithValue("$s", memory.Summary); command.Parameters.AddWithValue("$t", memory.Tags); command.Parameters.AddWithValue("$i", memory.Importance);
-            command.Parameters.AddWithValue("$source", (object?)memory.SourceMessageId ?? DBNull.Value); command.Parameters.AddWithValue("$created", memory.CreatedAt.ToString("O")); command.Parameters.AddWithValue("$updated", (object?)memory.UpdatedAt?.ToString("O") ?? DBNull.Value); command.Parameters.AddWithValue("$used", (object?)memory.LastUsedAt?.ToString("O") ?? DBNull.Value);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
+        // Memory rows were never deleted by the mutation, so undo rewrites only the state this snapshot
+        // captured. Rebuilding them from ten columns used to clear scope_key and fingerprint.
+        await SqliteMemoryRepository.RestoreDetachedMemoriesAsync(connection, transaction,
+            snapshot.DetachedMemories, cancellationToken);
         await using (var room = connection.CreateCommand())
         {
             room.Transaction = transaction;
