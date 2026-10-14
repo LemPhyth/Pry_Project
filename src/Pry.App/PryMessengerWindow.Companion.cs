@@ -164,7 +164,7 @@ public sealed partial class PryMessengerWindow
             panel.Children.Add(settings);
             panel.Children.OfType<Button>().FirstOrDefault()?.Focus();
         }
-        catch (Exception ex) { panel.Children.Clear(); panel.Children.Add(new TextBlock { Text = $"动作读取失败：{ex.Message}", TextWrapping = Avalonia.Media.TextWrapping.Wrap }); }
+        catch (Exception ex) { panel.Children.Clear(); panel.Children.Add(new TextBlock { Text = $"动作读取失败 · {Services.NoticeContentFactory.StatusText(ex)}", TextWrapping = Avalonia.Media.TextWrapping.Wrap }); }
     }
     private async Task ExecuteInteractionAsync(string action)
     {
@@ -184,7 +184,7 @@ public sealed partial class PryMessengerWindow
         catch (Exception ex)
         {
             _retryInteractionRoom = room; _retryInteractionAction = action; _retryInteractionKey = key;
-            if (revision == _roomRevision) ConversationStatusText.Text = $"互动未完成：{ex.Message}。再次点击可重试。";
+            if (revision == _roomRevision) ConversationStatusText.Text = $"互动未完成 · {Services.NoticeContentFactory.StatusText(ex)}；再次点击可重试。";
         }
         finally { _interactionBusy = false; InteractionButton.IsEnabled = true; }
     }

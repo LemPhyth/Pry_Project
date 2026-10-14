@@ -110,8 +110,8 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
         {
             LoadingOverlay.IsVisible = false;
             HeaderConnectionText.Text = "连接失败";
-            ConversationStatusText.Text = ex.Message;
-            ShowEmptyError("Pry 暂时无法打开对话", ex.Message);
+            ConversationStatusText.Text = NoticeContentFactory.StatusText(ex);
+            ShowEmptyError("Pry 暂时无法打开对话", ex);
         }
     }
 
@@ -424,7 +424,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
             catch (Exception ex)
             {
                 SetSending(false);
-                await ShowNoticeAsync(isUser ? "无法编辑这条消息" : "无法重新生成回复", ex.Message);
+                await ShowNoticeAsync(isUser ? "无法编辑这条消息" : "无法重新生成回复", ex);
             }
         };
         remove.Click += async (_, _) =>
@@ -437,7 +437,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
                 await RefreshRoomsWithoutSwitchAsync();
                 ConversationStatusText.Text = result.CanUndo ? "消息已删除 · Ctrl+Z 可撤销" : "消息已删除";
             }
-            catch (Exception ex) { await ShowNoticeAsync("无法删除消息", ex.Message); }
+            catch (Exception ex) { await ShowNoticeAsync("无法删除消息", ex); }
         };
         return new ContextMenu { ItemsSource = !isUser && message.Source is "interaction_preset" or "proactive"
             ? new[] { remove } : new[] { primary, remove } };
@@ -519,7 +519,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
         catch (Exception ex)
         {
             if (revision == _roomRevision) SetSending(false);
-            await ShowNoticeAsync("消息没有发送", ex.Message);
+            await ShowNoticeAsync("消息没有发送", ex);
         }
     }
 
@@ -543,14 +543,14 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
             var room = await _api.CreateConversationAsync(character?.Id ?? _character?.Id);
             await RefreshRoomsAsync(room.Id);
         }
-        catch (Exception ex) { await ShowNoticeAsync("无法创建对话", ex.Message); }
+        catch (Exception ex) { await ShowNoticeAsync("无法创建对话", ex); }
     }
 
     private async void ConversationList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (_changingRoom || ConversationList.SelectedItem is not ListBoxItem { Tag: ConversationRoom room } || room.Id == _conversationId) return;
         try { await OpenRoomAsync(room); }
-        catch (Exception ex) { await ShowNoticeAsync("无法打开对话", ex.Message); }
+        catch (Exception ex) { await ShowNoticeAsync("无法打开对话", ex); }
     }
 
     private void ConversationSearch_TextChanged(object? sender, TextChangedEventArgs e) => ApplyRoomFilter();
@@ -597,7 +597,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
             };
             flyout.ShowAt(anchor);
         }
-        catch (Exception ex) { await ShowNoticeAsync("无法读取角色", ex.Message); }
+        catch (Exception ex) { await ShowNoticeAsync("无法读取角色", ex); }
     }
 
     private async Task LoadCharacterChoiceAvatarAsync(Image image, TextBlock fallback, string url)
@@ -675,7 +675,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
         {
             e.Handled = true;
             try { await _api.CancelTurnAsync(_conversationId); SetSending(false); }
-            catch (Exception ex) { await ShowNoticeAsync("无法停止回复", ex.Message); }
+            catch (Exception ex) { await ShowNoticeAsync("无法停止回复", ex); }
             return;
         }
         if (e.Source is TextBox || e.Key != Key.Z || !e.KeyModifiers.HasFlag(KeyModifiers.Control) || _conversationId is null || _sending) return;
@@ -691,14 +691,14 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
         {
             ConversationStatusText.Text = "没有可撤销的消息操作";
         }
-        catch (Exception ex) { await ShowNoticeAsync("无法撤销", ex.Message); }
+        catch (Exception ex) { await ShowNoticeAsync("无法撤销", ex); }
     }
 
     private async void CancelReply_Click(object? sender, RoutedEventArgs e)
     {
         if (_conversationId is null) return;
         try { await _api.CancelTurnAsync(_conversationId); SetSending(false); }
-        catch (Exception ex) { await ShowNoticeAsync("无法停止回复", ex.Message); }
+        catch (Exception ex) { await ShowNoticeAsync("无法停止回复", ex); }
     }
 
     private async Task DeleteRoomAsync(ConversationRoom room) => await RunConversationMutationAsync("无法删除会话", async () =>
@@ -747,7 +747,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
         try { await action(); }
         catch (Exception ex)
         {
-            await ShowNoticeAsync(errorTitle, ex.Message);
+            await ShowNoticeAsync(errorTitle, ex);
         }
     }
 
@@ -758,7 +758,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
             try { _mediaPolicy = await _api.GetMediaPolicyAsync(); }
             catch (Exception ex)
             {
-                await ShowNoticeAsync("暂时无法添加附件", $"附件策略没有加载成功：{ex.Message}\n请检查本地服务后重试。");
+                await ShowNoticeAsync("暂时无法添加附件", ex);
                 return;
             }
         }
@@ -790,7 +790,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
                 await using var stream = File.OpenRead(path);
                 _attachments.Add(await _api.UploadAsync(stream, Path.GetFileName(path), ContentType(path)));
             }
-            catch (Exception ex) { await ShowNoticeAsync("附件没有添加", $"{file.Name}：{ex.Message}"); }
+            catch (Exception ex) { await ShowNoticeAsync($"附件没有添加：{file.Name}", ex); }
         }
         UpdateAttachmentButton();
     }
@@ -823,7 +823,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
             };
             _waveInput.StartRecording(); VoiceButton.Content = "■"; VoiceButton.Classes.Add("active"); ConversationStatusText.Text = "正在录音，再次点击结束";
         }
-        catch (Exception ex) { await ResetRecordingAsync(); await ShowNoticeAsync("无法开始录音", ex.Message); }
+        catch (Exception ex) { await ResetRecordingAsync(); await ShowNoticeAsync("无法开始录音", ex); }
     }
 
     private async Task StopRecordingAndRecognizeAsync()
@@ -845,7 +845,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
                 ComposerTextBox.CaretIndex = ComposerTextBox.Text.Length; ComposerTextBox.Focus();
             }
         }
-        catch (Exception ex) { await ShowNoticeAsync("语音识别失败", ex.Message); }
+        catch (Exception ex) { await ShowNoticeAsync("语音识别失败", ex); }
         finally { await ResetRecordingAsync(); }
     }
 
@@ -932,7 +932,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
             flyout.Content = new Border { Background = Pry.App.Services.PryVisualTheme.Get("Card"), BorderBrush = Pry.App.Services.PryVisualTheme.Get("Border"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Child = content };
             Render(StickersView.All); flyout.ShowAt(anchor);
         }
-        catch (Exception ex) { await ShowNoticeAsync("表情加载失败", ex.Message); }
+        catch (Exception ex) { await ShowNoticeAsync("表情加载失败", ex); }
     }
 
     private enum StickersView { All, BuiltIn, User }
@@ -1016,13 +1016,13 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
     private void ResizeBottomLeft_PointerPressed(object? sender, PointerPressedEventArgs e) => BeginResize(WindowEdge.SouthWest, e);
     private void ResizeBottomRight_PointerPressed(object? sender, PointerPressedEventArgs e) => BeginResize(WindowEdge.SouthEast, e);
 
-    private void ShowEmptyError(string title, string detail)
+    private void ShowEmptyError(string title, Exception error)
     {
         MessagePanel.Children.Clear();
         MessagePanel.Children.Add(new StackPanel
         {
             Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center,
-            Children = { new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = detail, Foreground = Pry.App.Services.PryVisualTheme.Get("Muted"), TextWrapping = TextWrapping.Wrap, MaxWidth = 520 } }
+            Children = { new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeight.SemiBold }, NoticeContentFactory.Create(error).Content }
         });
         MessageEmptyState.IsVisible = false;
     }
@@ -1032,6 +1032,16 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
         var close = new Button { Content = "知道了", Classes = { "primary" }, HorizontalAlignment = HorizontalAlignment.Right };
         close.Click += (_, _) => CloseWorkspacePage();
         var content = new StackPanel { Margin = new Thickness(24), Spacing = 16, Children = { new TextBlock { Text = title, FontSize = 20, FontWeight = FontWeight.SemiBold }, new TextBlock { Text = detail, TextWrapping = TextWrapping.Wrap }, close } };
+        ShowWorkspacePage(title, content);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>失败位点的唯一入口：标题说"哪件事没做成"，正文与技术详情一律由呈现层给，界面不再转述异常。</summary>
+    private Task ShowNoticeAsync(string title, Exception error)
+    {
+        var close = new Button { Content = "知道了", Classes = { "primary" }, HorizontalAlignment = HorizontalAlignment.Right };
+        close.Click += (_, _) => CloseWorkspacePage();
+        var content = new StackPanel { Margin = new Thickness(24), Spacing = 16, Children = { new TextBlock { Text = title, FontSize = 20, FontWeight = FontWeight.SemiBold }, NoticeContentFactory.Create(error).Content, close } };
         ShowWorkspacePage(title, content);
         return Task.CompletedTask;
     }

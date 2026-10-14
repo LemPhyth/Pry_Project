@@ -103,7 +103,7 @@ public sealed partial class App : Application
             Title = "Pry 启动失败",
             Icon = CreateApplicationIcon(),
             Width = 560,
-            Height = 260,
+            Height = 300,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             Content = new Border
             {
@@ -113,9 +113,8 @@ public sealed partial class App : Application
                     Spacing = 16,
                     Children =
                     {
-                        new TextBlock { Text = "Pry 无法启动本地后端", FontSize = 18, FontWeight = Avalonia.Media.FontWeight.SemiBold },
-                        new TextBlock { Text = exception.Message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                        new TextBlock { Text = "请检查本地数据目录和程序资源是否完整。", TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                        new TextBlock { Text = Services.NoticeContentFactory.StartupHeadline(PryErrorPresenter.Describe(exception)), FontSize = 18, FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                        Services.NoticeContentFactory.Create(exception).Content,
                         exit
                     }
                 }
