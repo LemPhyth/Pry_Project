@@ -80,10 +80,32 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
         var identity = IdentitySnapshot.From(character);
         var state = new CharacterStateService(identity, LocalUserId, stateRepository);
         await state.RestoreAsync(token);
-        return new Scope(state, new CharacterIntelligenceService(state,
-            new ExpressionService(expressionRepository, characterInstanceId), patternRepository,
-            experiences: experienceRepository), identity);
+        // 表达服务在这里只建一次并留在作用域里：后台排空取的就是这同一个 Learner，
+        // 另建一个就等于把同一张卡的学习队列分成两本，谁都被排空一半。
+        var expressions = new ExpressionService(expressionRepository, characterInstanceId);
+        return new Scope(state, new CharacterIntelligenceService(state, expressions, patternRepository,
+            experiences: experienceRepository), identity, expressions);
     }
+
+    /// <summary>
+    /// 后台排空通道取用的"当前活着的 Learner"。三个刻意的限定：
+    /// 一，只交已经建好的状态域——排空绝不为一张还没说过话的卡建域，那会把首轮 restore 的开销搬到后台；
+    /// 二，不等待还在建的那一笔——它这一轮还没走到投递，账本里没货，下一次 tick 排同样排得到；
+    /// 三，建失败的那一笔在这里被跳过而不是抛出：坏 Task 的逐出归 <see cref="ScopeForAsync"/>，
+    /// 后台循环不该因为一次已经处理过的失败再多做一次决定。
+    /// </summary>
+    public IReadOnlyList<ActiveLearner> ActiveLearners()
+    {
+        var learners = new List<ActiveLearner>();
+        foreach (var built in _scopes.ToArray())
+            if (built.Value is { IsCompletedSuccessfully: true } scope)
+                learners.Add(new ActiveLearner(built.Key, scope.Result.Expressions.Learner));
+
+        return learners;
+    }
+
+    /// <summary>排空通道要的那一眼：哪张卡、哪个学习器。卡 id 一并交出，只为失败时日志能指名是哪一张。</summary>
+    public sealed record ActiveLearner(string CharacterInstanceId, ExpressionLearner Learner);
 
     /// <summary>
     /// 把一轮的决策记进账本，等投递结果回来再学。key 含 conversationId：TurnId 是会话内序号，跨会话会撞。
@@ -193,7 +215,7 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
             : throw new InvalidOperationException($"角色 {characterInstanceId} 的状态域尚未建立，宿主接线顺序有误。");
 
     private sealed record Scope(CharacterStateService State, CharacterIntelligenceService Intelligence,
-        IdentitySnapshot Identity);
+        IdentitySnapshot Identity, ExpressionService Expressions);
 
     private sealed record TurnKey(string ConversationId, long TurnId, long GenerationId);
 

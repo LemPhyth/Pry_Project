@@ -101,6 +101,9 @@ namespace Pry.Api
             builder.Services.AddHostedService<ProtocolEventCleanupService>();
             builder.Services.AddHostedService<RuntimeDescriptorService>();
             builder.Services.AddHostedService<MemoryConsolidationService>();
+            // 表达学习的排空通道（RT-004-DRAIN）：队列从建立起就一直只有放的人、没有取的人，
+            // 少这一行就等于让 `QueueCapacity = 64` 满即丢成为发行行为，而丢的时候没有任何报错。
+            builder.Services.AddHostedService<ExpressionDrainService>();
             builder.Services.AddHealthChecks();
             // 上传天花板（PLAT-006）：与 MediaController 端点特性同值。特性管这一个端点，
             // 全局 FormOptions 兜住其它表单解析路径，两侧都留出 multipart 余量。
