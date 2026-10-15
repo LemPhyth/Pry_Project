@@ -439,8 +439,43 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
             }
             catch (Exception ex) { await ShowNoticeAsync("无法删除消息", ex); }
         };
-        return new ContextMenu { ItemsSource = !isUser && message.Source is "interaction_preset" or "proactive"
-            ? new[] { remove } : new[] { primary, remove } };
+        // 认可入口只在"她这轮真的生成过这句话"的气泡上出现：脚本预设与主动消息没有可归属的一次投递，
+        // 把它们做成可点的按钮等于诱使用户去认可一次没有发生过的说话。
+        var scripted = !isUser && message.Source is "interaction_preset" or "proactive";
+        var items = new List<MenuItem>();
+        if (!scripted) items.Add(primary);
+        if (!scripted && _preferences?.ExplicitExpressionFeedback == true)
+        {
+            items.Add(ExplicitFeedbackItem(message, "就是这样", true));
+            items.Add(ExplicitFeedbackItem(message, "别这样说", false));
+        }
+        items.Add(remove);
+        return new ContextMenu { ItemsSource = items };
+    }
+
+    /// <summary>
+    /// 作者 2026-10-15 定的形状：态度只能来自这一次显式点击，界面不猜、后端也不猜。
+    /// 失败只交给呈现层组织措辞，异常原文不进状态栏。
+    /// </summary>
+    private MenuItem ExplicitFeedbackItem(ChatMessage message, string label, bool approved)
+    {
+        var item = new MenuItem { Header = label };
+        item.Click += async (_, _) =>
+        {
+            if (_conversationId is null) return;
+            try
+            {
+                var result = await _api.SendExpressionFeedbackAsync(_conversationId, message.Id, approved);
+                ConversationStatusText.Text = result.Outcome switch
+                {
+                    ExpressionFeedbackOutcomes.NothingToLearn => "这句里没有可记下的说话方式",
+                    _ when approved => "已记下：这个说法保留",
+                    _ => "已记下：这个说法以后不用"
+                };
+            }
+            catch (Exception ex) { await ShowNoticeAsync("这条反应没有收下", ex); }
+        };
+        return item;
     }
 
     private void StartEventStream(string roomId, long revision)

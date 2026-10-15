@@ -436,7 +436,8 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
         string.IsNullOrWhiteSpace(value.Theme.BackgroundImagePath) ? null : "/api/v1/appearance/background",
         string.IsNullOrWhiteSpace(value.Theme.UserAvatarPath) ? null : "/api/v1/appearance/user-avatar")
     {
-        ActiveEmbeddingModelId = value.ActiveEmbeddingModelId
+        ActiveEmbeddingModelId = value.ActiveEmbeddingModelId,
+        ExplicitExpressionFeedback = value.ExplicitExpressionFeedback
     };
 
     private static ThemePreferences ApplyTheme(ThemePreferences current, ClientThemePreferences value) => current with
@@ -468,7 +469,9 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
             UserProfile = profile, DesktopPet = request.DesktopPet ?? current.DesktopPet,
             Shortcuts = request.Shortcuts ?? current.Shortcuts,
             TurnTakingOverride = request.TurnTaking ?? current.TurnTakingOverride,
-            Theme = request.Theme is null ? current.Theme : ApplyTheme(current.Theme, request.Theme)
+            Theme = request.Theme is null ? current.Theme : ApplyTheme(current.Theme, request.Theme),
+            // 高级（调试）开关：缺席即"这一轮没谈到它"，照旧保留上一次的值，不让其它设置页顺手关掉它。
+            ExplicitExpressionFeedback = request.ExplicitExpressionFeedback ?? current.ExplicitExpressionFeedback
         };
         ValidatePreferences(updated);
         return updated;

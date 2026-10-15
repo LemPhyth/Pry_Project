@@ -264,6 +264,14 @@ public sealed class ExpressionLearner
         return (LearningOutcome.Created, created.EvidenceCount);
     }
 
+    /// <summary>
+    /// 一条已投递气泡里真的出现过的形状。宿主把"用户对她这句话明确按了『就是这样／别这样说』"
+    /// 翻译成学习器认得的形状列表，靠的就是这一个读口——它不判断态度，也不新增判断通道：
+    /// 谁被认可永远由那次点击决定，这里只回答"这一条里面有哪些形状"。
+    /// </summary>
+    public static IReadOnlyList<string> ShapesIn(string? deliveredAssistantText) =>
+        ExtractShapes(deliveredAssistantText ?? string.Empty).Distinct(StringComparer.Ordinal).ToArray();
+
     internal static IEnumerable<string> ExtractShapes(string assistantText)
     {
         var text = (assistantText ?? string.Empty).Trim();

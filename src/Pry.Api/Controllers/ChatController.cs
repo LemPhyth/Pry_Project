@@ -7,7 +7,7 @@ namespace Pry.Api.Controllers;
 
 [ApiController, Route("api/v1")]
 public sealed class ChatController(ConversationSessionService sessions, BackendRuntime runtime,
-    IConfiguration configuration) : ControllerBase
+    IConfiguration configuration, ExpressionFeedbackService feedback) : ControllerBase
 {
     [HttpGet("runtime")]
     public RuntimeStatusResponse RuntimeStatus() => runtime.Status;
@@ -45,6 +45,11 @@ public sealed class ChatController(ConversationSessionService sessions, BackendR
     {
         await sessions.RegenerateAsync(id, messageId, token); return Accepted();
     }
+
+    [HttpPost("conversations/{id}/messages/{messageId:long}/expression-feedback")]
+    public Task<ExpressionFeedbackResponse> ExpressionFeedback(string id, long messageId,
+        ExpressionFeedbackRequest request, CancellationToken token) =>
+        feedback.ReactAsync(id, messageId, request, token);
 
     [HttpPost("conversations/{id}/mutations/undo")]
     public async Task<IActionResult> Undo(string id, CancellationToken token)

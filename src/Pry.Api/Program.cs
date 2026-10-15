@@ -87,6 +87,9 @@ namespace Pry.Api
             builder.Services.AddSingleton<BackendRuntime>();
             builder.Services.AddSingleton<ConversationSessionService>();
             builder.Services.AddSingleton<CharacterInteractionProfileService>();
+            // 显式表达反应的接收入口（DEF-P4LEARN-01）：认可第一次有了生产者。它只往学习队列里放，
+            // 取走仍然只由上面那个排空通道做——把排空搬进请求里就等于让一次点击能拖慢下一次回复。
+            builder.Services.AddSingleton<ExpressionFeedbackService>();
             builder.Services.AddSingleton(TimeProvider.System);
             builder.Services.AddSingleton<CompanionOperationCoordinator>();
             builder.Services.AddSingleton<ProactivePolicyService>();

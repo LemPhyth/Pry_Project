@@ -214,6 +214,13 @@ public sealed record UserPreferences
     public string? ActiveConversationId { get; init; }
     public ThemePreferences Theme { get; init; } = new();
     public UserProfilePreferences UserProfile { get; init; } = new();
+
+    /// <summary>
+    /// 高级（调试）开关：开启后界面上才对某一条回复出现"就是这样／别这样说"，后端同时才开始收这类反应。
+    /// 默认关——作者 2026-10-15 裁的是"用户跟 AI 慢慢打磨说话习惯"，手动干预是给需要它的人的准备项，
+    /// 不是默认路径。关掉不撤销已经学到的东西，只关掉入口。
+    /// </summary>
+    public bool ExplicitExpressionFeedback { get; init; }
 }
 
 public sealed record ThemePreferences

@@ -39,6 +39,20 @@ public sealed class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExce
             await WriteAsync(context, status, ex.Code, "角色互动暂不可执行", ex.Message,
                 ex.RetryAt is null ? null : new Dictionary<string, object?> { ["retryAt"] = ex.RetryAt });
         }
+        catch (ExpressionFeedbackRejectedException ex)
+        {
+            // 一次表态被拒要说清是哪种拒法：开关没开／认错会话／拿不到投递凭据／消息不存在／队列当下满，
+            // 各有各的码与状态，不许都塞进 500（AGENTS 第 5 条）。未登记的码落在 409 那一档，
+            // 最坏结果是状态码保守，而不是把一次没被收下的表态说成服务端故障。
+            var status = ex.Code switch
+            {
+                ExpressionFeedbackErrorCodes.Disabled => 403,
+                ExpressionFeedbackErrorCodes.MessageMissing => 404,
+                ExpressionFeedbackErrorCodes.QueueFull => 503,
+                _ => 409
+            };
+            await WriteAsync(context, status, ex.Code, "这条反应没有被收下", ex.Message);
+        }
         catch (ModelRuntimeException ex)
         {
             await WriteAsync(context, 503, ex.Code, "本地模型暂时不可用", ex.SafeMessage,

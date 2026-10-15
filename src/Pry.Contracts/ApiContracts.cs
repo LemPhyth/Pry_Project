@@ -71,6 +71,9 @@ public sealed record ClientPreferencesResponse(string? SelectedCharacterId, stri
     ClientThemePreferences Theme, string? BackgroundUrl, string? UserAvatarUrl)
 {
     public string? ActiveEmbeddingModelId { get; init; }
+
+    /// <summary>高级（调试）开关的当前状态：界面按它决定那两条反应项出不出现，后端按同一条拒收。</summary>
+    public bool ExplicitExpressionFeedback { get; init; }
 }
 public sealed record ClientThemePreferences(string ThemeMode, string AccentColor, bool UseGlassEffects,
     bool LiveSidebarResize, double BackgroundDimOpacity, double BackgroundImageOpacity, string BackgroundBlurMode,
@@ -80,7 +83,7 @@ public sealed record ClientThemePreferences(string ThemeMode, string AccentColor
 }
 public sealed record UpdateClientPreferencesRequest(string? SelectedCharacterId, string? ActiveConversationId,
     UserProfilePreferences? UserProfile, DesktopPetPreferences? DesktopPet, ShortcutSettings? Shortcuts,
-    TurnTakingSettings? TurnTaking, ClientThemePreferences? Theme);
+    TurnTakingSettings? TurnTaking, ClientThemePreferences? Theme, bool? ExplicitExpressionFeedback = null);
 public sealed record StickerResponse(string Id, string Name, StickerSource Source, IReadOnlyList<string> Emotions,
     IReadOnlyList<string> Situations, IReadOnlyList<string> AvoidWhen, double Intensity, bool Enabled,
     string InteractionRole, bool LikelyBackchannel, string ContentUrl);
@@ -142,6 +145,46 @@ public sealed record InteractionProfileResponse(int SchemaVersion, string Charac
 public sealed record ExecuteInteractionRequest(string ActionId, string IdempotencyKey);
 public sealed record InteractionCommandResponse(string ActionId, string CharacterId, long? MessageId,
     string Outcome, bool Replayed, DateTimeOffset AcceptedAt, string? ExpressionIntent);
+/// <summary>
+/// 用户对某一条她已经投递出去的回复的显式反应。一次点击只表一个态度：请求里没有"她这次说得怎么样"
+/// 之类的评分字段，也没有让服务端去猜的余地——不点就永远不算认可。
+/// </summary>
+public sealed record ExpressionFeedbackRequest(bool Approved);
+
+/// <summary>
+/// 这次表态的处理结果。<c>Outcome</c> 是线契约里的固定文本，界面只照它说一句人话，
+/// 这里刻意没有计数、没有档位、没有任何内部刻度——那条"数值不许出门"的门禁扫的就是这一层。
+/// </summary>
+public sealed record ExpressionFeedbackResponse(long MessageId, string Outcome);
+
+/// <summary>反应被拒的几种情形，各自成一种错误语义（AGENTS 第 5 条：不许都塞 500）。</summary>
+public static class ExpressionFeedbackErrorCodes
+{
+    /// <summary>高级开关没开：入口不存在，请求也不该被当成一次表态。</summary>
+    public const string Disabled = "expression_feedback_disabled";
+
+    /// <summary>这条气泡属于另一个会话：不能拿它去教她，那是把话挂到别人身上。</summary>
+    public const string WrongConversation = "expression_feedback_wrong_conversation";
+
+    /// <summary>这一条拿不到投递凭据（进程重启前的旧气泡、或归属当时就说不清）：宁可拒，不回退成"按最近一轮归属"。</summary>
+    public const string NotAttributable = "expression_feedback_not_attributable";
+
+    /// <summary>这个会话里根本没有这条消息。</summary>
+    public const string MessageMissing = "expression_feedback_message_missing";
+
+    /// <summary>后台学习队列当下是满的：表态没有被收下，稍后可以再点一次。</summary>
+    public const string QueueFull = "expression_feedback_queue_full";
+}
+
+/// <summary>反应被接受后的两种结局文本。</summary>
+public static class ExpressionFeedbackOutcomes
+{
+    public const string Recorded = "recorded";
+
+    /// <summary>那一轮她没有真的说出可学的说法（占位符那一类）：不算表态，也不算失败。</summary>
+    public const string NothingToLearn = "nothing_to_learn";
+}
+
 public sealed record ResourceId<T>(T Id);
 
 public static class ContractValidation
@@ -179,4 +222,14 @@ public sealed class InteractionRejectedException(string code, string message, Da
 {
     public string Code { get; } = code;
     public DateTimeOffset? RetryAt { get; } = retryAt;
+}
+
+/// <summary>
+/// 服务端拒掉一次显式表达反应。文案给人读，<see cref="Code"/> 给机器判读，取值只允许
+/// <see cref="ExpressionFeedbackErrorCodes"/> 里那五个——状态码由 <c>ApiExceptionMiddleware</c> 按码映射，
+/// 新增码忘了映射会落到保守的那一档，而不是被当成 500。
+/// </summary>
+public sealed class ExpressionFeedbackRejectedException(string code, string message) : Exception(message)
+{
+    public string Code { get; } = code;
 }

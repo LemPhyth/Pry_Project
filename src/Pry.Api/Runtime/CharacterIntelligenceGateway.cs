@@ -42,6 +42,13 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
     /// </summary>
     private const int PendingTurnLimit = 8;
 
+    /// <summary>
+    /// 投递凭据的上限，按气泡数计。客户端手里只有消息行 id，"用户点的是哪一条 ⇒ 出自哪一轮"只能靠
+    /// 投递当场记下的这一本；超了丢最老的——拿不到凭据就明确拒收这次表态，
+    /// 绝不退化成"按最近一轮归属"（那是 <c>DEF-P3SEAM-02</c> 花一整刀才拆掉的写法）。
+    /// </summary>
+    private const int ReceiptLimit = 64;
+
     private readonly ConcurrentDictionary<string, Task<Scope>> _scopes = new(StringComparer.Ordinal);
 
     /// <summary>说话前那一问要读对话记录，所以历史消息的读口在这里显式转交给建议器。</summary>
@@ -50,6 +57,8 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
     private readonly object _ledgerGate = new();
     private readonly Dictionary<TurnKey, PendingTurn> _pending = [];
     private readonly List<TurnKey> _ledgerOrder = [];
+    private readonly Dictionary<long, DeliveredReceipt> _receipts = [];
+    private readonly List<long> _receiptOrder = [];
 
     /// <summary>为某个会话构造"说话前那一问"。每个会话一个实例，因为它绑定 conversationId。</summary>
     public IReplyAdvisor CreateAdvisor(string conversationId, CharacterDefinition character,
@@ -146,15 +155,16 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
     }
 
     /// <summary>
-    /// 记下一个已投递气泡的正文。气泡回调不带轮身份，而端口签名是冻结的（契约 §7.1 结论 1），
-    /// 所以这里只认"该会话恰好有一轮在飞"这一种情形：认出唯一才记，认不出唯一就一个字都不记。
+    /// 记下一个已投递气泡的正文，并同时记下"这一条气泡出自哪一轮"的投递凭据。气泡回调不带轮身份，
+    /// 而端口签名是冻结的（契约 §7.1 结论 1），所以这里只认"该会话恰好有一轮在飞"这一种情形：
+    /// 认出唯一才记，认不出唯一就一个字都不记、一条凭据都不记。
     ///
     /// 平时确实只有一轮在飞，靠的是三道闸而不是运气：<c>ReplyGate</c> 在 <c>UserTyping</c> 或
     /// <c>PendingOutputCount > 0</c> 时先 <c>Defer</c>（在建议器之前），<c>TryFormTurnLocked</c> 在
     /// <c>_active is not null</c> 时直接返回，主动候选在同样两个条件成立时被拒。
     /// 原来这里写的理由是"围栏只认最新一轮"，那句不成立——围栏比的是 epoch，而成轮并不抬 epoch。
     /// </summary>
-    internal void RecordDeliveredBubble(string conversationId, string? text)
+    internal void RecordDeliveredBubble(string conversationId, long messageId, string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
         lock (_ledgerGate)
@@ -169,8 +179,69 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
                 }
 
             // 同会话两条以上 = 归属已经说不清了；宁可少学一次，也不把这句话挂到某一轮上去猜。
-            if (inFlight == 1) sole!.Delivered.Add(text);
+            if (inFlight != 1) return;
+            sole!.Delivered.Add(text);
+            RememberReceipt(conversationId, messageId, sole, text);
         }
+    }
+
+    /// <summary>
+    /// 投递凭据按消息行 id 记：那正是客户端手里唯一持有的东西（<c>ChatMessage.Id</c>），
+    /// 也是这里能拿到的同一个 id（<c>Delivery.cs:325</c> 提交气泡后交给 sink 的那一个）。
+    /// </summary>
+    private void RememberReceipt(string conversationId, long messageId, PendingTurn turn, string text)
+    {
+        _receipts[messageId] = new DeliveredReceipt(conversationId, turn, text, DateTimeOffset.UtcNow);
+        _receiptOrder.Remove(messageId);
+        _receiptOrder.Add(messageId);
+        while (_receiptOrder.Count > ReceiptLimit)
+        {
+            var oldest = _receiptOrder[0];
+            _receiptOrder.RemoveAt(0);
+            _receipts.Remove(oldest, out _);
+        }
+    }
+
+    /// <summary>
+    /// 用户对一条已投递气泡的显式表态：把"就是这样／别这样说"落到她那一句真的说过的形状上。
+    ///
+    /// 三处刻意的保守：一，凭据不在场就分两种拒法（这个会话里没这条消息／有但这一轮没被记住），
+    /// 绝不猜；二，认错会话（消息行 id 是全局唯一的，可能属于别的会话）单独成一种；
+    /// 三，那一轮没有可学形状时不重放——占位符那一类"她其实没说话"的轮次不该因为一次点击被记成表态。
+    ///
+    /// 走的是 Core 早就备好的那条幂等形状（<c>ExpressionLearner.cs:150</c>：重放只补证据、
+    /// 不制造另一次出现），所以同一轮连点三次仍然只算一次认可。这里不带 <c>FollowUpEvidence</c>：
+    /// 行为经验那一侧归第 3 层 <c>RT-006</c>，本刀不越过去。
+    /// </summary>
+    public async Task<ExpressionFeedbackOutcome> ReportExplicitFeedbackAsync(string conversationId, long messageId,
+        bool approved, CancellationToken token)
+    {
+        DeliveredReceipt? receipt;
+        lock (_ledgerGate) _receipts.TryGetValue(messageId, out receipt);
+        if (receipt is null)
+            return await _database.GetMessageAsync(conversationId, messageId, token) is null
+                ? ExpressionFeedbackOutcome.MessageMissing
+                : ExpressionFeedbackOutcome.NotAttributable;
+
+        if (!string.Equals(receipt.ConversationId, conversationId, StringComparison.Ordinal))
+            return ExpressionFeedbackOutcome.WrongConversation;
+
+        var shapes = ExpressionLearner.ShapesIn(receipt.Text);
+        if (shapes.Count == 0) return ExpressionFeedbackOutcome.NothingToLearn;
+
+        var scope = await RequiredScopeAsync(receipt.Turn.Situation.CharacterInstanceId, token);
+        // 每一次点击是一笔独立的证据；重复点击由 Core 那道按 turnKey 的去重挡住，不在这里另造一本。
+        var enqueued = await scope.Intelligence.ObserveFeedbackAsync(new TurnOutcome(
+            receipt.Turn.Situation with { RecentMessages = [] }, receipt.Turn.State,
+            receipt.Turn.Generation.Decision, [], InteractionOutcome.Unknown, receipt.Text, receipt.DeliveredAt)
+        {
+            FeedbackIsExplicit = true,
+            ExpressionFeedbackId = Guid.NewGuid().ToString("N"),
+            AcceptedExpressionStyles = approved ? shapes : [],
+            RejectedExpressionStyles = approved ? [] : shapes
+        }, token);
+
+        return enqueued ? ExpressionFeedbackOutcome.Recorded : ExpressionFeedbackOutcome.QueueFull;
     }
 
     /// <summary>
@@ -227,6 +298,10 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
         public ReplyGenerationContext Generation { get; } = generation;
         public List<string> Delivered { get; } = [];
     }
+
+    /// <summary>一条已投递气泡的归属凭据：哪个会话、出自哪一轮的账、她这一条说了什么、什么时候投递的。</summary>
+    private sealed record DeliveredReceipt(string ConversationId, PendingTurn Turn, string Text,
+        DateTimeOffset DeliveredAt);
 
     /// <summary>
     /// 说话前那一问。"这次要不要说话"的状态闸门仍由 Runtime 的 ReplyGate 把，本类只回答
@@ -301,6 +376,23 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
 }
 
 /// <summary>
+/// 一次显式表态在宿主侧的处理结果。这里的种类与 HTTP 状态码不是一回事：
+/// 网关只说"这件事我能不能归给某一轮、归得到之后有没有真的进后台队列"，
+/// 把它翻成错误语义是 <c>ExpressionFeedbackService</c> 的活。
+/// </summary>
+public enum ExpressionFeedbackOutcome
+{
+    Recorded,
+    NothingToLearn,
+    MessageMissing,
+    WrongConversation,
+
+    /// <summary>这条消息确实在这个会话里，但本进程没有它的投递凭据（重启前的旧气泡，或被账本上限挤掉）。</summary>
+    NotAttributable,
+    QueueFull
+}
+
+/// <summary>
 /// 投递终局的旁听器：六个方法原样转给真正的宿主 sink，只在 <c>MessageDeliveredAsync</c> 上抄一份正文、
 /// 在 <c>TurnTransitionAsync</c> 上补一次学习回报。它是同一个输出通道的内侧装饰器，不是第二条外发路径。
 /// </summary>
@@ -310,7 +402,7 @@ public sealed class CharacterIntelligenceOutputSink(IRuntimeOutputSink inner,
     public Task MessageDeliveredAsync(string conversationId, long messageId, RuntimePlannedMessage message,
         string source, CancellationToken token)
     {
-        gateway.RecordDeliveredBubble(conversationId, message.Text);
+        gateway.RecordDeliveredBubble(conversationId, messageId, message.Text);
         return inner.MessageDeliveredAsync(conversationId, messageId, message, source, token);
     }
 

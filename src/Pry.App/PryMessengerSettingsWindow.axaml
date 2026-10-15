@@ -68,6 +68,15 @@
             <NumericUpDown x:Name="DebounceBox" Minimum="200" Maximum="10000" Increment="100"/>
             <TextBlock Text="回复风格提示" Foreground="{DynamicResource PryMutedBrush}" FontSize="13"/>
             <TextBox x:Name="StyleInstructionBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90" MaxLength="1000"/>
+            <ToggleButton x:Name="ExplicitFeedbackToggle" Margin="0,8,0,0" HorizontalContentAlignment="Stretch" Checked="ExplicitFeedbackToggle_Changed" Unchecked="ExplicitFeedbackToggle_Changed">
+              <Grid ColumnDefinitions="*,Auto"><TextBlock Text="高级设置" FontSize="14" FontWeight="SemiBold"/><TextBlock x:Name="ExplicitFeedbackChevron" Grid.Column="1" FontFamily="Segoe Fluent Icons" Text="&#xE70D;"/></Grid>
+            </ToggleButton>
+            <Border x:Name="ExplicitFeedbackPanel" IsVisible="False" Padding="16" Background="{DynamicResource PryPanelBrush}" BorderBrush="{DynamicResource PryBorderBrush}" BorderThickness="1" CornerRadius="12">
+              <StackPanel Spacing="10">
+                <CheckBox x:Name="ExplicitFeedbackBox" Content="在她的回复上显示「就是这样／别这样说」"/>
+                <TextBlock Text="默认关闭：说话习惯靠慢慢相处打磨。打开后可以在某条回复上明确指出哪个说法要保留、哪个不再使用。" Foreground="{DynamicResource PryMutedBrush}" TextWrapping="Wrap" FontSize="13"/>
+              </StackPanel>
+            </Border>
           </StackPanel></Border>
         </StackPanel></ScrollViewer>
       </TabItem>

@@ -94,6 +94,8 @@ public sealed class PryBackendClient
     public Task CancelTurnAsync(string id, CancellationToken token = default) => SendNoContentAsync(HttpMethod.Post, $"api/v1/conversations/{Escape(id)}/turns/cancel", null, token);
     public Task<ConversationMutationResponse> DeleteMessageAsync(string conversationId, long messageId, CancellationToken token = default) => SendAsync<ConversationMutationResponse>(HttpMethod.Delete, $"api/v1/conversations/{Escape(conversationId)}/messages/{messageId}", null, token);
     public Task RegenerateAsync(string conversationId, long messageId, CancellationToken token = default) => SendNoContentAsync(HttpMethod.Post, $"api/v1/conversations/{Escape(conversationId)}/messages/{messageId}/regenerate", null, token);
+    /// <summary>用户对一条已投递回复的显式表态（高级开关打开后界面才给这个入口）。服务端怎么拒的就怎么抛上来，客户端不替它猜。</summary>
+    public Task<ExpressionFeedbackResponse> SendExpressionFeedbackAsync(string conversationId, long messageId, bool approved, CancellationToken token = default) => SendAsync<ExpressionFeedbackResponse>(HttpMethod.Post, $"api/v1/conversations/{Escape(conversationId)}/messages/{messageId}/expression-feedback", new ExpressionFeedbackRequest(approved), token);
     public Task UndoAsync(string conversationId, CancellationToken token = default) => SendNoContentAsync(HttpMethod.Post, $"api/v1/conversations/{Escape(conversationId)}/mutations/undo", null, token);
     public Task<ChatMessage> SendListeningSignalAsync(string conversationId, CancellationToken token = default) => SendAsync<ChatMessage>(HttpMethod.Post, $"api/v1/conversations/{Escape(conversationId)}/listening-signals", null, token);
 

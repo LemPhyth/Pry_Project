@@ -82,6 +82,7 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
             ListeningSignalsBox.IsChecked = turn.EnableListeningSignals;
             DebounceBox.Value = turn.DebounceMs;
             StyleInstructionBox.Text = turn.StyleInstruction;
+            ExplicitFeedbackBox.IsChecked = _preferences.ExplicitExpressionFeedback;
             SendShortcutBox.Text = _preferences.Shortcuts.Send;
             SendImmediatelyShortcutBox.Text = _preferences.Shortcuts.SendImmediately;
             NewLineShortcutBox.Text = _preferences.Shortcuts.NewLine;
@@ -193,6 +194,13 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
         AdvancedSettingsChevron.Text = expanded ? "\uE70E" : "\uE70D";
     }
 
+    private void ExplicitFeedbackToggle_Changed(object? sender, RoutedEventArgs e)
+    {
+        var expanded = ExplicitFeedbackToggle.IsChecked == true;
+        ExplicitFeedbackPanel.IsVisible = expanded;
+        ExplicitFeedbackChevron.Text = expanded ? "\uE70E" : "\uE70D";
+    }
+
     private async void Save_Click(object? sender, RoutedEventArgs e)
     {
         if (_preferences is null) return;
@@ -247,7 +255,7 @@ public sealed partial class PryMessengerSettingsWindow : UserControl
             var speechId = Choice(SpeechModelBox)?.Id;
             CaptureTuningDraft();
             var saved = await _api.SaveSettingsAsync(new SaveSettingsRequest(
-                new UpdateClientPreferencesRequest(_preferences.SelectedCharacterId, null, profile, _preferences.DesktopPet, shortcuts, turn, theme),
+                new UpdateClientPreferencesRequest(_preferences.SelectedCharacterId, null, profile, _preferences.DesktopPet, shortcuts, turn, theme, ExplicitFeedbackBox.IsChecked == true),
                 new UpdateAppearanceMediaRequest(_backgroundMediaId, _clearBackground, _userAvatarMediaId, _clearUserAvatar, null, null),
                 new UpdateModelSelectionRequest(textModel.Id, string.IsNullOrEmpty(visionId) ? null : visionId,
                     string.IsNullOrEmpty(speechId) ? null : speechId, HasTuningChanges() ?
