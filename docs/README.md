@@ -28,6 +28,8 @@
 | [`research/README.md`](research/README.md) | 五个成熟开源项目的源码研究资料包入口与证据边界 | 机制参考；开工前必读，照搬边界以 `upstream-license-compatibility.md` 为准 |
 | [`full-scope-sprint.md`](full-scope-sprint.md) | 「1.0 清单一次冲完」的刀序、Owner、前置、完成标准与反向约束，外加版本命名规则（本轮产物不叫 1.0）与作者的三笔裁定记录（①A 托盘常驻、②B 删记录不撤回事实，均 2026-10-12 落笔；③仍待） | 作者 2026-10-12 裁定的执行基准；**命名降级 ≠ 判据降级**，`PROJECT_PLAN.md` 不受跟踪，规则以本文件为准 |
 | [`decision-request-protocol.md`](decision-request-protocol.md) | 向 Product Owner 请求裁决时必须给出的四部分与选项写法 | 全部 Agent 的提问形态约束（作者 2026-09-24 定）；不改变任何验收判据 |
+| [`dispatch-rt004-drain.md`](dispatch-rt004-drain.md) | 第 1 层 `RT-004-DRAIN` 的可交接工单：把表达学习的排空接进生产，含今天的事实表、八条完成标准、八条反向约束、推荐形状与门禁口径 | 作者 2026-10-14 派工的载体；Owner＝Character Intelligence，判定归 QA；本文件只写约束与出判面，不新增验收判据本体 |
+| [`dispatch-p4learn-approval-entry.md`](dispatch-p4learn-approval-entry.md) | 第 1 层 `DEF-P4LEARN-01` 的可交接工单：把"就是这样／别这样说"这个认可入口接进生产，含今天的事实表、九条完成标准、九条反向约束、推荐形状与门禁口径 | 作者 2026-10-15 裁定入口形状后的载体（原话已逐字记入）；Owner＝Character Intelligence，判定归 QA；本文件只写约束与出判面，不新增验收判据本体 |
 | [`engineering-pitfalls.md`](engineering-pitfalls.md) | 已发生故障、根因和防复发规则 | 集成与排障经验 |
 | [`CHANGELOG.md`](../CHANGELOG.md) | 面向用户和开发者的版本变化 | 已发布及待发布变更 |
 
