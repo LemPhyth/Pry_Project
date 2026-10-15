@@ -181,10 +181,12 @@ public sealed partial class App : Application
                     new("cancel", "取消"),
                     new("exit", "退出", Destructive: true)
                 ], messenger.AccentColor);
-            if (result is null or "cancel") return;
-            await _mainWindow.PrepareForExitAsync(true);
-            await DisposeBackendAsync();
-            _trayIcon!.IsVisible = false; desktop.Shutdown();
+            if (!Services.TrayExit.IsConfirmed(result)) return;
+            await Services.TrayExit.RunAsync(
+                () => _mainWindow!.PrepareForExitAsync(true),
+                DisposeBackendAsync,
+                () => _trayIcon!.IsVisible = false,
+                () => desktop.Shutdown());
             return;
         }
         var dialog = new Window { Title = "退出 Pry", Width = 540, Height = 280, Background = Avalonia.Media.Brushes.Transparent, WindowStartupLocation = WindowStartupLocation.CenterOwner };
@@ -207,9 +209,12 @@ public sealed partial class App : Application
         var messageCard = CreateDialogCard(message);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8, Children = { cancel, exit } };
         dialog.Content = CreateDialogSurface(PryMessengerWindow.CreateCompactDialogLayout(messageCard, actions));
-        await dialog.ShowDialog(_mainWindow.HostWindow); if (!confirmed) return; await _mainWindow.PrepareForExitAsync(true);
-        await DisposeBackendAsync();
-        _trayIcon!.IsVisible = false; desktop.Shutdown();
+        await dialog.ShowDialog(_mainWindow.HostWindow); if (!confirmed) return;
+        await Services.TrayExit.RunAsync(
+            () => _mainWindow!.PrepareForExitAsync(true),
+            DisposeBackendAsync,
+            () => _trayIcon!.IsVisible = false,
+            () => desktop.Shutdown());
     }
 
     private async Task ShowInfoAsync(string title, string message)

@@ -53,7 +53,7 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
         Opened += async (_, _) => await InitializeAsync();
         Closing += (_, args) =>
         {
-            if (_allowClose) return;
+            if (!Services.WindowClosePolicy.ShouldHideToTray(_allowClose)) return;
             args.Cancel = true;
             Hide();
         };

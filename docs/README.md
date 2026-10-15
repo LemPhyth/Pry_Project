@@ -30,6 +30,8 @@
 | [`decision-request-protocol.md`](decision-request-protocol.md) | 向 Product Owner 请求裁决时必须给出的四部分与选项写法 | 全部 Agent 的提问形态约束（作者 2026-09-24 定）；不改变任何验收判据 |
 | [`dispatch-rt004-drain.md`](dispatch-rt004-drain.md) | 第 1 层 `RT-004-DRAIN` 的可交接工单：把表达学习的排空接进生产，含今天的事实表、八条完成标准、八条反向约束、推荐形状与门禁口径 | 作者 2026-10-14 派工的载体；Owner＝Character Intelligence，判定归 QA；本文件只写约束与出判面，不新增验收判据本体 |
 | [`dispatch-p4learn-approval-entry.md`](dispatch-p4learn-approval-entry.md) | 第 1 层 `DEF-P4LEARN-01` 的可交接工单：把"就是这样／别这样说"这个认可入口接进生产，含今天的事实表、九条完成标准、九条反向约束、推荐形状与门禁口径 | 作者 2026-10-15 裁定入口形状后的载体（原话已逐字记入）；Owner＝Character Intelligence，判定归 QA；本文件只写约束与出判面，不新增验收判据本体 |
+| [`client-error-and-reconnect.md`](client-error-and-reconnect.md) | 错误呈现层怎么把异常翻成用户语言、SSE 重连的档位与判据、哪些界面位已经交出去 | UI-027 客户端侧现状与防复发门（`NoticeContentFactory`、`UserFacingNoticeBoundaryTests`） |
+| [`window-close-paths.md`](window-close-paths.md) | 关窗/收窗/真实退出三条路径、两块判据面（`WindowLifecycle` 决策次序＋源码门）与真机仪器的用法 | 第 0 层 `0-5` 托盘常驻的实现与验收面；裁定本体仍以 `full-scope-sprint.md` 为准 |
 | [`engineering-pitfalls.md`](engineering-pitfalls.md) | 已发生故障、根因和防复发规则 | 集成与排障经验 |
 | [`CHANGELOG.md`](../CHANGELOG.md) | 面向用户和开发者的版本变化 | 已发布及待发布变更 |
 
