@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string]$Version = '0.0.2',
@@ -26,6 +26,24 @@ function Assert-UnderArtifacts([string]$Path) {
     $resolved = [IO.Path]::GetFullPath($Path)
     if (-not $resolved.StartsWith($artifactsRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing to modify a path outside artifacts: $resolved"
+    }
+}
+
+function Assert-CleanWorkingTree {
+    # release-manifest 里那个 sourceCommit 只有在"包里的代码 == 那个 commit"时才是真话。
+    # 旧脚本只跑 `git diff --check`（那只报空白），脏树照样出包：写着真 SHA、装的却是未提交代码，
+    # "main／tag／包同一 SHA"就成了纸面承诺。这道门无条件执行（连 -SkipValidation 都不放过它），
+    # 因为它守的是发行的可审计性，不是可选的验证步骤。
+    $status = @(& git -C $projectRoot status --porcelain | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($LASTEXITCODE -ne 0) { throw "git status failed with exit code $LASTEXITCODE" }
+    if ($status.Count -gt 0) {
+        # 被 .gitignore 排除的 runtime/ 与 models/ 不会出现在这里，所以"运行库只作打包输入、不入版本控制"
+        # 这条不受影响；但任何未跟踪或已改动的受跟踪文件都必须先处理掉才准出包。
+        throw ("Refusing to package from a dirty working tree. Commit or remove these first:`n" + ($status -join "`n"))
+    }
+    $full = (& git -C $projectRoot rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $full -notmatch '^[0-9a-fA-F]{40}$') {
+        throw 'Cannot resolve a full HEAD commit for the release manifest.'
     }
 }
 
@@ -131,6 +149,7 @@ function New-Zip([string]$DirectoryName) {
     return Get-Item -LiteralPath $zipPath
 }
 
+Assert-CleanWorkingTree
 Assert-UnderArtifacts $releaseRoot
 if (Test-Path -LiteralPath $stagingRoot) { Remove-Item -LiteralPath $stagingRoot -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $releaseRoot, $stagingRoot | Out-Null
