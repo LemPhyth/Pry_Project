@@ -5,6 +5,7 @@ using Pry.Core.Intelligence;
 using Pry.Core.Memory;
 using Pry.Core.Models;
 using Pry.Core.Runtime;
+using Pry.Core.TurnTaking;
 
 namespace Pry.Api.Runtime;
 
@@ -260,9 +261,12 @@ public sealed class CharacterIntelligenceGateway(MemoryDatabase database,
         }
         if (entry is null) return;
 
-        var delivered = string.Join("\n", entry.Delivered);
+        // 长度不等于"她说了话"：模型没兑现出正文时投出去的那一条是占位符，两个点照样过得了纯长度那道闸。
+        // 判定与可见侧同源，只在 Core 那一处定义（DEF-P3SEAM-04），这里只调用、不另比一次。
         if (outcome is not (RuntimeTurnOutcome.Completed or RuntimeTurnOutcome.PartiallyDelivered) ||
-            delivered.Length == 0) return;
+            !VisibleReply.HasVisibleContent(entry.Delivered)) return;
+
+        var delivered = string.Join("\n", entry.Delivered);
 
         var scope = await RequiredScopeAsync(entry.Situation.CharacterInstanceId, token);
         await scope.Intelligence.CompleteTurnAsync(new TurnOutcome(entry.Situation, entry.State,

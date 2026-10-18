@@ -11,9 +11,6 @@ namespace Pry.Core.TurnTaking;
 
 public sealed class ReplyPlanner
 {
-    /// <summary>本轮没有可落库的可见答复时的占位，与"模型一个字没输出"同档，不复用原始输出。</summary>
-    private const string UnansweredPlaceholder = "……";
-
     public ReplyPlanner(MemoryDatabase database, PromptBuilder promptBuilder, ModelRouter router,
         CharacterDefinition character, RuntimeState state, StickerCatalog stickerCatalog)
         : this(database, database, promptBuilder, router, character, state, stickerCatalog) { }
@@ -95,7 +92,8 @@ public sealed class ReplyPlanner
             if (visible.Length > 0)
                 return [new PlannedReplyMessage { Type = ReplyMessageType.Text, Content = visible, Sequence = 0 }];
         }
-        return [new PlannedReplyMessage { Type = ReplyMessageType.Text, Content = UnansweredPlaceholder, Sequence = 0 }];
+        // 占位文本与"这一轮没说上话"的判定同源，住在 <see cref="VisibleReply"/>：Core 之外不许再抄一份字面量。
+        return [new PlannedReplyMessage { Type = ReplyMessageType.Text, Content = VisibleReply.Unanswered, Sequence = 0 }];
     }
 
     private static PlannedReplyMessage[]? ParsePlan(string payload, IReadOnlyCollection<StickerDefinition> stickers,
