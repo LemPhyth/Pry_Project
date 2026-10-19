@@ -55,9 +55,9 @@ public sealed class ExpressionDrainChannelTests : IAsyncLifetime
 
     public ValueTask DisposeAsync()
     {
-        // 只清自己这条库产生的池（DEF-P1WALK-04：进程级 ClearAllPools 会拆掉并行用例的句柄）。
-        SqliteTestPools.Clear(_databasePath);
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
+        // 只清自己这条库产生的池（DEF-P1WALK-04：进程级 ClearAllPools 会拆掉并行用例的句柄），
+        // 删除带句柄归还的等窗口（合流树 run1 那条红就是在这一步撞上仍被占用的 memory.db）。
+        SqliteTestPools.ClearAndDeleteRoot(_databasePath, _root);
         return ValueTask.CompletedTask;
     }
 
