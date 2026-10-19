@@ -26,7 +26,7 @@ ConversationEventStreamRunner  唯一的重连宿主：退避、续传、补取�
 
 ## 3. 重连规则
 
-`ConversationEventStreamOptions.Default` = 首次 500 ms、指数翻倍、上限 15 s、连续 8 次失败后终止。终止与连接状态都通过回调交给界面，界面不再自己写循环。
+`ConversationStreamOptions.Default` = 首次 500 ms、指数翻倍、上限 15 s、连续 8 次失败后终止。终止与连接状态都通过回调交给界面，界面不再自己写循环。
 
 | 事件 | 行为 |
 |---|---|
