@@ -309,6 +309,7 @@ RT-002：输入更新持续 ConversationRuntime。后端可等待更多输入或
 - `DELETE /api/v1/conversations/{conversationId}/messages/{messageId}`：用户消息会删除该消息及之后的分支；助手消息只删除自身。返回删除范围及数量。
 - `POST /api/v1/conversations/{conversationId}/messages/{messageId}/regenerate`：只接受助手消息，先等待当前回合完全取消，再从对应用户消息重新生成，返回 `202`。
 - `POST /api/v1/conversations/{conversationId}/mutations/undo`：撤销最近一次删除或重新生成分支，返回 `204`。
+- `POST /api/v1/conversations/{conversationId}/messages/{messageId}/expression-feedback`：用户对**一条已投递的助手气泡**做显式表态，正文 `{"approved":true}`（"就是这样"）或 `{"approved":false}`（"别这样说"）。成功返回 `200` + `{"messageId":<原消息行 id>,"outcome":"recorded"|"nothing_to_learn"}`；`nothing_to_learn` 不是失败——那一句里她没有真的说出可学的说法（占位符那一类），点击照收但不重放成一次学习。错误语义各成一种，不共用 500：`400 validation_error`（`messageId <= 0`）、`403 expression_feedback_disabled`（高级开关未开；这项检查排在归属解析之前，关闭状态下连"这条消息出自哪一轮"都不必问）、`404 expression_feedback_message_missing`、`409 expression_feedback_not_attributable`（这一条不是本次运行投递的，宁可拒也不退化成"按最近一轮归属"）、`409 expression_feedback_wrong_conversation`、`503 expression_feedback_queue_full`（后台学习队列当下满，稍后可再点一次）。回执只有一个布尔方向的结果文本：不含计数、档位或置信度。这条通道只往学习队列里放，绝不在这次请求上排空仓储，因此一次点击不会拖慢任何可见回复。
 - `POST /api/v1/conversations/{conversationId}/listening-signals`：由后端按会话状态和 30 秒节流规则写入倾听提示，返回创建的助手消息。客户端不得自行伪造或持久化助手消息。
 
 后端会在变更前等待正在运行的回复真正退出，防止删除完成后迟到的助手消息重新写入数据库。每个活跃会话最多保留最近 20 个内存撤销快照；服务重启后撤销栈不保留。
@@ -478,6 +479,8 @@ RT-002：输入更新持续 ConversationRuntime。后端可等待更多输入或
 - `card`：原有卡片式布局。
 
 客户端通过 `PATCH /api/v1/preferences` 的 `theme.mainWindowLayoutMode` 保存选择，并以响应投影为准。其他值返回 `400 validation_error`，前端不得另建本地持久化配置覆盖服务端结果。
+
+`explicitExpressionFeedback` 是偏好顶层的一个布尔高级开关，默认 `false`。它同时决定两件事：客户端才会在她的回复上给出"就是这样／别这样说"这两个动作，以及后端是否接受上面那条表态请求——关掉就是"这个入口不存在"（`403`），不是"收下但不学"。写入走既有设置通路（`PATCH /api/v1/preferences` 的该字段，或 `PUT /api/v1/settings` 的 `preferences.explicitExpressionFeedback`），**省略该字段即保留原值**，写入后即刻生效、不需要重启，也不需要重新选择模型。开关本身不带任何阈值：学习门槛（同一说法要两次分别点头）仍是 Core 的既有常量。
 
 2026-09-12 桌面 UI 重设计后，Pry.App 对这两个历史值均显示统一的陪伴空间，设置页不再提供旧窗口切换。字段及验证规则保持兼容，已有值不会因打开新 UI 被改写；它不再决定当前桌面窗口的视觉布局。
 

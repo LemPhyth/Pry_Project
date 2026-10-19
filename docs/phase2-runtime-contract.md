@@ -305,6 +305,8 @@ Phase 2 的核心问题是"一个长期存在的角色此刻处于什么状态�
 
 本 lane 明确**没做**、且不得被读成"已修"的两件事：`ObserveFeedbackAsync`（第三个调用点）仍未接；`ExpressionLearner.DrainAsync` 在生产里没有排空者，观察队列到 `QueueCapacity = 64` 之后开始丢，因此**学到的口癖今天依然进不了 `expression_pattern`**。细则与解除条件见 `docs/character-intelligence.md` §8 缺口 ④。
 
+**〔Character Intelligence 更正，2026-10-14，`RT-004-DRAIN`〕**上面那句由两件事合成，现在必须拆成两句读：**排空者那半边已过期**——`src/Pry.Api/Services/ExpressionDrainService.cs` 自本日起是 `DrainAsync` 的宿主调用点（后台 tick，不进任何一轮的可见路径），"到 64 就开始丢"不再是要发生的事。**"学到的口癖进不了 `expression_pattern`"那半边照旧成立，但根因换了一个**：不是没人排空，而是**没人给出认可**——新建一行需要两次带 `FeedbackEvidenceId` 的独立认可，而 `TurnOutcome.AcceptedExpressionStyles` 在 `src/` 内零生产者。本契约 §7.1 四条冻结结论不因这一刀改变（排空不动轮次次序、不动 epoch／围栏、不动投递归属）。登记为 `DEF-P4LEARN-01`，解除条件＝RT-006 反馈入口，归 `docs/character-intelligence.md` §8 缺口 ④。**〔Character Intelligence 更正，2026-10-15，`DEF-P4LEARN-01`〕**上面那句"没人给出认可"自此过期：认可入口由作者 10-15 拍定并落地——界面上某条她的回复的右键菜单里两项"就是这样／别这样说"，只在高级开关（`UserPreferences.ExplicitExpressionFeedback`，默认关）打开时存在，后端 `POST /api/v1/conversations/{id}/messages/{messageId}/expression-feedback` 收这一句、按进程内投递账本解析归属，对不上就明确拒。**契约 §7.1 四条冻结结论仍一字不改，而且本刀恰恰是照着它们做的**：轮次次序没动（一次表态不产生新一轮，也不抬 epoch／围栏）；投递归属仍不允许退化成"按最近一轮"——账本认不出这一条就 409 `not_attributable`，这正是 `-02` 那刀立的形状；装饰器在真正外发之前的工作仍不会抛也不会无界阻塞（点击只入队，排空归 `ExpressionDrainService`）；`MessageDeliveredAsync` 端口签名仍不带轮身份，轮身份留在宿主进程内的账本里。**"越聊越懂你"仍不成立**：默认关、无自动推断，本刀买到的只是"明确按两下能教成一句、且活过重启"。细则见 `docs/character-intelligence.md` §8 缺口 ④ 的 10-15 附注。
+
 ### 7.3 Runtime Owner 对 §7.2 的确认（2026-09-30）
 
 按 §7.1 末句的判据，这一节是"对方确认"的那一半。**下面每一条都是实读代码得出的，不是读 §7.2 的叙述得出的**；标注"未实测"的地方只代表读码结论。本节不改动 §7.1 四条结论本体，也不改写 §7.2 的记录。

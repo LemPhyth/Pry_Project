@@ -40,6 +40,8 @@
 
 `TryEnqueue` 仅使用短本地锁和内存快照；队列容量 64，满时返回 false。抽取和仓储调用仍只发生在后台 `DrainAsync`，没有每条消息同步调用模型。并发 drain 串行；写入失败前不会清除 dirty 标记，下一次 drain 即使没有新消息也能重试。更新使用记录副本，避免失败的 Save 先修改内存仓储中已有对象。
 
+**〔2026-10-14 更正，`RT-004-DRAIN`〕**上面那句"只发生在后台 `DrainAsync`"此前描述的是一条**没有被调用的**后台路径（`src/` 内零调用者，队列到 64 就静默丢）。现在宿主有排空者：`src/Pry.Api/Services/ExpressionDrainService.cs` 在后台 tick 上逐卡调 `DrainAsync`，单次 5 秒预算、到点只留脏标记不丢工作、逐卡 try/catch。这条通道**不在可见回复路径上**是判据而不是措辞：`A_store_that_stops_mid_drain_cannot_delay_a_visible_reply` 把排空停在一次不返回的写库里，再要求整轮回复照常完成。安全侧四条既有判据一字未改（自我强化不成立、取消不丢队列、写失败不重复加权、并发排空不重复计数）。**仍未接的半边**：认可证据在生产里没有生产者（`AcceptedExpressionStyles`／`ExpressionFeedbackId` 零赋值点，`ObserveFeedbackAsync` 零调用点），所以真机今天还长不出 `source='Learned'` 行——本更正只主张"不再静默丢弃"，不主张"她开始复用你的说法"，后者登记为 `DEF-P4LEARN-01`（解除条件＝RT-006 反馈入口）。**〔2026-10-15 再更正，`DEF-P4LEARN-01` 认可入口落地〕**上面那句"仍未接的半边"自此关闭，但关闭它的不是一段自动推断，而是**用户按下的那一下**：作者在界面上要了一个显式的"就是这样／别这样说"，明令不许从上下文猜用户态度，并把该界面作为高级调试选项（默认关）。`FeedbackIsExplicit` 与 `ExpressionFeedbackId` 由此第一次有了生产者，且唯一生产者是那次点击——投递路径照旧带空 `FeedbackEvidenceId`，所以本节"投递本身不构成认可"的护栏是双重的（反证实测：单削 Core 的三条件门打不开"不点也学"，红的是证据配对那几条）。安全侧不变的三件：`MinimumEvidence = 2` 与按序往返一字未动、同一条气泡连点三次仍只算一笔、表态请求只入队不排空（可见回复路径上没有新的等待）。**本节仍然没被本刀解除的**：点击这一下**不**提供 `FollowUpEvidence`，所以 `ObserveFeedbackAsync` 里 `learnsBehaviour` 那半边在生产里仍然零来源（`behavior_experience` 现有的唯一写者仍是每轮那一次 `CompleteTurnAsync`，它记的是 `Outcome=Unknown`）——把"事后一句纠正"接成行为证据是第 3 层 RT-006 的活，本刀没有顺带做掉；`behavior_experience` 的既有结论一字照旧。细则与判据见 `docs/character-intelligence.md` §8 缺口 ④。
+
 表达置信度由去重后的认可证据计算，不按 drain 次数增加。Pattern 保存认可反馈 ID 与回合 key；重建学习器后重放相同反馈不会重复加权。行为 Experience 的 `FollowUpEvidence` 来自外部真实反馈，不再截取角色自己生成的回复冒充用户反馈。
 
 ## Contracts Consumed
