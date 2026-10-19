@@ -246,6 +246,20 @@ INSERT INTO memory_evidence(memory_id,message_id,conversation_id,excerpt) VALUES
 > + `N6b`（撤销重放不复活、不抛）+ `N12`（组件版本 2 可启动、未知版本拒启动）。
 > **N8、N11 未实现**：两条都依赖管理面入口（级联复选框、`status` 进 DTO），归 2-C（`RT-005`），
 > 不属本刀；§6 末的 `scope_key='character:'||$c` 作用域缺陷同样留到那一刀。
+>
+> **2-C 落地更正（上面那句"未实现"到此作废）**：2-C（`RT-005-MANAGE`）已落 N8、N11 与"确认保留"。
+> - **确认保留**：`POST /api/v1/memories/{id}/confirm-keep`，`orphaned → active`、`confidence` 抬到上限 `.7`、
+>   `origin='manual'`、**不重建证据**，并显式推进作用域 `epoch`（无需重启、无需重讲即可再被引用）。
+>   错误语义各成一种、不共用 500：`404 resource_not_found`（此 ID 在本角色作用域内不存在，不泄漏他角色是否拥有）、
+>   `409 memory_not_orphaned`（不是"依据已删除"态，不静默改她正在用的记忆）、`409 memory_fingerprint_taken`
+>   （同作用域已有同内容 active，撞 `ux_memory_fingerprint` 部分唯一索引，**不静默合并**）。判据在
+>   `tests/Pry.Core.Tests/MemoryDeletionSeparationTests.cs`（`ConfirmKeep*`）与 `tests/Pry.Api.Tests/MemoryManagementEndpointTests.cs`。
+> - **N8（会话级联遗忘）**：`DELETE /api/v1/conversations/{id}?forgetExclusiveMemories` **默认 `false`**，
+>   保持与删消息同一"仅撤销证据、零墓碑"语义；为 `true` 时只把"证据全部来自本会话"的记忆按 D1 显式删除（写墓碑、此后不可再学），
+>   **跨会话仍保有佐证的记忆一条都不消失**。默认关时行为与本刀之前逐字节相同（未走级联分支）。
+> - **N11（作用域可达）**：`scope_key='character:'||$c` 的硬限定在**仓储／读口层已拆**——`GET /api/v1/memories/details`
+>   与确认保留都按 `scope_key` 参数走，Core 用例直接在 `instance:alice-pry` 作用域跑通。HTTP 控制器仍按 `characterId`
+>   绑定作用域，因为 `src/` 至今零 `instance:` 生产者（待 RT-001 的稳定实例 id）；故 N11 是"潜在缺陷已在数据层拆除、界面触达面待实例 id"，**不是当下事故**。
 
 ---
 

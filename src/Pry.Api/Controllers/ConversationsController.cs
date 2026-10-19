@@ -16,7 +16,10 @@ public sealed class ConversationsController(ConversationApplicationService servi
         return CreatedAtAction(nameof(Get), new { id = result.Id }, result);
     }
     [HttpPatch("{id}")] public Task<ConversationRoom> Update(string id, UpdateConversationRequest request, CancellationToken token) => service.UpdateAsync(id, request, token);
-    [HttpDelete("{id}")] public async Task<IActionResult> Delete(string id, CancellationToken token) { await service.DeleteAsync(id, token); return NoContent(); }
+    [HttpDelete("{id}")] public async Task<IActionResult> Delete(string id, [FromQuery] bool forgetExclusiveMemories = false, CancellationToken token = default)
+    {
+        await service.DeleteAsync(id, token, forgetExclusiveMemories); return NoContent();
+    }
     [HttpGet("{id}/messages")] public Task<IReadOnlyList<ChatMessage>> Messages(string id, [FromQuery] int limit = 200, CancellationToken token = default) => service.MessagesAsync(id, limit, token);
     [HttpPost("{id}/messages")] public async Task<ActionResult<ChatMessage>> AddMessage(string id, CreateMessageRequest request, CancellationToken token)
     {

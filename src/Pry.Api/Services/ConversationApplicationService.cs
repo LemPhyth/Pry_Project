@@ -35,11 +35,11 @@ public sealed class ConversationApplicationService(MemoryDatabase database, Comp
         return await GetAsync(id, token);
     }
 
-    public async Task DeleteAsync(string id, CancellationToken token)
+    public async Task DeleteAsync(string id, CancellationToken token, bool forgetExclusiveMemories = false)
     {
         using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
         _ = await GetAsync(id, token);
-        await database.DeleteConversationAsync(id, token);
+        await database.DeleteConversationAsync(id, token, forgetExclusiveMemories);
     }
 
     public async Task<IReadOnlyList<ChatMessage>> MessagesAsync(string id, int limit, CancellationToken token)

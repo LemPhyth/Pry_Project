@@ -56,12 +56,18 @@ public sealed record ConsolidationPolicy(int QueueCapacity = 256, int PendingMes
     }
 }
 
+// A confirm-keep is a state transition, not a reverse-delete, so its expected rejections are returned as
+// data rather than thrown: Core stays free of HTTP, and the caller maps each outcome to its own status code.
+public enum ConfirmKeepOutcome { Confirmed, NotFound, NotOrphaned, FingerprintTaken }
+public sealed record ConfirmKeepResult(ConfirmKeepOutcome Outcome, MemoryEntry? Entry);
+
 public interface IMemoryRepository
 {
     Task<IReadOnlyList<MemoryEntry>> ListAsync(MemoryScope scope, CancellationToken token = default);
     Task<long> RevisionAsync(MemoryScope scope, CancellationToken token = default);
     Task<MemoryEntry> SaveManualAsync(MemoryScope scope, string kind, string content, string tags,
         double importance, long? id = null, CancellationToken token = default);
+    Task<ConfirmKeepResult> ConfirmKeepAsync(MemoryScope scope, long id, CancellationToken token = default);
     Task DeleteAsync(MemoryScope scope, long id, CancellationToken token = default);
     Task ClearAsync(MemoryScope scope, CancellationToken token = default);
     Task<WritebackReceipt> EnqueueAsync(CompletedMemoryTurn turn, ConsolidationPolicy policy,

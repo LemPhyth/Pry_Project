@@ -267,6 +267,40 @@ public sealed class SqliteMemoryRepository(string databasePath) : IMemoryReposit
             """, token, ("$s", scope.Key), ("$reason", reason));
     }
 
+    public async Task<ConfirmKeepResult> ConfirmKeepAsync(MemoryScope scope, long id, CancellationToken token = default)
+    {
+        scope.Validate();
+        await using var c = await Open(token); using var tx = c.BeginTransaction(deferred: false);
+        await EnsureScope(c, tx, scope, token);
+        string? status = null; string? fingerprint = null;
+        await using (var cmd = Command(c, tx,
+            "SELECT status,fingerprint FROM memories WHERE id=$id AND scope_key=$s AND character_id=$c",
+            ("$id", id), ("$s", scope.Key), ("$c", scope.CharacterId)))
+        await using (var reader = await cmd.ExecuteReaderAsync(token))
+            if (await reader.ReadAsync(token)) { status = reader.GetString(0); fingerprint = reader.GetString(1); }
+        // Rejects roll the transaction back so a bad confirm leaves no trace, not even a freshly bound scope.
+        if (status is null) { await tx.RollbackAsync(token); return new(ConfirmKeepOutcome.NotFound, null); }
+        if (!status.Equals("orphaned", StringComparison.Ordinal))
+        { await tx.RollbackAsync(token); return new(ConfirmKeepOutcome.NotOrphaned, null); }
+        // The partial unique index ux_memory_fingerprint only covers active rows, so promoting this orphan into
+        // the active set would collide if a same-fingerprint active row already owns the slot.
+        if (!string.IsNullOrEmpty(fingerprint) && await Number(c, tx,
+            "SELECT COUNT(*) FROM memories WHERE scope_key=$s AND fingerprint=$f AND status='active'", token,
+            ("$s", scope.Key), ("$f", fingerprint)) > 0)
+        { await tx.RollbackAsync(token); return new(ConfirmKeepOutcome.FingerprintTaken, null); }
+        // Confirming a keep raises the row to the recall ceiling (.7, above the .5 gate) as a user-approved
+        // manual fact. It rebuilds no evidence and must not raise forget_before: that watermark is for
+        // forgetting, and here the concern is admitting a fact back, not suppressing future learning.
+        await Execute(c, tx, """
+            UPDATE memories SET status='active',confidence=$conf,origin='manual',updated_at=$at,state_version=state_version+1
+            WHERE id=$id AND scope_key=$s AND status='orphaned'
+            """, token, ("$conf", .7), ("$at", DateTimeOffset.UtcNow.ToString("O")), ("$id", id), ("$s", scope.Key));
+        // memory_manual_edit_fence fires on content columns only, so invalidate cached context by advancing epoch here.
+        await Execute(c, tx, "UPDATE memory_scopes SET epoch=epoch+1 WHERE scope_key=$s", token, ("$s", scope.Key));
+        await tx.CommitAsync(token);
+        return new(ConfirmKeepOutcome.Confirmed, (await ListAsync(scope, token)).Single(x => x.Record.Id == id));
+    }
+
     public async Task DeleteAsync(MemoryScope scope, long id, CancellationToken token = default)
     {
         await using var c = await Open(token); using var tx = c.BeginTransaction(deferred: false);
@@ -289,9 +323,12 @@ public sealed class SqliteMemoryRepository(string databasePath) : IMemoryReposit
     // Deleting chat records is not retracting a statement, so this path must never reach
     // DELETE FROM memories: the row stays, only its evidence detaches. That keeps the tombstone
     // triggers exclusive to an explicit memory deletion or a scope clear.
+    // The one exception is the opt-in conversation cascade (forgetExclusive, MEM-006 N8 / RT-005): dropping a
+    // whole chat can also retract the facts it alone taught. It is only ever true for EntireConversation, never
+    // for a message-scoped selection, so deleting one record still cannot write a tombstone.
     internal static async Task<IReadOnlyList<DetachedMemory>> DetachMemoriesForDeletedMessagesAsync(
         SqliteConnection c, SqliteTransaction tx, string conversationId, DoomedMessages selection,
-        long messageId, CancellationToken token)
+        long messageId, bool forgetExclusive, CancellationToken token)
     {
         var doomed = $"SELECT id FROM messages WHERE conversation_id=$c AND {Clause(selection)}";
         var affected = $"""
@@ -345,6 +382,13 @@ public sealed class SqliteMemoryRepository(string databasePath) : IMemoryReposit
         {
             // Superseded and archived rows are already invisible, so demoting them would only cost fidelity.
             if (item.Status != "active") continue;
+            // N8: the cascade retracts a fact only the dropped conversation taught (RemainingSupport 0) by
+            // really deleting it, so memory_deletion_fence writes the tombstone and advances epoch/watermark.
+            // Anything still supported elsewhere (RemainingSupport > 0) is kept and only loses this evidence.
+            if (forgetExclusive && selection == DoomedMessages.EntireConversation && item.RemainingSupport == 0 &&
+                await Execute(c, tx, "DELETE FROM memories WHERE id=$id AND scope_key=$s", token,
+                    ("$id", item.Id), ("$s", item.ScopeKey)) == 1)
+                continue;
             var status = item.RemainingSupport > 0 ? "active" : "orphaned";
             // The orphan floor sits under the retrieval confidence gate, so injection needs two failures.
             var confidence = status == "orphaned" ? .4

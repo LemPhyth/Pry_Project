@@ -90,4 +90,25 @@ public sealed class MemoryApplicationService(MemoryDatabase database, MemoryEmbe
         characterId = ContractValidation.Required(characterId, "characterId", 128);
         await database.DeleteMemoryAsync(id, characterId, token);
     }
+
+    public async Task<MemoryDetailsResponse> ConfirmKeepAsync(long id, string characterId, CancellationToken token)
+    {
+        using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
+        var scope = MemoryScope.ForCharacter(ContractValidation.Required(characterId, "characterId", 128));
+        var result = await database.LongTerm.ConfirmKeepAsync(scope, id, token);
+        return result.Outcome switch
+        {
+            ConfirmKeepOutcome.Confirmed => ToDetails(result.Entry!),
+            ConfirmKeepOutcome.NotFound => throw new ResourceNotFoundException("memory", id),
+            ConfirmKeepOutcome.NotOrphaned => throw new MemoryConfirmRejectedException("memory_not_orphaned", id,
+                "这条记忆不是\"依据已删除\"状态，无需确认保留"),
+            _ => throw new MemoryConfirmRejectedException("memory_fingerprint_taken", id,
+                "已有相同内容的记忆在生效，确认保留不会把它们合并")
+        };
+    }
+
+    private static MemoryDetailsResponse ToDetails(MemoryEntry x) => new(
+        x.Record.Id, x.Record.CharacterId, x.Record.Kind, x.Record.Summary, x.Status, x.Record.Importance,
+        x.Confidence, x.Origin, x.Revision, x.TopicKey,
+        x.Evidence.Select(e => new MemoryEvidenceResponse(e.MessageId, e.ConversationId, e.Excerpt)).ToArray());
 }

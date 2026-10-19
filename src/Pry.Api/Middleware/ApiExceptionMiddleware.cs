@@ -53,6 +53,12 @@ public sealed class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExce
             };
             await WriteAsync(context, status, ex.Code, "这条反应没有被收下", ex.Message);
         }
+        catch (MemoryConfirmRejectedException ex)
+        {
+            // 确认保留只在孤立态上有意义；非孤立或同指纹已占用都拒，各有各的码，都不冒充 500。
+            await WriteAsync(context, 409, ex.Code, "这条记忆没有被确认保留", ex.Message,
+                new Dictionary<string, object?> { ["id"] = ex.Id });
+        }
         catch (ModelRuntimeException ex)
         {
             await WriteAsync(context, 503, ex.Code, "本地模型暂时不可用", ex.SafeMessage,

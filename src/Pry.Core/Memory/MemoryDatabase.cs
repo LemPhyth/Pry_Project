@@ -493,12 +493,14 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task DeleteConversationAsync(string conversationId, CancellationToken cancellationToken = default)
+    public async Task DeleteConversationAsync(string conversationId, CancellationToken cancellationToken = default,
+        bool forgetExclusiveMemories = false)
     {
         await using var connection = await OpenAsync(cancellationToken); await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
         // D4: dropping a conversation drops its records, not the facts it taught (MEM-006).
+        // The opt-in cascade (N8) additionally retracts facts this conversation alone taught, via D1.
         await SqliteMemoryRepository.DetachMemoriesForDeletedMessagesAsync(connection, transaction,
-            conversationId, DoomedMessages.EntireConversation, 0, cancellationToken);
+            conversationId, DoomedMessages.EntireConversation, 0, forgetExclusiveMemories, cancellationToken);
         foreach (var sql in new[]
         {
             "DELETE FROM reply_plans WHERE conversation_id=$id",
@@ -839,7 +841,7 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
         if (messages.Count == 0) return null;
         var detached = await SqliteMemoryRepository.DetachMemoriesForDeletedMessagesAsync(connection, transaction,
             conversationId, includeFollowing ? DoomedMessages.FromMessage : DoomedMessages.SingleMessage,
-            messageId, cancellationToken);
+            messageId, false, cancellationToken);
         // 事件行的 payload 含对话明文，所以删除必须与领域写入同事务：先遮蔽再删消息，
         // 顺序反过来就删不到 subject_message_id 的取值范围了。
         await MaskProtocolEventsAsync(connection, transaction, conversationId, op, messageId, cancellationToken);
@@ -872,7 +874,7 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
         // Messages that arrived after the snapshot are discarded by this undo, so they detach like any other
         // deleted record before the history itself goes back.
         await SqliteMemoryRepository.DetachMemoriesForDeletedMessagesAsync(connection, transaction,
-            snapshot.ConversationId, DoomedMessages.AboveMessage, snapshot.MaxMessageIdBeforeMutation, cancellationToken);
+            snapshot.ConversationId, DoomedMessages.AboveMessage, snapshot.MaxMessageIdBeforeMutation, false, cancellationToken);
         await using (var sweep = connection.CreateCommand())
         {
             sweep.Transaction = transaction;

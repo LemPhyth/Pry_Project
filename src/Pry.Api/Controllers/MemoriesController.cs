@@ -18,5 +18,6 @@ public sealed class MemoriesController(MemoryApplicationService service) : Contr
         var result = await service.CreateAsync(request, token); return Created($"/api/v1/memories/{result.Id}?characterId={Uri.EscapeDataString(result.CharacterId)}", result);
     }
     [HttpPut("{id:long}")] public Task<MemoryRecord> Update(long id, [FromQuery] string characterId, UpdateMemoryRequest request, CancellationToken token) => service.UpdateAsync(id, characterId, request, token);
+    [HttpPost("{id:long}/confirm-keep")] public Task<MemoryDetailsResponse> ConfirmKeep(long id, [FromQuery] string characterId, CancellationToken token) => service.ConfirmKeepAsync(id, characterId, token);
     [HttpDelete("{id:long}")] public async Task<IActionResult> Delete(long id, [FromQuery] string characterId, CancellationToken token) { await service.DeleteAsync(id, characterId, token); return NoContent(); }
 }

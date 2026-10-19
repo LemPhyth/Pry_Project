@@ -5,6 +5,8 @@
 - `GET /api/v1/memories/details?characterId={id}`：返回 `MemoryDetailsResponse[]`，含 status、confidence、origin、revision、topicKey 和 evidence（messageId、conversationId、excerpt）；只读，不运行抽取。
 - `POST /api/v1/memories/clear`：正文 `{"characterId":"c","confirm":true}`。按角色过渡作用域清空，成功返回 204；confirm 缺失/false、空角色或超长 ID 返回 400 validation_error。清空同时取消旧队列并使在途任务失效，即使当前列表为空。
 - `DELETE /api/v1/memories/{id}?characterId={id}` 变为幂等 204，不泄漏其他角色是否拥有该 ID。删除正文及证据，墓碑仅保留 ID、作用域和指纹。重新提交旧 Turn 不恢复记忆；手工重新创建是用户的新操作。
+- `POST /api/v1/memories/{id}/confirm-keep?characterId={id}`：把一条 `orphaned`（证据已删除）记忆经用户确认转回 `active`——`confidence` 抬到上限 `.7`、`origin` 记为 `manual`、**不重建任何证据行**。成功返回 `200` + 更新后的 `MemoryDetailsResponse`。该状态迁移推进作用域 `epoch`（沿用删除/编辑既有的失效机制），所以确认保留后无需重启、无需重讲即可被重新引用；不改检索门的 `>=.5`、孤立地板 `.4` 与上限 `.7`，`.7 ≥ .5` 的算术本身即成立。错误语义各成一种，不共用 500：`404 resource_not_found`（该 ID 在此角色作用域内不存在，不泄漏其他角色是否拥有）、`409 memory_not_orphaned`（这条不是"依据已删除"状态，无需确认保留，也不静默改她正在用的记忆）、`409 memory_fingerprint_taken`（同作用域已有同内容的 active 记忆，确认保留会撞 `ux_memory_fingerprint` 部分唯一索引；**不做静默合并**，合并是另一个决定）。
+- `orphaned` 与迁移时被标成 `archived` 的重复行通过 `GET /api/v1/memories/details` 对外可见（该读口不过滤状态、按作用域走）；`GET /api/v1/memories` 列表仍只显示 active。管理面据 details 分组"她正在用的"与"依据已被你删掉的"，后者可确认保留或显式删除，删除前先二次确认。
 - 既有创建、编辑、列表响应保持兼容；列表只显示 active。手工编辑清除旧证据关联，避免旧来源冒充新正文的证据。同文手工创建去重；编辑撞同文返回 409 resource_conflict。Behavior/Expression 类型不允许写入记忆，非法字段返回 400。
 - 以上端点使用 `character:{id}`，不接受调用方自报用户身份。实例作用域由 Core 仓储支持并要求宿主绑定会话；实例管理 API 等待 RT-001 的 ID 契约。
 - **删除聊天消息与删除记忆是两件事**（2-B，作者 2026-10-12 裁定 B）：删一条消息或整个会话只撤销证据，记忆行转入 `orphaned`——不再被检索命中，但重新陈述同一事实可以再次学到；只有 `DELETE /api/v1/memories/{id}` 这条显式入口写墓碑。撤销消息删除按字段还原记忆并重建证据，不复活用户显式删掉的记忆。
@@ -173,7 +175,7 @@ schema v7 为 conversations 增加 last_read_message_id（非空、默认0，无
 
 ### 删除会话
 
-`DELETE /api/v1/conversations/{id}` → `204`。当前为物理删除，连同消息、回复计划及由消息关联的记忆一起按现有事务规则处理；客户端应二次确认。
+`DELETE /api/v1/conversations/{id}?forgetExclusiveMemories=false` → `204`。当前为物理删除，连同消息、回复计划及由消息关联的记忆一起按现有事务规则处理；客户端应二次确认。`forgetExclusiveMemories` 是可选布尔，**默认 `false`**：为 false 时删会话只撤销证据，本会话学到的记忆转入 `orphaned`、零墓碑（与删除消息同一语义，重新陈述仍可再学）；为 true 时仅把"证据全部来自本会话"的记忆按 D1 显式删除（写墓碑、此后不可再学），**跨会话仍保有佐证的记忆一条都不消失**。非法布尔值返回 400 validation_error。
 
 ### 运行时诊断（RT-002，只读）
 

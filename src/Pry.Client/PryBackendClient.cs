@@ -89,7 +89,8 @@ public sealed class PryBackendClient
     public Task<IReadOnlyList<ChatMessage>> GetMessagesAsync(string id, int limit = 200, CancellationToken token = default) => GetAsync<IReadOnlyList<ChatMessage>>($"api/v1/conversations/{Escape(id)}/messages?limit={Math.Clamp(limit, 1, 500)}", token);
     public Task<ConversationRoom> CreateConversationAsync(string? characterId, CancellationToken token = default) => SendAsync<ConversationRoom>(HttpMethod.Post, "api/v1/conversations", new CreateConversationRequest(characterId), token);
     public Task<ConversationRoom> UpdateConversationAsync(string id, UpdateConversationRequest request, CancellationToken token = default) => SendAsync<ConversationRoom>(HttpMethod.Patch, $"api/v1/conversations/{Escape(id)}", request, token);
-    public Task DeleteConversationAsync(string id, CancellationToken token = default) => SendNoContentAsync(HttpMethod.Delete, $"api/v1/conversations/{Escape(id)}", null, token);
+    public Task DeleteConversationAsync(string id, bool forgetExclusiveMemories = false, CancellationToken token = default) => SendNoContentAsync(HttpMethod.Delete,
+        $"api/v1/conversations/{Escape(id)}?forgetExclusiveMemories={forgetExclusiveMemories.ToString().ToLowerInvariant()}", null, token);
     public Task<SubmitTurnResponse> SubmitTurnAsync(string id, SubmitTurnRequest request, CancellationToken token = default) => SendAsync<SubmitTurnResponse>(HttpMethod.Post, $"api/v1/conversations/{Escape(id)}/turns", request, token);
     public Task CancelTurnAsync(string id, CancellationToken token = default) => SendNoContentAsync(HttpMethod.Post, $"api/v1/conversations/{Escape(id)}/turns/cancel", null, token);
     public Task<ConversationMutationResponse> DeleteMessageAsync(string conversationId, long messageId, CancellationToken token = default) => SendAsync<ConversationMutationResponse>(HttpMethod.Delete, $"api/v1/conversations/{Escape(conversationId)}/messages/{messageId}", null, token);
@@ -164,6 +165,8 @@ public sealed class PryBackendClient
     public Task DeleteMemoryAsync(long id, string characterId, CancellationToken token = default) => SendNoContentAsync(HttpMethod.Delete, $"api/v1/memories/{id}?characterId={Escape(characterId)}", null, token);
     public Task<IReadOnlyList<MemoryDetailsResponse>> GetMemoryDetailsAsync(string characterId, CancellationToken token = default) =>
         GetAsync<IReadOnlyList<MemoryDetailsResponse>>($"api/v1/memories/details?characterId={Escape(characterId)}", token);
+    public Task<MemoryDetailsResponse> ConfirmKeepMemoryAsync(long id, string characterId, CancellationToken token = default) =>
+        SendAsync<MemoryDetailsResponse>(HttpMethod.Post, $"api/v1/memories/{id}/confirm-keep?characterId={Escape(characterId)}", null, token);
     public Task ClearMemoriesAsync(ClearMemoriesRequest request, CancellationToken token = default) =>
         SendNoContentAsync(HttpMethod.Post, "api/v1/memories/clear", request, token);
 

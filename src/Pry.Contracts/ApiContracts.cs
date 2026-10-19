@@ -233,3 +233,14 @@ public sealed class ExpressionFeedbackRejectedException(string code, string mess
 {
     public string Code { get; } = code;
 }
+
+/// <summary>
+/// 一次"确认保留"没能转成状态迁移时，拒法要能被机器分辨：这条记忆不是孤立态、还是同指纹已被占用，
+/// 各成一种码（不属于该作用域的 ID 走 <see cref="ResourceNotFoundException"/>）。状态码由
+/// <c>ApiExceptionMiddleware</c> 按码映射到 409；新增码忘了映射只会落到保守那一档，不会冒充 500。
+/// </summary>
+public sealed class MemoryConfirmRejectedException(string code, long id, string message) : Exception(message)
+{
+    public string Code { get; } = code;
+    public long Id { get; } = id;
+}
