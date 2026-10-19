@@ -13,6 +13,7 @@
 | [`memory-context-implementation.md`](memory-context-implementation.md) | MEM-005 证据、异步写回、检索、预算及迁移 | 长期记忆实现与集成边界（2026-10-13 已移植进主线） |
 | [`memory-message-deletion-separation.md`](memory-message-deletion-separation.md) | 删聊天记录与删记忆为何是两件事、`orphaned` 中间态、撤销怎么还原 | MEM-006 设计稿与 2-B 落地更正 |
 | [`character-runtime.md`](character-runtime.md) | 持续会话状态机、Gate、打断、Delivery、恢复与验证边界 | RT-002 实现交接记录（Codex 撰写）；2026-09-20 已合回共享工作区，仍未提交 |
+| [`capability-and-plugins.md`](capability-and-plugins.md) | 能力名册／权限档／分发器／插件存储格的位置、配置键、结果码与证伪读数 | RT-007 第一期（地基，零用户可见新行为）；第二期等作者裁定，本文不表示她已能打开任何东西 |
 | [`phase1-platform-baseline.md`](phase1-platform-baseline.md) | 分层依赖事实、边界冻结规则、稳定 ID、SSE 事件目录、Runtime↔平台接缝、平台缺陷台账 | RT-001 平台侧冻结；描述现状边界，不表示 1.0 已完成 |
 | [`protocol-versioning-and-websocket-migration.md`](protocol-versioning-and-websocket-migration.md) | 协议版本协商、事件游标持久化、心跳、本机 token 与端口发现、SSE→WebSocket 的 M0～M3 步骤与验收清单 | 目标方案与迁移顺序；Phase 1 内不实施传输改造 |
 | [`proactive-scheduling-api.md`](proactive-scheduling-api.md) | 主动话题策略、活动上报、调度状态、投递、验证和回滚 | COMP-005 后端契约；前端按 COMP-006 接入 |

@@ -67,6 +67,8 @@ Delivery 对已出队、尚在提交的气泡也跟踪取消。最后检查与�
 
 Capability 请求携带 Turn 的取消令牌。结果必须同时匹配 CapabilityId 和 TurnIdentity；旧结果不消耗新请求的等待状态。支持一次结果续接与沉默结果；再次请求 Capability 明确以 `capability_loop_not_supported` 结束，不实现无限 Tool Loop。
 
+2026-10-19（RT-007 第一期）之后，**Runtime 之外有了执行方**：宿主的 `CapabilityRegistry`＋`CapabilityDispatcher`（`src/Pry.Api/Capabilities/`）会接住 `CapabilityRequestedAsync` 并回执。Runtime 侧的等待、续接、过期围栏与上面那段一字未改，外发通道仍然是同一个 `IRuntimeOutputSink` 的六个方法（没有第七个，`CapabilitySeamWiringTests` 数着）。两点与本文的读法有关：**每条拒绝路径都必带回执**，否则那一轮永远停在 `capability_pending`；未接分发器的宿主仍逐字回接入前那份 `capability_unavailable`。出厂两个能力（`open_url`/`open_application`）档位都是 `Ask`，且会话里没有任何一处生产 `CapabilityRequest`——所以这一期**零用户可见新行为**。形状、配置键、结果码与证伪读数见 `docs/capability-and-plugins.md`。
+
 ## Contracts Consumed
 
 - `IRuntimeStore`：输入追加、状态快照、权威 epoch、计划申请、条件气泡提交、放弃与启动清扫。Runtime 无 SQL、SQLite、HTTP 或 Avalonia 依赖。
@@ -176,7 +178,7 @@ Trace 默认记录输入长度、原因码、身份和状态，不记录输入�
 - 宿主仍使用 `TransitionalReplyAdvisor`；正式 ICharacterIntelligence、MemoryContext 与学习回报尚未接线。Runtime 的 DoNothing 能力已测试，不等于生产行为策略已完成。
 - 桌面当前以周期活动报告提供 typing/idle。显式低延迟 TypingStarted/Stopped/UserReturned 的客户端协议与 UI 接线仍需前端协作；本轮未添加端点或改 UI。
 - 状态恢复保留最后发言者/时间与连续角色回合数，不恢复未成轮输入缓冲；已接受的用户消息仍在历史中，Crash 后不会自动补回复。
-- CapabilityRequest 附带的前置 Messages 尚无混合交付协议；当前以 Capability 等待为主。能力类型目前仍在 Runtime 命名空间，与 RT-001 的最终 Abstractions 归属约定待收敛。
+- CapabilityRequest 附带的前置 Messages 尚无混合交付协议；当前以 Capability 等待为主。能力类型的 Abstractions 归属已于 2026-10-19 由 RT-007 第一期收敛（见 `docs/capability-and-plugins.md`），**仍然开着的是**：会话里没有人发起请求，所以"她能不能真的打开一个东西"不由 Runtime 侧决定，而由第 4 层第二期的裁定决定。
 - Provider 不响应取消时仍可能占用资源，Runtime 保证旧结果不能发；Provider 的统一超时和错误码归 PLAT-001。
 - 测试快照含其他负责人的未提交基础文件。不能把整个 worktree 一次性暂存；共享工作区正在变化，本轮没有覆盖式合回。
 

@@ -94,11 +94,11 @@ RT-002 已在 `Pry.Core/Runtime/RuntimePorts.cs` 定义 Runtime 的唯一输出�
 
 ### 5.1 Capability 契约命名归属
 
-初测记录的重名问题已解除（复验：`RuntimeEvent` 上的 `Capability(...)` 现为接收 `CapabilityResult` 的工厂方法，`Runtime/RuntimeModels.cs:60`，不再是编译冲突）。**归属约定仍然有效且尚未满足**：`CapabilityRequest`/`CapabilityResult` 目前定义在 `Pry.Core.Runtime`（`Runtime/RuntimeModels.cs:137,140`），不在 `Pry.Core.Abstractions`。RT-001-INT 已把该项列为需 RT-002 与 Core Platform 联合收敛的待办，并明确不要求提前实现 RT-007。冻结结论保持不变：
+初测记录的重名问题已解除（复验：`RuntimeEvent` 上的 `Capability(...)` 现为接收 `CapabilityResult` 的工厂方法，`Runtime/RuntimeModels.cs:60`，不再是编译冲突）。**归属约定已于 2026-10-19 由 RT-007 第一期满足**：`CapabilityRequest`/`CapabilityResult` 现在 `Abstractions/Capabilities.cs:80,87`，不再定义在 `Pry.Core.Runtime`（原 `RuntimeModels.cs:137,140` 那两行已删除，状态机改为 `using Pry.Core.Abstractions;` 引用）。RT-001-INT 列的这项待办自此闭合，闭合时点仍不要求通用 Tool Loop。冻结结论本体保持不变，作为今后判据继续有效：
 
-- `ICapability`、`CapabilityDescriptor`、`CapabilityResult`、`CapabilityRequest`、`CapabilityPermission`（`Allow`/`Ask`/`Deny`）归 `Pry.Core.Abstractions`，与既有 `IChatModel` 同侧（`Abstractions/Capabilities.cs`）。
+- `ICapability`、`CapabilityDescriptor`、`CapabilityResult`、`CapabilityRequest`、`CapabilityPermission`（`Allow`/`Ask`/`Deny`）归 `Pry.Core.Abstractions`，与既有 `IChatModel` 同侧（`Abstractions/Capabilities.cs`）。**已由判据钉住**：`tests/Pry.Core.Tests/CapabilityAbstractionTests.cs` 断言两个信封类型的运行时命名空间，搬回状态机就红（10-19 实测：补齐搬运者本来要补的 using 后，红点唯一）。
 - `Pry.Core.Runtime` 只**引用**这些类型描述 Turn 里的 `UseCapability` 意图，不重新定义，也不实现分发器。
-- Registry、Dispatcher、超时与取消执行层、审计追踪属宿主侧基础设施（实施归 RT-007），1.0 不做通用 Tool Loop。复验：`ICapability`/`CapabilityDescriptor`/`IPryPlugin` 在 `src/` 内仍为零命中，PLAT/RT-007 的实现面未被动过。
+- Registry、Dispatcher、超时与取消执行层、审计追踪属宿主侧基础设施（实施归 RT-007），1.0 不做通用 Tool Loop。复验（2026-10-19）：`ICapability`/`CapabilityDescriptor`/`IPryPlugin` 的实现面落在 `src/Pry.Api/Capabilities/`（名册、分发器、两个出厂能力、插件与进程启动器），**执行层在宿主侧、Core 不依赖 Avalonia 或 HTTP 这一条未被动过**；出厂两项档位都是 `Ask`，且会话内没有任何一处生产 `CapabilityRequest`，所以第一期零用户可见新行为。形状、配置键与结果码见 `docs/capability-and-plugins.md`。
 - 同理，`IRelevantMemorySource`/`RelevantMemoryContext`（MEM-005/RT-005 侧）与现存 `IMemoryRetriever` 的关系由 Memory Owner 收敛为单一适配器，平台侧不再新增第二个 Context 概念（`PROJECT_PLAN.md` 第 2.3 节约束 3）。
 
 ## 6. 验证证据（本文所有者实际执行）

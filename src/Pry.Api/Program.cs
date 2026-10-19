@@ -9,6 +9,8 @@ namespace Pry.Api
     using Logging;
     using Middleware;
     using Services;
+    using Capabilities;
+    using Pry.Core.Abstractions;
     using Pry.Core.Memory;
 
     public static class BackendApplication
@@ -71,6 +73,17 @@ namespace Pry.Api
             // 角色智能的宿主接线处（说话前 DecideAsync / 投递后 CompleteTurnAsync）。一个进程一份：
             // 同一张卡的长期状态必须只有一个实例，见 CharacterIntelligenceGateway 的归属线注释。
             builder.Services.AddSingleton<Pry.Api.Runtime.CharacterIntelligenceGateway>();
+            // 能力与插件（RT-007 第一期，地基）。名册在启动时算一次——权限叠配置、同 id 去重——之后只读。
+            // 今天会话里没有任何一处会发起 CapabilityRequest（AvailableCapabilityNames 零生产引用），
+            // 所以这三行接完，用户看得见行为一字未变；两个能力还都出厂在 Ask 档，
+            // 而 Ask 在没有批准界面之前一律回"没人批准过"。
+            builder.Services.AddSingleton<IProcessLauncher, DesktopProcessLauncher>();
+            builder.Services.AddSingleton<IPryPlugin>(provider => new DesktopPlugin(
+                provider.GetRequiredService<IConfiguration>(), provider.GetRequiredService<IProcessLauncher>()));
+            builder.Services.AddSingleton(provider => CapabilityRegistry.Build(
+                provider.GetServices<IPryPlugin>(), provider.GetRequiredService<IConfiguration>(), dataDirectory,
+                provider.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()));
+            builder.Services.AddSingleton<CapabilityDispatcher>();
             builder.Services.AddSingleton<BackendSessionToken>();
             builder.Services.AddSingleton<ConversationApplicationService>();
             builder.Services.AddSingleton<ConversationReadService>();

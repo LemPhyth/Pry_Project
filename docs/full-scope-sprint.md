@@ -111,6 +111,10 @@
 
 `RT-007`：**（10-19 最晚·授权轮：第一期已在独立载体成分刀提交＝分支 `codex/rt007-capability-plugin` 上的 `de86784`＋`41c7e1c`，**尚未并回主线、判定归尾段 QA 从可指认提交复采**——Owner＝Character Runtime，派工＝作者原话「按照守门人的派单，你去接管插件的开发」；第一期＝地基、零用户可见新行为，细节与"不碰清单"见 `PROJECT_PLAN.md` §9 同日记录与 `docs/capability-and-plugins.md`。）** 最小 Capability Registry/Dispatcher + `PluginContext`/`PluginStorage`，只用 `OpenApplication`/`OpenUrl` 两个能力验证。动 Intelligence 侧之前先对 `docs/phase2-runtime-contract.md` §7.1 第 3 条（`CapabilityRequest`/`CapabilityResult` 的住处）。明令不引入通用 Tool Loop、插件市场、任意 ServiceProvider、密钥暴露或可改 Runtime。
 
+- **第一期（已落地 2026-10-19，零用户可见新行为）**：载体 `.local-notes/rt007-capability`（分支 `codex/rt007-capability-plugin`，起点 `88eff2a`，**尚未提交**）。类型搬迁按 §7.1 第 3 条完成——`CapabilityRequest`/`CapabilityResult` 从 `Pry.Core.Runtime` 搬进 `Pry.Core.Abstractions/Capabilities.cs`，与 `ICapability`/`CapabilityDescriptor`/`CapabilityPermission` 同侧，Core 不因此依赖 Avalonia 或 HTTP；宿主侧登记了 Registry、Dispatcher、`IPryPlugin`/`PluginContext`/`PluginStorage`，出厂两个能力（`open_url`/`open_application`）都按 `Ask` 档出厂、白名单默认空。接缝只有已存在的两个入口：Runtime 经 `IRuntimeOutputSink` 的六个方法之一 `CapabilityRequestedAsync` 外发（没有加第七条），回执经 `RuntimeEvent.Capability(...)` 送回。**§0 那句"没有小能力（第 4 层）"照旧不改**——第一期没有任何生产者会发起一次能力调用，界面上也还没有可点的批准，她今天能做的事一件没多。
+- **出判面读数（本 Owner 当场重采，不是在册基线）**：`-t:Rebuild` 0 警告 0 错误；四程序集 **939／0／2（总 941）＝Client 93／App 221／Api 229／Core 398（396 通过＋原有两条环境跳过）**，新增判据 53 例（Api 44／Core 9）；`measure-fixed-eval.ps1` 仍 **75 个固定场景**（本刀没有新铸永久编号），`verify-repository.ps1` 458（新文件未跟踪，故未变），`git diff --check` 干净。22 次定向突变跑出 20 处点名转红、2 处按预期全绿（那两处的性质在 `docs/capability-and-plugins.md` §7 逐条写明）。**证伪过程中抓到两处"没有判据"的形状并当场补门**：配置键 `Pry:Capabilities:AllowedApplications` 整个读掉、以及"权限判断排在参数判断之前"这条顺序改掉——两种改法当时都能让全 suite 保持绿。在册基线 886 的复采归 QA，本 Owner 不自签。
+- **第二期（没有开工权，等作者裁定）**：一个真的在对话里发起能力调用的生产者 + `Ask` 的用户批准入口。按 `docs/decision-request-protocol.md` 的四部分提问后才能动；裁定之前不许写任何第二期代码。
+
 ### 第 5 层 · 发行硬化（Phase 8）
 
 - `PLAT-003`（P1，**这一条建议插队到第 0 层之后立刻做**，因为 0-4 之后你要天天用它）：备份 / 恢复 / `PRAGMA integrity_check` / schema 迁移注册表。今天 schema 版本是硬编码字面量（现为 `10`），迁移无事务包裹、无回滚说明；`§2.3` 迁移约束第 5 条要求数据迁移必须保留角色、会话、记忆与设置。

@@ -1,3 +1,4 @@
+using Pry.Core.Abstractions;
 using Pry.Core.Runtime;
 
 namespace Pry.Core.Tests;

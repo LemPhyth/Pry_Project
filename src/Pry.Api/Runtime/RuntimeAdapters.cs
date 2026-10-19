@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using Pry.Api.Capabilities;
 using Pry.Api.Services;
+using Pry.Core.Abstractions;
 using Pry.Core.Inference;
 using Pry.Core.Intelligence;
 using Pry.Core.Memory;
@@ -119,7 +121,12 @@ public sealed class StickerInterruptClassifier(InterruptClassifier classifier) :
 /// 普通回复、主动消息与倾听提示都走这里，不存在第二条发送路径。
 /// </summary>
 public sealed class ConversationRuntimeEventSink(ConversationEventLog events, ILogger logger,
-    Func<ConversationRuntime?>? runtimeAccessor = null) : IRuntimeOutputSink
+    Func<ConversationRuntime?>? runtimeAccessor = null,
+    // 能力执行通道（RT-007）。允许缺省是刻意的：没接的宿主保持接之前那份"按不可用返回"的行为，
+    // 发行链路一定会注入（Program.cs 注册了它）。谁把这一处接线悄悄摘掉，
+    // CapabilitySeamWiringTests 的源码门会红——理由和 CharacterIntelligenceSeamTests 那条一样：
+    // 接线只在这一处发生，没有任何一条行为断言能替它守着。
+    CapabilityDispatcher? capabilities = null) : IRuntimeOutputSink
 {
     /// <summary>目标 Runtime 阶段到旧 TurnState 名的投影，保持客户端兼容。</summary>
     public static string ToLegacyTurnState(RuntimePhase phase) => phase switch
@@ -173,13 +180,27 @@ public sealed class ConversationRuntimeEventSink(ConversationEventLog events, IL
     public async Task CapabilityRequestedAsync(string conversationId, CapabilityRequest request,
         CancellationToken token)
     {
-        // Capability Registry 属于 RT-007。这里必须明确回一个不可用结果，
-        // 否则等待 Capability 的那一轮会一直挂着，Runtime 再也不会投递任何内容。
-        logger.LogInformation("Capability {CapabilityId} 尚未接入，按不可用返回", request.CapabilityId);
+        // 无论走哪条路，最后都必须回执。等待能力的那一轮不会自己醒：不回执它就永远停在
+        // capability_pending，界面上一个字都不出——这条不变量在接了真分发器之后依然要成立。
+        var result = await RunAsync(conversationId, request, token);
         if (runtimeAccessor?.Invoke() is not { } runtime) return;
-        await runtime.AcceptAsync(RuntimeEvent.Capability(TimeProvider.System.GetUtcNow(),
-            new CapabilityResult(request.CapabilityId, request.RequestedBy, false, null, "capability_unavailable")),
-            token);
+        await runtime.AcceptAsync(RuntimeEvent.Capability(TimeProvider.System.GetUtcNow(), result), token);
+    }
+
+    /// <summary>
+    /// 没接执行通道时逐字保持接入前的那份不可用回执。<see cref="OperationCanceledException"/> 原样上抛：
+    /// 调用方令牌是那一轮的令牌，取消到哪一层都还得是取消（效果队列会安静地收下它）。
+    /// </summary>
+    private async Task<CapabilityResult> RunAsync(string conversationId, CapabilityRequest request,
+        CancellationToken token)
+    {
+        if (capabilities is null)
+        {
+            logger.LogInformation("Capability {CapabilityId} 尚未接入，按不可用返回", request.CapabilityId);
+            return new CapabilityResult(request.CapabilityId, request.RequestedBy, false, null,
+                "capability_unavailable");
+        }
+        return await capabilities.DispatchAsync(conversationId, request, token);
     }
 
     public Task FailureAsync(string conversationId, TurnIdentity turn, string errorCode, CancellationToken token)
