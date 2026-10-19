@@ -563,7 +563,7 @@ RT-002：输入更新持续 ConversationRuntime。后端可等待更多输入或
 
 Windows 下由 Pry 启动的 `llama-server` 会加入带 `kill-on-close` 的 Job Object；正常释放、宿主崩溃或被强制结束时，操作系统都会结束所属模型进程。注册表仍只在当前后端生命周期内按模型参数去重，不会按进程名结束其他软件的 `llama-server`。
 
-远程 OpenAI-compatible 地址必须使用 HTTPS，回环地址允许 HTTP，URL 不得包含用户名或密码。默认扫描目录为发行目录向上解析到的 `models`，开发和测试可用 `Pry__ModelsDirectory` 指定受管目录；扫描跳过符号链接目录及无效 GGUF 文件。模型路径仅保存在本机偏好文件，不会通过 API 返回。
+远程 OpenAI-compatible 地址必须使用 HTTPS，回环地址允许 HTTP，URL 不得包含用户名或密码。`local-llama` 档必须是回环地址（`http://127.0.0.1:…`、`http://localhost:…` 或 `http://[::1]:…`）：这一档由后端进程自己拉起 `llama-server` 并只绑回环，所以远程地址一律以 400 拒绝（字段 `baseUrl`，"本地模型必须配置回环地址"），HTTPS 也不例外。默认扫描目录为发行目录向上解析到的 `models`，开发和测试可用 `Pry__ModelsDirectory` 指定受管目录；扫描跳过符号链接目录及无效 GGUF 文件。模型路径仅保存在本机偏好文件，不会通过 API 返回。
 
 ## 贴纸
 

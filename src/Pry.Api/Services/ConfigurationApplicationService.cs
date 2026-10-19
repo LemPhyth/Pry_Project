@@ -748,6 +748,10 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.UserInfo.Length > 0 || uri.Scheme is not ("http" or "https"))
             throw new ApiValidationException("baseUrl", "必须是不含凭据的 HTTP(S) 绝对地址");
+        // local-llama 这一档由后端进程自己拉起 llama.cpp、只绑回环；放过远程地址就是让"本地"变成一个
+        // 装饰性标签，而旧规则只按 provider==openai-compatible 判 HTTPS，所以 http://192.168.x.x 全程无门。
+        if (provider == "local-llama" && !uri.IsLoopback)
+            throw new ApiValidationException("baseUrl", "本地模型必须配置回环地址，例如 http://127.0.0.1:8080/v1");
         if (provider == "openai-compatible" && uri.Scheme != "https" && !uri.IsLoopback)
             throw new ApiValidationException("baseUrl", "远程模型必须使用 HTTPS，回环地址可使用 HTTP");
         return uri.ToString().TrimEnd('/');
