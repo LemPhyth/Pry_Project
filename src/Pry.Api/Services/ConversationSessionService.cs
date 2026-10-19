@@ -4,6 +4,7 @@ using Pry.Contracts;
 using Pry.Core.Memory;
 using Pry.Core.Models;
 using Pry.Core.Prompting;
+using Pry.Api.Capabilities;
 using Pry.Api.Runtime;
 using Pry.Core.Runtime;
 using Pry.Core.TurnTaking;
@@ -17,7 +18,10 @@ public sealed class ConversationSessionService(MemoryDatabase database, BackendR
     // 角色智能的宿主接线处。允许缺省是刻意留给测试的形状：不传就保持接线前那份过渡建议器行为，
     // 不必让每个既有会话用例各自再造一套学习仓储。发行链路一定会注入（Program.cs 注册了它），
     // 而"哪天被谁悄悄摘掉接线"这个洞由 CharacterIntelligenceSeamTests 里的源码门守着。
-    CharacterIntelligenceGateway? intelligence = null) : IAsyncDisposable
+    CharacterIntelligenceGateway? intelligence = null,
+    // 能力执行通道（RT-007）。同一个理由留在同一个位置：缺省即保持接线前的行为，
+    // 发行链路由 Program.cs 注入，摘掉接线的洞由 CapabilitySeamWiringTests 守着。
+    CapabilityDispatcher? capabilities = null) : IAsyncDisposable
 {
     private static readonly string[] ListeningSignals = ["嗯，我在听。", "慢慢说，我在。", "我听着呢。"];
     private readonly ConcurrentDictionary<string, Lazy<Task<ConversationSession>>> _sessions = new(StringComparer.Ordinal);
@@ -280,7 +284,7 @@ public sealed class ConversationSessionService(MemoryDatabase database, BackendR
         });
         var store = new DatabaseRuntimeStore(database);
         ConversationRuntime? built = null;
-        var sink = new ConversationRuntimeEventSink(events, logger, () => built);
+        var sink = new ConversationRuntimeEventSink(events, logger, () => built, capabilities);
         // 说话前那一问交给角色智能，投递后的终局由同一个输出通道的内侧装饰器旁听回来。
         // 两者要么都接、要么都不接：只接一半会出现"有决策没人收"或"回报的是没决策过的轮次"。
         IRuntimeOutputSink output = intelligence is null ? sink : new CharacterIntelligenceOutputSink(sink, intelligence);

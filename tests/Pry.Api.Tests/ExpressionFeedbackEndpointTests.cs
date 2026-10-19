@@ -184,7 +184,7 @@ public sealed class ExpressionFeedbackEndpointTests
             Task.CompletedTask;
 
         public Task CapabilityRequestedAsync(string conversationId,
-            Pry.Core.Runtime.CapabilityRequest request, CancellationToken token) => Task.CompletedTask;
+            Pry.Core.Abstractions.CapabilityRequest request, CancellationToken token) => Task.CompletedTask;
 
         public Task FailureAsync(string conversationId, TurnIdentity turn, string errorCode,
             CancellationToken token) => Task.CompletedTask;

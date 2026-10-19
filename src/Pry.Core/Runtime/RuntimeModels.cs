@@ -1,3 +1,4 @@
+using Pry.Core.Abstractions;
 using Pry.Core.Intelligence;
 using Pry.Core.Models;
 
@@ -139,12 +140,6 @@ public sealed record DeliveryHints(TimeSpan? FirstMessageDelay, IReadOnlyList<Ti
 {
     public static readonly DeliveryHints Default = new(null, null);
 }
-
-public sealed record CapabilityRequest(string CapabilityId, IReadOnlyDictionary<string, string> Arguments,
-    TurnIdentity RequestedBy, string? ReplyWhenDone = null);
-
-public sealed record CapabilityResult(string CapabilityId, TurnIdentity ForTurn, bool Succeeded, string? Output,
-    string? ErrorCode);
 
 public sealed record ResponsePlan(ResponseIntent Intent, IReadOnlyList<RuntimePlannedMessage> Messages,
     CapabilityRequest? CapabilityRequest = null, DeliveryHints? Hints = null, bool DoNothing = false,
