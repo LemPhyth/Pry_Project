@@ -41,7 +41,7 @@ foreach ($case in $catalog.scenarios) {
 # bumped whenever a new ID is minted, so the cross-check below turns a stale map -- or a map whose
 # assignment line PowerShell swallowed (a UTF-8/no-BOM/LF script with non-ASCII comments can do that
 # under Windows PowerShell 5.1, and it fails open) -- into an error instead of a green no-op.
-$permanent = @{TIM=12;BEH=9;EXP=5;MEM=8;REL=4;ACT=6;CAP=3;PER=5;PRO=4;REC=5;PLT=14}
+$permanent = @{TIM=12;BEH=9;EXP=5;MEM=8;REL=4;ACT=6;CAP=3;PER=5;PRO=4;REC=5;PLT=15}
 $observed = @{}
 foreach ($case in $catalog.scenarios) {
     $parts = $case.id.Split('-')

@@ -2,7 +2,7 @@
 
 维护任务：EVAL-001（QA / Evaluation）；纵向反馈：EVAL-002。验收问题是：**同一个角色，是否在合适的时机，以符合她身份和共同经历的方式行动？** 内容正确、测试总数增加或构建成功都不能单独回答这个问题。
 
-- [固定场景与约束](scenarios.json)：75 个永久 ID（suiteVersion 1.3.1），仍只 10 个 category；每项都有 Scenario、Input、Initial State、Expected Decision、Expected Output Constraints、Forbidden Outcome。
+- [固定场景与约束](scenarios.json)：76 个永久 ID（suiteVersion 1.4.0），仍只 10 个 category；每项都有 Scenario、Input、Initial State、Expected Decision、Expected Output Constraints、Forbidden Outcome。
 - [首轮实测报告](reports/2026-09-20-baseline.md)：冻结快照、缺陷、验证限制与发布阻塞。
 - [主工作区复跑记录](reports/2026-09-20-rerun-main-worktree.md)：首轮三项 QA 缺陷回归通过，新增 QA-004/005；发行仍未评定。
 - [Phase 1 验收判定（02:41）](reports/2026-09-21-phase1-acceptance.md)：**不通过**。§7 门禁红（456/3/2）、M0-d 零实现、无统一提交；三条失败逐条定责与源哈希。
@@ -81,6 +81,8 @@ suiteVersion 1.1.1（2026-09-21，Phase 1 第三轮更正触发）：新增 `REC
 | Persistence PER-001～004 | 初始化、历史迁移、事务、备份恢复 | 新 SQLite 测试；已有主动消息事务测试 | 每个支持的历史 schema、迁移故障、损坏备份与恢复连续性 |
 | Protocol PRO-001～004 | 重连、乱序/重复、顺序、幂等 | SSE 解析；新 SQLite 用例 | 客户端补历史与通知去重；目标 WebSocket 与版本协商 |
 | Recovery REC-001～004 | Provider、crash、部分状态、后台任务 | HTTP 替身/Runtime/SQLite 清扫 | 真隔离进程强杀；半开连接；旧写回释放；故障后下一回合 |
+
+suiteVersion 1.4.0（2026-10-19，守门人 lane · 工单 `PLAT-003-BACKUP-RESTORE` §2 · S2，承 `QA-TIP1016-01`）：新增 `PLT-015`（Protocol / High，发行包来源可审计：脏树不出包、manifest 的 SHA 由 git 当场算）。铸号起因是 QA 全文检索发现**整条发行路径机械判据为零**——`tests/`、本目录的永久场景与全部受跟踪文件里除脚本自身外对 `package-release` 零命中，删掉那行 `Assert-CleanWorkingTree` 一条判据都不会红。承载物是新增的源码形状门 `Pry.Api.Tests.ReleaseAuditabilityShapeTests`（4 例：守卫无条件、`sourceCommit` 仍来自 git、缺运行库先抛后拷、正向探针），**零产品代码改动**；同步把 `measure-fixed-eval.ps1` 的永久 ID 表 `PLT=14` 补到 15。脚本只扫文本次序与函数体，不执行打包（出包仍只能在带 gitignored 运行库的那台机器上做，见 `eval-QA-TIP1016-1016` 第 9 条）。
 
 ## 可重复运行
 
