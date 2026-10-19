@@ -120,6 +120,7 @@ public sealed class TrayResidencyBoundaryTests
     [InlineData(CompanionFile, "private void InitializeCompanionExperience()")]
     [InlineData(CompanionFile, "private async Task ReportActivityAsync()")]
     [InlineData(MessengerFile, "private void StartEventStream(string roomId, long revision)")]
+    [InlineData(MessengerFile, "private void ReArmEventStream()")]
     [InlineData(MessengerFile, "private async Task ObserveEventsAsync(string roomId, long revision, CancellationToken token)")]
     [InlineData(MessengerFile, "private async Task RefreshRoomsWithoutSwitchAsync()")]
     public void A_hidden_window_keeps_the_stream_and_the_heartbeat_running(string file, string signature)

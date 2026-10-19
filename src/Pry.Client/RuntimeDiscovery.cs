@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Pry.Contracts;
 
@@ -14,8 +15,48 @@ public static class RuntimeDiscovery
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>
+    /// "这个客户端的令牌是从哪份描述符来的"记在客户端实例上。<b>挂在实例上而不是让调用方传参</b>是有意的：
+    /// 换入口这件事必须由连接自己完成，界面或任何装配点一旦需要"记得"传一个目录，漏传的那一半就静默失效
+    /// （F-1 的缺陷形状）。弱键因此不是省内存的手段，而是"会话与连接同寿命"的表达。
+    /// </summary>
+    private static readonly ConditionalWeakTable<HttpClient, DiscoveredSession> Sessions = new();
+
     public static string DescriptorPath(string? dataDirectory = null) =>
-        Path.Combine(dataDirectory ?? PryProtocol.DefaultDataDirectory, PryProtocol.RuntimeDescriptorFileName);
+        Path.Combine(ResolveDirectory(dataDirectory), PryProtocol.RuntimeDescriptorFileName);
+
+    /// <summary>
+    /// 按描述符装配一个客户端，同时把这枚令牌与它的来源目录钉在这个实例上：此后它的 401 才有"按需重读入口"的资格。
+    /// 端口、兜底预算、令牌头与协议头只在这里定义一次，首次连接与换入口重连共用同一个装配点，
+    /// 否则两条路径会各自漂出一个入口。只有经这里连上的会话有资格重读，内嵌那条路径的 401 一字不变仍是禁令。
+    /// </summary>
+    /// <param name="pipeline">
+    /// 传 <c>null</c> 就是真实管道；换入口时沿用第一次连接所用的那一条，所以重连不会悄悄换一套网络栈。
+    /// 这个参数只给判据用：装配点漏传它只会让那一笔请求打到真网络上响，不会让产品路径少做什么。
+    /// </param>
+    public static HttpClient CreateClient(RuntimeDescriptor descriptor, string dataDirectory,
+        HttpMessageHandler? pipeline = null)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        var http = pipeline is null ? new HttpClient() : new HttpClient(pipeline);
+        // 会话挂在实例上而不是让调用方自己传目录是有意的：换入口这件事必须由连接自己完成，
+        // 界面或任何装配点一旦需要"记得"传一个来源，漏传的那一半就静默失效（F-1 的缺陷形状）。
+        Sessions.Add(http, new DiscoveredSession(ResolveDirectory(dataDirectory), descriptor.Token, pipeline));
+        http.BaseAddress = new Uri($"http://127.0.0.1:{descriptor.Port}/");
+        // 兜底而不是做主的那一档：逐请求预算在 PryBackendClient 里声明。它必须宽于最宽的一档
+        // （语音识别），否则这个客户端连上后端后，长请求会被先跳的兜底顶掉——见 PryProtocol.RequestBudgetCeilingMs。
+        http.Timeout = TimeSpan.FromMilliseconds(PryProtocol.RequestBudgetCeilingMs);
+        http.DefaultRequestHeaders.Add(PryProtocol.SessionTokenHeader, descriptor.Token);
+        if (!http.DefaultRequestHeaders.Contains(PryProtocol.ClientHeader))
+            http.DefaultRequestHeaders.TryAddWithoutValidation(PryProtocol.ClientHeader, PryProtocol.Version);
+        return http;
+    }
+
+    /// <summary>这个客户端是不是发现来的会话；不是就没有可重读的入口。</summary>
+    internal static DiscoveredSession? SessionOf(HttpClient httpClient) =>
+        Sessions.TryGetValue(httpClient, out var session) ? session : null;
+
+    private static string ResolveDirectory(string? dataDirectory) => dataDirectory ?? PryProtocol.DefaultDataDirectory;
 
     /// <summary>
     /// 读出仍然可用的描述文件。缺席、不可解析、字段非法或所属进程已退出都返回 null；
@@ -55,14 +96,7 @@ public static class RuntimeDiscovery
         HttpClient? http = null;
         try
         {
-            http = new HttpClient
-            {
-                BaseAddress = new Uri($"http://127.0.0.1:{descriptor.Port}/"),
-                // 兜底而不是做主的那一档：逐请求预算在 PryBackendClient 里声明。它必须宽于最宽的一档
-                // （语音识别），否则这个客户端连上后端后，长请求会被先跳的兜底顶掉——见 PryProtocol.RequestBudgetCeilingMs。
-                Timeout = TimeSpan.FromMilliseconds(PryProtocol.RequestBudgetCeilingMs)
-            };
-            http.DefaultRequestHeaders.Add(PryProtocol.SessionTokenHeader, descriptor.Token);
+            http = CreateClient(descriptor, ResolveDirectory(dataDirectory));
             // 探测走免鉴权的握手端点：那个进程还活着但 HTTP 面已经不再服务时，宁可不接。
             await new PryBackendClient(http).GetProtocolInfoAsync(token);
             var connected = http;

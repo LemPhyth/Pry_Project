@@ -10,9 +10,27 @@ namespace Pry.Client;
 
 public sealed class PryBackendClient
 {
-    private readonly HttpClient httpClient;
+    /// <summary>
+    /// 当前生效的传输入口。<b>可变</b>是这条线的全部意义：发现来的会话在后端被换掉之后，
+    /// 同一个客户端实例可以换上一份新描述符装配的入口（端口与令牌一起换），界面不需要重新起一个实例。
+    /// 内嵌拓扑的客户端永远停在建队时那一个实例上——它不经 <see cref="RuntimeDiscovery"/>，也就没有可换的入口。
+    /// </summary>
+    private HttpClient httpClient;
     private readonly TimeSpan defaultRequestBudget;
     private readonly TimeSpan longRequestBudget;
+
+    /// <summary>发现会话（端口、令牌）；内嵌或未经发现的客户端这里是 <c>null</c>，那一条路径一字不变仍是禁令。</summary>
+    private readonly DiscoveredSession? discoveredSession;
+
+    /// <summary>换入口串行化：并发请求各自重读、各自换客户端会把一次重启演成多次切换。</summary>
+    private readonly SemaphoreSlim sessionRecovery = new(1, 1);
+
+    /// <summary>
+    /// 入口真的换过时的唯一出口：界面据此重新订阅事件流。命令面自己会重发那一笔，不需要这个通知；
+    /// 需要它的是 <see cref="ConversationEventStreamRunner"/>——它在端口空窗里按 8 轮退避走到终止就返回了，
+    /// 此后没有任何一条路会再订阅，"重启后端后能继续对话"缺的就是这一句。
+    /// </summary>
+    public Action? SessionRestored;
 
     /// <summary>
     /// 上一次事件流订阅被拒时打到的回环端口；只有它还在，下一次订阅才先查一次本机监听表。
@@ -30,6 +48,7 @@ public sealed class PryBackendClient
     public PryBackendClient(HttpClient httpClient, TimeSpan? requestBudget = null, TimeSpan? longRequestBudget = null)
     {
         this.httpClient = httpClient;
+        discoveredSession = RuntimeDiscovery.SessionOf(httpClient);
         this.defaultRequestBudget = requestBudget ?? TimeSpan.FromMilliseconds(PryProtocol.BackendRequestTimeoutMs);
         this.longRequestBudget = longRequestBudget ?? TimeSpan.FromMilliseconds(PryProtocol.TranscriptionRequestTimeoutMs);
         // 每个请求声明本界面会说哪一版协议，服务端据此拒绝不兼容组合，而不是静默错配字段。
@@ -186,7 +205,7 @@ public sealed class PryBackendClient
             throw new ArgumentException("只允许下载后端返回的相对资源 URL。", nameof(relativeUrl));
         // 这里下一刻就要把正文整体读进内存，所以不用 ResponseHeadersRead：那一档下逐请求预算只管到响应头，
         // 正文读到一半连接停住就成了永久等待。
-        using var response = await SendWithBudgetAsync(cancellation => httpClient.GetAsync(uri, cancellation),
+        using var response = await SendWithSessionAsync(cancellation => httpClient.GetAsync(uri, cancellation),
             defaultRequestBudget, token);
         await EnsureSuccessAsync(response, token);
         return new DownloadedContent(await response.Content.ReadAsByteArrayAsync(token),
@@ -197,9 +216,7 @@ public sealed class PryBackendClient
         [EnumeratorCancellation] CancellationToken token = default, TimeSpan? liveness = null)
     {
         var idleDeadline = liveness ?? TimeSpan.FromMilliseconds(PryProtocol.LivenessTimeoutMs);
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"api/v1/conversations/{Escape(conversationId)}/events?after={after}");
-        request.Headers.Accept.ParseAdd("text/event-stream");
-        using var response = await OpenEventStreamAsync(request, token);
+        using var response = await OpenEventStreamAsync(conversationId, after, token);
         await EnsureSuccessAsync(response, token);
         await using var stream = await response.Content.ReadAsStreamAsync(token); using var reader = new StreamReader(stream);
         string? data = null;
@@ -226,8 +243,15 @@ public sealed class PryBackendClient
     /// 中流静默由 <see cref="ReadLineWithLivenessAsync"/> 的存活看门狗判，若在这里留一个会到点的定时器，
     /// 一次正常的长会话订阅会被它自己掐死。
     /// </summary>
-    private async Task<HttpResponseMessage> OpenEventStreamAsync(HttpRequestMessage request, CancellationToken token)
+    private Task<HttpResponseMessage> OpenEventStreamAsync(string conversationId, long after, CancellationToken token) =>
+        RecoverOnceAsync(cancellation => OpenEventStreamOnceAsync(
+            $"api/v1/conversations/{Escape(conversationId)}/events?after={after}", cancellation), token);
+
+    private async Task<HttpResponseMessage> OpenEventStreamOnceAsync(string path, CancellationToken token)
     {
+        // 每次尝试都新建请求对象：同一个 HttpRequestMessage 发第二次会直接抛，而"换入口后重发订阅"要的就是再发一次。
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Accept.ParseAdd("text/event-stream");
         var target = StreamTarget(request);
         if (refusedLoopbackEndpoint == target && !LoopbackEndpointLiveness.IsListening(target.Host, target.Port))
         {
@@ -298,7 +322,7 @@ public sealed class PryBackendClient
 
     private async Task<T> GetAsync<T>(string uri, CancellationToken token)
     {
-        using var response = await SendWithBudgetAsync(cancellation => httpClient.GetAsync(uri, cancellation),
+        using var response = await SendWithSessionAsync(cancellation => httpClient.GetAsync(uri, cancellation),
             defaultRequestBudget, token);
         return await ReadAsync<T>(response, token);
     }
@@ -306,18 +330,87 @@ public sealed class PryBackendClient
     private async Task<T> SendAsync<T>(HttpMethod method, string uri, object? body, CancellationToken token,
         bool longRequest = false)
     {
-        using var request = new HttpRequestMessage(method, uri) { Content = body is null ? null : JsonContent.Create(body, options: JsonOptions) };
-        using var response = await SendWithBudgetAsync(cancellation => httpClient.SendAsync(request, cancellation),
+        using var response = await SendWithSessionAsync(
+            cancellation => SendBuiltRequestAsync(method, uri, body, cancellation),
             longRequest ? longRequestBudget : defaultRequestBudget, token);
         return await ReadAsync<T>(response, token);
     }
 
     private async Task SendNoContentAsync(HttpMethod method, string uri, object? body, CancellationToken token)
     {
-        using var request = new HttpRequestMessage(method, uri) { Content = body is null ? null : JsonContent.Create(body, options: JsonOptions) };
-        using var response = await SendWithBudgetAsync(cancellation => httpClient.SendAsync(request, cancellation),
-            defaultRequestBudget, token);
+        using var response = await SendWithSessionAsync(
+            cancellation => SendBuiltRequestAsync(method, uri, body, cancellation), defaultRequestBudget, token);
         await EnsureSuccessAsync(response, token);
+    }
+
+    private async Task<HttpResponseMessage> SendBuiltRequestAsync(HttpMethod method, string uri, object? body,
+        CancellationToken cancellation)
+    {
+        // 每次尝试都新建请求对象：换入口后重发那一笔时，旧的 HttpRequestMessage 已经发过、再用会直接抛。
+        // 正文默认整体读回内存后才算完成，所以请求对象在返回时释放与 HttpClient 自己的字符串重载同形。
+        using var request = new HttpRequestMessage(method, uri)
+        {
+            Content = body is null ? null : JsonContent.Create(body, options: JsonOptions)
+        };
+        return await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellation);
+    }
+
+    /// <summary>
+    /// 命令面的一次请求：先按这一档声明等待预算（<see cref="SendWithBudgetAsync"/>），再交给
+    /// <see cref="RecoverOnceAsync"/> 判要不要换入口重发。响应体的读取仍由调用方走 <see cref="EnsureSuccessAsync"/>，
+    /// 所以禁令、分类与文案一条都不绕过。
+    /// </summary>
+    private Task<HttpResponseMessage> SendWithSessionAsync(
+        Func<CancellationToken, Task<HttpResponseMessage>> send, TimeSpan budget, CancellationToken token) =>
+        RecoverOnceAsync(cancellation => SendWithBudgetAsync(send, budget, cancellation), token);
+
+    /// <summary>
+    /// 401 的两种形状在这里分开，其余一切（2xx、4xx、5xx）一次都不多读描述符：
+    /// 后端被换掉后活着的那个客户端只是握着旧钥匙，而"这个令牌真的没权限"仍要停在禁令那一档。
+    /// 判据是<b>这一笔实际挂出去的令牌</b>与描述符里那枚是否同一——不是"文件读出来变了没有"，
+    /// 否则并发请求里后到的那一批会把自己发早了的那声 401 读成真拒绝（假禁令）。
+    /// 至多换一次、重发一次：换入口之后仍被拒，就把那声 401 原样交出去。
+    /// </summary>
+    private async Task<HttpResponseMessage> RecoverOnceAsync(
+        Func<CancellationToken, Task<HttpResponseMessage>> attempt, CancellationToken token)
+    {
+        var attemptedToken = discoveredSession?.Token;
+        var response = await attempt(token);
+        // 未经发现连上的会话（含内嵌拓扑）没有可重读的入口：attemptedToken 为 null，这里一行都不多走。
+        if (attemptedToken is null || response.StatusCode != HttpStatusCode.Unauthorized) return response;
+        bool recovered;
+        await sessionRecovery.WaitAsync(token);
+        try
+        {
+            recovered = TryRecoverDiscoveredSession(attemptedToken);
+        }
+        finally
+        {
+            sessionRecovery.Release();
+        }
+        if (!recovered) return response;
+        response.Dispose();
+        return await attempt(token);
+    }
+
+    /// <summary>在 <see cref="sessionRecovery"/> 内调用：换成功返回 true，此后调用方重发那一笔；换不成返回 false，禁令照旧。</summary>
+    private bool TryRecoverDiscoveredSession(string attemptedToken)
+    {
+        var session = discoveredSession!;
+        var target = httpClient.BaseAddress;
+        // 判据①的前半：端口没人监听时重读也接不上，那一档仍由"连接被拒"与退避阶梯说话。
+        if (target is null || !LoopbackEndpointLiveness.IsListening(target.Host, target.Port)) return false;
+        // 已经有别的请求换好了：这一笔只是发在换之前，直接重发，不再多读一次文件、也不再宣告恢复。
+        if (session.Token != attemptedToken) return true;
+        var fresh = RuntimeDiscovery.TryRead(session.DataDirectory);
+        // 令牌没变（或读不出可用入口）就说明这一声 401 是真拒绝：禁令、文案与零退避一概照旧（PLT-002／PLT-006）。
+        if (fresh is null || fresh.Token == session.Token) return false;
+        // 旧入口不就地 Dispose：此刻还有在途请求挂在它上面，把它们掐成"取消"会把一次换后端演成用户自己关了请求。
+        // 它的寿命跟着宿主交给的那次发现连接，由界面在退出时统一处置。
+        httpClient = RuntimeDiscovery.CreateClient(fresh, session.DataDirectory, session.Pipeline);
+        session.Token = fresh.Token;
+        SessionRestored?.Invoke();
+        return true;
     }
 
     /// <summary>

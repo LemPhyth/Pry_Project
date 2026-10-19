@@ -48,6 +48,9 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
     public PryMessengerWindow(PryBackendClient api)
     {
         _api = api;
+        // 后端被换掉之后命令面自己会接回来，但事件流的 Runner 早在端口空窗里按退避走到终止就返回了，
+        // 此后没有任何一条路会再订阅——"重启后端后还能不能说上话"缺的就是这一句。令牌怎么换的界面不参与判断。
+        _api.SessionRestored = () => Dispatcher.UIThread.Post(ReArmEventStream);
         InitializeComponent();
         InitializeCompanionExperience();
         Opened += async (_, _) => await InitializeAsync();
@@ -484,6 +487,16 @@ public sealed partial class PryMessengerWindow : Window, IPryMainWindow, IMessen
         _eventCancellation?.Dispose();
         _eventCancellation = new CancellationTokenSource();
         _ = ObserveEventsAsync(roomId, revision, _eventCancellation.Token);
+    }
+
+    /// <summary>
+    /// 会话换了入口之后重新订阅。通知来自工作线程，房间与修订号在 UI 线程上读才是事实；
+    /// 空房间（还没开过对话）没有可接的对象，切了房间就接当前那一间——旧的 Runner 已经被 Cancel 掉。
+    /// </summary>
+    private void ReArmEventStream()
+    {
+        if (_conversationId is not { Length: > 0 } room) return;
+        StartEventStream(room, _roomRevision);
     }
 
     private async Task ObserveEventsAsync(string roomId, long revision, CancellationToken token)
