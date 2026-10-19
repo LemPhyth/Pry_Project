@@ -2,7 +2,7 @@
 
 > 状态：**已派工·待 Owner 认领（守门人 2026-10-16 按作者"派工单，然后告诉我应该让谁开工"写成）⇒ 2026-10-19 已认领·进行中（Memory & Context；作者当日只说一句「按照守门人的派单开工」，所指＝§0 那一格"现在缺的是有人认领"）**。Owner＝**Memory & Context**（`RT-005`／`MEM-005` 实现 Owner ＋ UI）；判定归 QA（从可指认提交复采）；第 2 层状态词与 `PROJECT_PLAN.md` §5.0 指针不由本角色推进。
 >
-> **2026-10-19（同日更晚）已入库**：本刀代码＋判据＋随刀文档形成一次可审查提交（分支 `codex/ui-main-window-redesign`，本地，未 push／未 tag／`main` 未动）。载体读数 **904／0／2**（Client 93／App 226／Api 188／Core 397 通过＋2 环境跳过；比在册 886 多的 18 恰为本刀新增判据 Core＋10／Api＋3／App＋5），**取自本角色主工作树、非干净 `--detach` 载体** ⇒ 权威复采与逐条独立反证归 **QA 从本提交建干净载体**，Owner 不自封基线。404／409 依 §1 定案＝契约赢（不存在／他角色 `404`，非孤立态与撞指纹各 `409`），`MemoryManagementEndpointTests` 的 `NotFound` 断言不必改回。随刀已写：`docs/api-v1.md`（confirm-keep／可选布尔／`status` 可见性）、`docs/memory-message-deletion-separation.md` §8 的 N8·N11 落地更正、`CHANGELOG.md` 本刀那一条。**未随本刀写**：`docs/character-learning-safety.md`（另有 lane 的 `character-learning-safety.patch` 在途，不代改）；`docs/full-scope-sprint.md` §3 第 2 层状态、`PROJECT_PLAN.md` §4.2 `RT-005` 行与 §5.0 指针、以及第 2 层"已落地"结案词仍**由作者落笔**，本刀只交实现与自证。N11 如实：数据层作用域缺陷已拆、HTTP 触达面待 RT-001 实例 id。
+> **2026-10-19（同日更晚）已入库**：本刀代码＋判据＋随刀文档形成一次可审查提交（分支 `codex/ui-main-window-redesign`，本地，未 push／未 tag／`main` 未动）。载体读数 **904／0／2**（Client 93／App 226／Api 188／Core 397 通过＋2 环境跳过；比在册 886 多的 18 恰为本刀新增判据 Core＋10／Api＋3／App＋5），**取自守门人自建的私密载体副本**（不是主工作树；共享树在写者并发期间未被改写，且该副本的四个承重文件出稿前已 `cmp` 对过本提交＝逐字节同一，见 §8）**、非干净 `--detach` 载体** ⇒ 权威复采与逐条独立反证归 **QA 从本提交建干净载体**，Owner 不自封基线。404／409 依 §1 定案＝契约赢（不存在／他角色 `404`，非孤立态与撞指纹各 `409`），`MemoryManagementEndpointTests` 的 `NotFound` 断言不必改回。随刀已写：`docs/api-v1.md`（confirm-keep／可选布尔／`status` 可见性）、`docs/memory-message-deletion-separation.md` §8 的 N8·N11 落地更正、`CHANGELOG.md` 本刀那一条。**未随本刀写**：`docs/character-learning-safety.md`（另有 lane 的 `character-learning-safety.patch` 在途，不代改）；`docs/full-scope-sprint.md` §3 第 2 层状态、`PROJECT_PLAN.md` §4.2 `RT-005` 行与 §5.0 指针、以及第 2 层"已落地"结案词仍**由作者落笔**，本刀只交实现与自证。N11 如实：数据层作用域缺陷已拆、HTTP 触达面待 RT-001 实例 id。
 >
 > **载体重基（2026-10-19 认领当场核）**：开工日线尾＝**`88eff2a`**，不是本单写成时的 `c608220`；两者之间隔着 `DEF-P3SEAM-04` 那一刀（6 文件，不碰记忆面，认领时 `git show --numstat` 与 `git status --short -- src tests` 双面点过名）。在册读数自此＝QA 从 `88eff2a` 四次复采的 **886／0／2**（Client 93／App 221／Api 185／Core 387＋2 环境跳过，`eval-QA-P3CLOSE-1019`）；下面那句"`c608220` 上守门人自跑＝876／0／2"自此仅作史保留。**照 §5 的规矩：本刀一切读数在自己载体上当场重取，不许在 886 上做加法。**
 >
@@ -107,7 +107,26 @@
 
 - **第 2 层 `2-D`**："先接线后标定"顺序不可颠倒（`docs/full-scope-sprint.md:93`）。本刀不给语义通道加阈值，也不因管理面落地而算作 `2-D` 推进。
 - **第 6 层标定轮**仍是 Release 前置；参数标定押到最后一条排序指令不变。
-- **第 1 层 `DEF-P4LEARN-01`** 已成可指认提交（`c608220`）但**QA 复采未跑**；本刀不代替那次复采，也不得借用它的读数。
+- **第 1 层 `DEF-P4LEARN-01`** 已成可指认提交（`c608220`）**并已由 QA 复采判定**（10-16 从唯一后代 `863604a` 建干净载体连采三次、五处反证逐个转红，`eval-QA-TIP1016-1016`＝可签·承重墙已独立证伪）；本刀不借用那份读数。
 - **`DEF-P3SEAM-04`**、**`QA-TIP1015-01`**（托盘常驻源码门不扫决策本体）、**`0-6`／`DEF-P1WALK-05`**（换后端恢复）、`0-2` 那 6 条判据的**非空转独立复判**——全部并列，不互为前置。
 - **可安装版本**仍缺两样：那 7 份文档文本的分刀归位（含本刀要写的 `docs/api-v1.md`）、打包前置的两条（`0-4`）；tag 与 push 等作者明令，本单不含。
 - §5.0 阶段指针不因本刀推进。
+
+## 8. 出口验证（守门人，2026-10-19 最晚；作者当日原话＝「按照守门人的派工进行工作」，本角色读成：这一 lane 取本单的验收面，不重写并发 lane 已产出的码）
+
+**提交面**：本单全部代码＋判据＝可指认提交 **`e2b521a`**（17:49:18，18 文件；产品码 11 面＋新判据 3 份＋随刀文档），本地分支 `codex/ui-main-window-redesign`，**未 push／未 tag／`main` 未动**。一句必须如实写的归属事实：**本单的顶部文字（＋3／−1，即 §5 那条 404／409 就地更正）被卷进了那把代码刀**，与 `AGENTS.md` 第 10 条"文档与代码分刀"的形式不符；本角色**不回退、不重做**，只登记，是否要求今后分刀由作者裁。
+
+**读数**：私密载体副本（入仓文件清单＋当时唯一未跟踪的新判据文件；共享树全程未被改写）＝**904 通过／0 失败／2 跳过（总 906）**，分项 **Client 93／App 226／Api 188／Core 397＋2 环境跳过**；构建 0 警告／0 错误；`measure-fixed-eval.ps1` 四目录各 `exit=0`、catalog 仍 **75** 条（完成标准 10＝没加场景也没删）；`verify-repository.ps1` 464 通过；`git diff --check` 干净；两条跳过按名点名＝`Configured_sense_voice_model_can_run_offline`、`Configured_llama_server_requires_the_child_environment_key`。**与在册 886 的差额恰好＝本刀 18 条新判据（App +5／Api +3／Core +10）**。**⇒ 在册基线仍＝886／0／2；904 是本角色自跑，改写权在 QA 从 `e2b521a` 建干净 `--detach` 载体的复采。**
+
+**载体是不是这把刀**：出稿前 `git show e2b521a:<path> | cmp -s -` 逐个比了四个承重文件（`PryMessengerMemoryWindow.cs`、`SqliteMemoryRepository.cs`、`MemoryManagementSurfaceTests.cs`、`MemoryDeletionSeparationTests.cs`），**四份全 SAME**；numstat（App +112／−13、Core 仓储 +45／−1、判据 +95／+159／+143）与载体分项条数对得上。**故 904 可指认为"`e2b521a` 内容的自跑读数"**，缺的只是"干净 `--detach`"这个形式。
+
+**反证**：10 处单点突变逐条压红（状态迁移而非二次删除／404 与两个 409 的错误语义／`.7` 上限／只改 `status` 不抬 `epoch` 那条机关／级联只在整段会话且仅剩一条支撑时生效／details 读口与 `orphaned` 分组／删除前二次确认／扫描器自证正向探针），每处还原后 `cmp` 通过；另两处按防御纵深需要**双错**才红（把消息路径硬编码的 `false` 改成 `true` **且**摘掉 `EntireConversation` 守卫 ⇒ 红；单独改任一半都绿，这是刻意形状，不是判据空转）。
+
+**本刀新登记的三条覆盖面欠账（都不卡本单结案，Owner 建议已写名，本角色不代改）**：
+- **`QA-TIP1019-02`（Medium，Memory & Context）＝检索地板 `.5` 全仓零判据**：把 `MemoryQueryService.cs:22` 的 `Confidence >= .5` 改成 `>= .4` ⇒ 906 条**一条都不红**；改坏同一行的 `Status == "active"` 那半立刻红 `MemoryContextTests.Correction_supersedes_old_fact_and_out_of_order_jobs_cannot_restore_it`（`tests/Pry.Core.Tests/MemoryContextTests.cs:102`）。后果＝地板被下调时她会把"依据已被你删掉"的 `.4` 孤儿记忆当事实引用，且没有机器报警。修法＝加一条对照用例；**不许为此放宽 `.5` 那个字**（§7 那条门照旧）。
+- **`QA-TIP1019-03`（Low，Windows Client）＝`Pry.Client` 两个新路由方法零客户端级判据**：`ConfirmKeepMemoryAsync`、`DeleteConversationAsync(…, forgetExclusiveMemories)` 只有 Api／界面覆盖，Client 计数本刀前后都＝93。修法＝两条 URL 拼装各一条纯 Client 用例。
+- **`QA-TIP1019-04`（Low，Memory & Context）＝会话级联开关没有界面生产者**：两个调用点（`PryMessengerWindow.axaml.cs:743`、`MainWindow.axaml.cs:426`）仍传默认 `false` ⇒ 本单 §0 承诺的"让用户选"这一期只在**端点层**成立；同场事实＝`archived` 行在记忆页仍不可见（只分 `orphaned` 一组）。**属范围而非缺陷**，登记是为了不让下一轮当成已交付。
+
+**一条判据面事实（免得下轮重复追查）**：Api 侧 confirm-keep 用例用裸 SQL 摆出孤立态，完成标准 1 的"真删除路径"只在 Core 证过，HTTP 层没走"删消息→产生孤儿→确认保留"全程。切片可接受，但不等于端到端已证。
+
+**自此还欠的动作（都不是本 lane 的）**：① **QA**＝从 `e2b521a` 建干净 `--detach` 载体复采＋独立证伪那 18 条新判据（一次同时结掉 `88eff2a` 之后这笔新账）；② **作者**＝第 2 层"记忆管理入口已落地"那句状态词，以及四件照旧欠着的明令（文档文本分刀归位、托盘「退出…」那一次人工点击、tag／push／打包、§6 裁定③）。**状态词与结案词不由本角色写。**
