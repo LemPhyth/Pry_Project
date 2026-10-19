@@ -101,6 +101,19 @@ public sealed class TestFixtureTeardownLockTests : IAsyncLifetime
     }
 
     [Fact]
+    public void The_fixture_that_retired_the_pool_dodge_shuts_down_through_the_same_door()
+    {
+        // QA-TIP1019-05：这条 fixture 历史上靠"把池关掉"躲开缺失的第三条池键；规避撤掉后它必须走同一扇门。
+        var source = Read("tests", "Pry.Api.Tests", "MemoryManagementEndpointTests.cs");
+        Assert.Equal(4, Occurrences(source, "SqliteTestPools.ClearAndDeleteRoot("));
+        Assert.Equal(0, Occurrences(source, "Directory.Delete("));
+        // 规避回来＝这条用例又绕开工装入口，第三条池键从此不再被任何判据覆盖。
+        Assert.Equal(0, Occurrences(source, "Pooling = false"));
+        // 反向探针：不写开关的形状必须真的数得到，否则上面那个 0 只是瞎。
+        Assert.Equal(1, Occurrences("DataSource = database, Pooling = false", "Pooling = false"));
+    }
+
+    [Fact]
     public void The_scanner_sees_the_shapes_it_claims_to_see()
     {
         // 每个判定先喂一段含该形状的样本文本，确认计数真的认得它（同 MemoryManagementSurfaceTests 的口径）。

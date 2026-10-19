@@ -19,8 +19,13 @@ internal static class SqliteTestPools
         {
             DataSource = databasePath, Mode = SqliteOpenMode.ReadWriteCreate, Cache = SqliteCacheMode.Shared
         }.ToString()));
-        // 宿主里的长期记忆仓储（SqliteMemoryRepository）用的是第三条串，漏掉它 memory.db 会带着池里的
-        // 句柄一起留在原地，删临时目录时抛 IOException——症状出现在别人的用例里（DEF-P1WALK-04 同族）。
+        // 用例直连库做突变时用的是只带 Data Source 的那条串，那是第三个池键（QA-TIP1019-05：Core 侧一直在清，
+        // Api 侧历史上漏了它，于是 MemoryManagementEndpointTests 只能自己写 Pooling=false 绕开——清一条不存在
+        // 的串是 no-op，句柄就留在池里，删临时目录时抛 IOException）。
+        SqliteConnection.ClearPool(new SqliteConnection($"Data Source={databasePath}"));
+        // 宿主里的长期记忆仓储（SqliteMemoryRepository）用的是又一条串（外键与默认超时是它的语义），漏掉它
+        // memory.db 会带着池里的句柄一起留在原地，删临时目录时抛 IOException——症状出现在别人的用例里
+        // （DEF-P1WALK-04 同族）。
         SqliteConnection.ClearPool(new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = databasePath, ForeignKeys = true, DefaultTimeout = 5

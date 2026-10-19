@@ -53,7 +53,7 @@ public sealed class MemoryManagementEndpointTests
         }
         finally
         {
-            SqliteTestPools.Clear(Path.Combine(directory, "memory.db")); Directory.Delete(directory, true);
+            SqliteTestPools.ClearAndDeleteRoot(Path.Combine(directory, "memory.db"), directory);
         }
     }
 
@@ -102,7 +102,7 @@ public sealed class MemoryManagementEndpointTests
         }
         finally
         {
-            SqliteTestPools.Clear(database); Directory.Delete(directory, true);
+            SqliteTestPools.ClearAndDeleteRoot(database, directory);
         }
     }
 
@@ -160,7 +160,7 @@ public sealed class MemoryManagementEndpointTests
         }
         finally
         {
-            SqliteTestPools.Clear(database); Directory.Delete(directory, true);
+            SqliteTestPools.ClearAndDeleteRoot(database, directory);
         }
     }
 
@@ -194,17 +194,17 @@ public sealed class MemoryManagementEndpointTests
         }
         finally
         {
-            SqliteTestPools.Clear(database); Directory.Delete(directory, true);
+            SqliteTestPools.ClearAndDeleteRoot(database, directory);
         }
     }
 
     private static async Task DemoteAsync(string database, long id, CancellationToken token)
     {
-        // Pooling=false: this bare Data Source shape is a pool key the Api SqliteTestPools.Clear does not
-        // reclaim, so a pooled handle here would survive cleanup and lock memory.db during Directory.Delete.
+        // 这条只带 Data Source 的串现在由 SqliteTestPools.Clear 回收（第三条池键，QA-TIP1019-05），
+        // 所以这里照旧走池；不许再用"把池关掉"来绕开工装入口。
         await using var c = new SqliteConnection(new SqliteConnectionStringBuilder
         {
-            DataSource = database, Pooling = false
+            DataSource = database
         }.ToString());
         await c.OpenAsync(token);
         await using var cmd = c.CreateCommand();
