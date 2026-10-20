@@ -41,3 +41,18 @@
 ## 5. 归位
 
 落地后由守门人在合流树重跑门禁并登记（§4.2／§9 ＋ `docs/full-scope-sprint.md` §0），`main` 跟线尾；QA 从当时线尾复采时把这两条一起拆。本单结案词不由本角色与本 lane 写。
+
+## 6. 守门人独立反证（2026-10-20 傍晚，载体外的场记，不是 QA 复采）
+
+落地那一把（分支 `codex/tip1019-03-client-route`＝`2954dbc`，其 rebase 副本 `c43edc9`＝线尾 `f6b4579` ＋ 该刀）的提交信息自报四处单点突变。守门人不在写它的人的数上签字，另建 `--detach` 副本 `.local-notes/gate-t101903-mut`（起点 `c43edc9`）自己重拆，场记＝`.local-notes/t101903-mut/`：
+
+| 向 | 改的那一处（产品码） | 结果 |
+|---|---|---|
+| A | `DeleteConversationAsync` 里去掉 `.ToLowerInvariant()` | 103 条中恰好 1 红＝`PryBackendClientTests.Delete_conversation_asks_for_the_cascade_in_lowercase_on_the_query`（期望 `…=true`、实得 `…=True`） |
+| B | `ConfirmKeepMemoryAsync` 里 `Escape(characterId)` 换成裸插值 | 恰好 1 红＝`MemoryManagementClientTests.Confirm_keep_is_an_empty_post_that_escapes_the_character_on_the_query`（期望 `characterId=a%26b`） |
+| C | 同一条语句 `HttpMethod.Post` → `Put` | 恰好 1 红＝同上一条用例（期望 POST、实得 PUT） |
+| D | 同一条语句的空体 `null` 改成带一个字段的对象 | 恰好 1 红＝同上一条用例（`Assert.Empty` 读到 `{"probe":1}`） |
+
+四向每向改完立刻按备份 `cmp` 逐字节还原（还原后 `git status --porcelain`＝0 行），前后两遍干净基线各 103／103 全绿、`failed 0`。因此本单的"必须先故意让它红一次"由本角色独立见到，红例名与用例名一一对应，没有一条不相干的红。
+
+两句不许读过头：① 这是**守门人的独立反证，不是 QA 复采**——在册基线仍是 988／0／2（总 990），这一把的 `990／0／2（总 992，Client 103）` 只是合流树自跑；② 主线**尚未含**这一把（`git rev-list --count f6b4579..codex/tip1019-03-client-route`＝1），归位形状与押后条件见 `PROJECT_PLAN.md` §9 同日两格，本行不改写它。
