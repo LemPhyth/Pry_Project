@@ -132,7 +132,7 @@ $variantText
 
 启动：双击 Pry.App.exe。
 数据：保存在 %LOCALAPPDATA%\PryCompanion，不会写入本目录。
-许可：程序代码为 GPL-3.0-only（见 LICENSE 与 NOTICE，完整对应源码为本仓库中 release-manifest.json 所记 commit 的检出）；原创素材和第三方运行库/模型使用各自许可，不受该 copyleft 条款影响。分发或使用前请阅读 LICENSE、NOTICE、ASSETS_LICENSE.md、FAN_CONTENT_POLICY.md 和 licenses 目录。
+许可：程序代码为 AGPL-3.0-only（见 LICENSE 与 NOTICE，完整对应源码为本仓库中 release-manifest.json 所记 commit 的检出）；原创素材和第三方运行库/模型使用各自许可，不受该 copyleft 条款影响。分发或使用前请阅读 LICENSE、NOTICE、ASSETS_LICENSE.md、FAN_CONTENT_POLICY.md 和 licenses 目录。
 "@ | Set-Content -LiteralPath (Join-Path $PackageRoot '发行包说明.txt') -Encoding utf8
 }
 
