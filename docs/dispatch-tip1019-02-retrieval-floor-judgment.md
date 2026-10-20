@@ -42,3 +42,14 @@
 ## 5. 归位
 
 落地后按老流程：守门人在合流树重跑门禁并登记（`PROJECT_PLAN.md` §4.2／§9 ＋ `docs/full-scope-sprint.md` §0），`main` 按作者 10-15「可以并线」跟线尾（只挪 ref）；**QA 从当时的线尾建干净 `--detach` 副本复采并亲手拆这一条**——本单结案词不由本角色与本 lane 写。
+
+## 7. 开工前补正（守门人另一条 lane 2026-10-20 更晚，线尾 `1f31416`，逐锚点当场重跑；本单未认领，所以补正在任何人起刀前落地；零 `src/`、零 `tests/`）
+
+- **§1 的四处代码锚点当场逐行读过，全部复现**：`MemoryQueryService.cs:22`（那一行结尾是 `.ToArray();`，事实表引的是前半）、`MemoryQueryService.cs:56`、`MemoryContextTests.cs:102`、`CharacterIntelligenceTests.cs:289`。§4 点名的两条环境跳过也都在盘上（`CoreTests.cs`、`LlamaServerSecurityTests.cs`）。
+- **F3 那句扫描口径要补一行**：受跟踪 `tests/**` 里 `.45` 当场命中 **2** 处，除 F3 写的 `CharacterIntelligenceTests.cs:289` 之外还有 `tests/Pry.App.Tests/VisualCropEditorTests.cs:50` 的 `Assert.Equal(.45m, y.Value)`——那是裁剪坐标的 `decimal` 字面量，与检索地板无关。**结论不变**（没有任何用例碰到这道 `.5`），但认领人复跑扫描会多看见这一行，别把它读成「已经有抓手」。
+- **新增 F6：同一棵链上有第二道同值地板，本单的断言面必须钉在检索面、不能钉成端到端面**（静态可读证据，本补正没跑突变）：`src/Pry.Core/Prompting/ContextBuilder.cs:88` 把 `x.Status == "active" && x.Confidence >= .5` 又过滤一遍做成 `fresh` 字典，`:96-100` 只把 `request.Memory.Hits.Take(6)` 里**存在于 `fresh`** 的行写进提示词，其余记 `dropped(…, "stale_or_deleted")`。两个后果：
+  1. **只松 F1 的 `.5`** ⇒ `Hits` 多出一行 `.45`，而提示词那一面看不见（第二道门照样丢它）。若新用例断的是 `SystemPrompt` 含不含那句话，§2.2 的「先红一次」会拿到**假绿**，然后被误读成「我的仪器坏了」。**这一格是本单最容易踩的坑**：本仓库 10-19 已经为同形踩过一次（`QA-TIP1020-02`＝掏空本体而形状门仍绿）。
+  2. **只松 `ContextBuilder.cs:88`** ⇒ 那行根本到不了第二道门（F1 先拦），**任何单点突变都压不红它**＝防御纵深，不是可达判据。先例口径见 `e2b521a` 那把登记的「2 处需双错（防御纵深）」。
+  ⇒ 写法照既有 F2 那条用例的口径（`Assert.Empty((await Query("…")).Hits)` 这一族，直接拿 `MemoryQueryService` 的返回；`MemoryDatabase.SearchMemoriesAsync` 是同一入口的另一头）；§2.2 的突变只松 F1 那半，必须红。
+  ⇒ 若还想给第二道门留证据，唯一诚实的形状是**双突变**：两处 `.5` 同时松到 `.4` ⇒ `.45` 的 active 行必须出现在提示词里 ⇒ 必须红；§9 要如实写「两处各自单点为绿、双点为红」，**不许把单点绿当覆盖**。
+- **同族、明确不属于本单的两处数字**（只登记，认领人不许顺手补，守门人下一轮派单时再定级别与 Owner）：`src/Pry.Core/Intelligence/RelationshipState.cs:139` `Reliable => Confidence >= 0.5`（唯一消费者 `CharacterStateService.cs:181`；抓手＝`CharacterIntelligenceTests.cs:251`／`:254` 的 0.2 拒、0.9 放行——**两侧都不贴边**，所以地板下调无人知晓、上调会被发现）；`src/Pry.Core/Intelligence/BehaviorPlanner.cs:125` `x.Confidence >= 0.55`（抓手＝`CharacterIntelligenceTests.cs:345` 那条喂 `Confidence = 0.7` 的用例，同样是只钉住上界）。这两条比本单轻：它们不是零抓手，是**单边抓手**，本单的 `.5` 是零抓手。
