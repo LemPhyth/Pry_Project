@@ -109,6 +109,25 @@ public sealed class PryBackendClientTests
         Assert.Equal(5, result.MessageId);
     }
 
+    [Fact]
+    public async Task Delete_conversation_asks_for_the_cascade_in_lowercase_on_the_query()
+    {
+        string? sent = null;
+        using var http = new HttpClient(new StubHandler(request =>
+        {
+            sent = $"{request.Method.Method} {request.RequestUri!.PathAndQuery}";
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        })) { BaseAddress = new Uri("http://127.0.0.1:5078/") };
+        var client = new PryBackendClient(http);
+
+        await client.DeleteConversationAsync("a&b", forgetExclusiveMemories: true, TestContext.Current.CancellationToken);
+        Assert.Equal("DELETE /api/v1/conversations/a%26b?forgetExclusiveMemories=true", sent);
+
+        // 第二笔不写那个开关：一次同时钉住"界面没勾选就不级联"的默认值和小写的 false。
+        await client.DeleteConversationAsync("a&b", token: TestContext.Current.CancellationToken);
+        Assert.Equal("DELETE /api/v1/conversations/a%26b?forgetExclusiveMemories=false", sent);
+    }
+
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> response) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
