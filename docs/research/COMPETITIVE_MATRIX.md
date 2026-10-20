@@ -26,15 +26,17 @@
 
 ## 照搬许可边界（作者 2026-09-21 裁决，`DOC-005`）
 
-下表区分两件常被混为一谈的事：**法律上能不能把上游源码文本搬进仓库**，与**范围上该不该搬**。下面这栏只有前者；"Pry 阶段取舍"里的"不应照搬"仍是后者，两栏都要满足。Pry 代码许可已由 Apache-2.0 改为 **GPL-3.0-only**，依据与实测 SHA 见 `docs/upstream-license-compatibility.md`。
+下表区分两件常被混为一谈的事：**法律上能不能把上游源码文本搬进仓库**，与**范围上该不该搬**。下面这栏只有前者；"Pry 阶段取舍"里的"不应照搬"仍是后者，两栏都要满足。Pry 代码许可已由 Apache-2.0 改为 **GPL-3.0-only**（2026-09-21），再由 GPL-3.0-only 改为 **AGPL-3.0-only**（2026-10-20，作者点名要借鉴 HDS-Interlude 的架构组织方式），依据与实测 SHA 见 `docs/upstream-license-compatibility.md`。
 
-| 项目 | 许可（2026-09-21 实测） | 源码文本进仓库 | 约束 |
+| 项目 | 许可（实测日期见括号） | 源码文本进仓库 | 约束 |
 |---|---|---|---|
-| MaiBot / MaiCore | GPL-3.0 | ✅ 允许 | 同族兼容；Runtime 的规范目标。抄前先查目标子目录自己的 LICENSE（上游 EULA §2.1）。 |
-| Satori | MIT | ✅ 允许 | MIT 可进 GPL；保留上游版权行。 |
-| AstrBot | AGPL-3.0 | ❌ 禁止 | AGPL 代码不能并入 GPL-3.0-only 作品；作者判定不值得为其转 AGPL。只搬机制。 |
-| Nekro-Agent | 自定义"Nekro Agent 开源协议 V1.1" | ❌ 永久禁止 | 把"设计、架构或概念"也算派生作品，另有强制 GUI 署名与用户规模授权门槛。 |
-| Private Companion | 无 LICENSE 文件 | ❌ 永久禁止 | 无许可即保留所有权利。 |
+| MaiBot / MaiCore | GPL-3.0（2026-09-21） | ✅ 允许 | GPL-3.0 代码经 AGPL §13 并入本作品，方向合法；Runtime 的规范目标。抄前先查目标子目录自己的 LICENSE（上游 EULA §2.1）。 |
+| Satori | MIT（2026-09-21） | ✅ 允许 | MIT 可进 GPL／AGPL；保留上游版权行。 |
+| HDS-Interlude | AGPL-3.0（2026-10-20） | ✅ 允许（作者 10-20 点名） | 同证结合；点名的只是"架构组织方式"，不在 §2.4 冻结范围外新增功能，上游 Prompt／人设／示例／截图一律不取。 |
+| AstrBot | AGPL-3.0（2026-09-21） | ❌ 禁止 | 10-20 改约已解除"AGPL 不能进 GPL-3.0-only 作品"这条阻塞，但作者未点名 ⇒ 名单没变，只搬机制。 |
+| Nekro-Agent | 自定义"Nekro Agent 开源协议 V1.1"（2026-09-21） | ❌ 永久禁止 | 把"设计、架构或概念"也算派生作品，另有强制 GUI 署名与用户规模授权门槛。改约救不回来。 |
+| Private Companion | 无 LICENSE 文件（2026-09-21） | ❌ 永久禁止 | 无许可即保留所有权利。 |
+| qq-bridge | MIT 正文＋一节第三方声明，GitHub 判 `NOASSERTION`（2026-10-20） | ❌ 禁止 | 未被点名；不是"一眼干净的 MIT"，不得按 MIT 推论放行。 |
 
 白名单外三项"只搬机制"的可执行含义：不 clone、不 vendor、不把源码复制进仓库或任何 worktree，也不把上游源码文本当参考实现读完再自己写；**换语言重写不解除 copyleft 义务**，所以 Python/TS → C# 这条路对禁止名单同样不通。上游的美术资源、Prompt 文案与示例数据一律不取。照搬白名单项必须三处留痕：文件头 `Ported from <repo>@<sha>:<path>`、`licenses/upstream/<repo>_<sha>/` 的上游许可文本、`licenses/THIRD-PARTY-NOTICES.md` 照搬来源表一行。
 

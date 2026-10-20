@@ -1,7 +1,7 @@
 # Satori：跨平台 Bot Protocol 与 Remote Bot abstraction
 
 > **⚖️ 照搬白名单内（作者 2026-09-21 裁决，`DOC-005`）：本项目允许照抄。**
-> Satori 是 **MIT**，许可方向天然兼容：MIT 代码可以进 GPL 作品，只要保留上游版权许可文本。Pry 代码许可已改为 **GPL-3.0-only**，不构成障碍。
+> Satori 是 **MIT**，许可方向天然兼容：MIT 代码可以进 GPL 或 AGPL 作品，只要保留上游版权许可文本。Pry 代码许可现为 **AGPL-3.0-only**（2026-10-20 由 GPL-3.0-only 变更），对本项目同样不构成障碍。
 > **照抄义务（缺任一不进集成基线）**：① 锁 commit 并读真源码（已核实 `satorijs/satori@c466fb01c5629a0d73f1c01205127b737b6fadd6`）；② 文件头写 `Ported from satorijs/satori@<sha>:<path>` 并保留上游 MIT 版权行；③ 上游 MIT 文本进 `licenses/upstream/`，并在 `licenses/THIRD-PARTY-NOTICES.md` 的照搬来源表登记一行。
 > **但 1.0 的范围没有扩大**：白名单只解除法律门槛，不改变阶段取舍。按本文件 §6，当前吸收的是消息/资源引用分离、能力声明与事件信封这几类机制；**禁止**把 Satori 的 Element、Bot/Session 等上游类型或内部数据结构直接变成 Pry 契约（`docs/api-v1.md` 与 PLAT-005 的冻结节奏优先）。细则见 `docs/upstream-license-compatibility.md` §4、§7。
 

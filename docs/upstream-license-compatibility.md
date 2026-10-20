@@ -1,26 +1,33 @@
 # 上游照搬与 Pry 代码许可兼容性评估
 
-状态：**评估已完成；作者裁决已定档（2026-09-21）；代码侧改约已在主工作区执行，尚未提交。**
-负责人：Qoder（Architecture / Integration / Release 守门人）。日期：2026-09-21。
-承接：作者指令"为快速推进需要直接照搬成熟项目的代码结构，把**代码相关**的协议改为能照抄这五个项目也兼容的，**绝对不要变更关于美术资源的协议**"。
+状态：**评估已完成；作者裁决已定档（2026-09-21 定 GPL-3.0-only；2026-10-20 作者再次显式改约为 AGPL-3.0-only，本文件的档位与白名单以 §6 末段那条裁决为准）；代码侧与声明层已随 10-20 改约提交入库。**
+负责人：Qoder（Architecture / Integration / Release 守门人）。日期：2026-09-21，2026-10-20 追加。
+承接：作者指令"为快速推进需要直接照搬成熟项目的代码结构，把**代码相关**的协议改为能照抄这五个项目也兼容的，**绝对不要变更关于美术资源的协议**"；2026-10-20 追加指令（逐字）"将许可证变更为AGPL-3.0，我需要借鉴HDS项目的架构组织方式"。
 任务登记：`PROJECT_PLAN.md` §4.1 `DOC-005`。
 
 > **作者裁决（2026-09-21，三点全部定档）**
-> ① **目标许可 = GPL-3.0-only**（原话"确定改成 GPL-3.0"）。不采用 AGPL 档。
-> ② **MaiBot/MaiCore 必须可照抄**——原话"我觉得需要照抄 MaiBot，否则现在开始自研一套 Runtime 极其拖慢开发进度"；AstrBot 现在不一定需要照抄。
+> ① **目标许可 = GPL-3.0-only**（原话"确定改成 GPL-3.0"）。不采用 AGPL 档。**——①已被 2026-10-20 的显式改约取代，见下一条；②③ 未被取代，照旧生效。**
+> ② **MaiBot/MaiCore 必须可照抄**——原话"我觉得需要照抄 MaiBot，否则现在开始自研一套 Runtime 极其拖慢进度"；AstrBot 现在不一定需要照抄。
 > ③ **Nekro-Agent 与 Private Companion 永久只作机制与市场研究参考**，源码文本不进仓库。
-> 合起来的可抄代码白名单就是 **MaiBot/MaiCore + Satori(MIT)** 两家；AstrBot 与另两家同列"仅机制参考"。可执行口径见 §4.4，已同步写入 `AGENTS.md` 第 7–8 条、`NOTICE`、`licenses/THIRD-PARTY-NOTICES.md`、`docs/research/` 三份入口文档与三份项目研究文档顶部。
+> 合起来的可抄代码白名单就是 **MaiBot/MaiCore + Satori(MIT)** 两家；AstrBot 与另两家同列"仅机制参考"。可执行口径见 §4.4，已同步写入 `AGENTS.md` 第 7–8 条、`NOTICE`、`licenses/THIRD-PARTY-NOTICES.md`、`docs/research/` 三份入口文档与三份项目研究文档顶部。**（该"两家"自 2026-10-20 起是三家——加了 HDS-Interlude；以 §4.4 现表为准，不要把上面这句当现状读。）**
+
+> **作者裁决（2026-10-20，逐字："将许可证变更为AGPL-3.0，我需要借鉴HDS项目的架构组织方式"）**
+> 本条**只改档位与白名单，没有推翻 9-21 的其余任何一条**。
+> ① **档位改为 AGPL-3.0-only**（`LICENSE` 换成 FSF 官方 AGPL-3.0 全文，661 行）。§3 当年写下的"作者是唯一版权人，将来要升到 `-or-later` 或 AGPL 都是一次显式裁决"就是这一条；本次那次显式裁决到了。
+> ② **点名 HDS-Interlude**：作者要的"借鉴架构组织方式"落在此项目上，因此 §4.4 白名单新增它一家。同轮由守门人实测其固定提交 `1bfdc8b2b8d92bfe1e72542d4e0ff8d7ffefa090` 的 LICENSE＝未改动的 FSF AGPL-3.0（与官方文本剥掉 CRLF 后逐字节相同，只差"如何应用本许可"模板段的换行两处），**无附加条款**。
+> ③ **没有点名的三家照旧**：AstrBot 的 AGPL 不兼容随本次改约**自动消失**，但白名单是按项目名锁死的，作者没有点名它 ⇒ 仍停在 `mechanism`；Nekro-Agent 与 Private Companion 的禁止理由与本协议无关（自定义协议主张"设计、架构或概念"即派生作品；无 LICENSE＝未授权），改约救不回来。
+> ④ **美术侧一字未动**，"绝对不要变更关于美术资源的协议"优先级最高且本次未获任何豁免；唯一耦合行（`ASSETS_LICENSE.md:11` 仍写"适用根目录 `LICENSE` 所载的 GPL-3.0"）按 9-21 立的规矩**由作者本人改**，守门人未碰。
 
 本文只影响**代码与文档的许可**。`ASSETS_LICENSE.md` 与 `FAN_CONTENT_POLICY.md` 的全部实质条款不变（第 5 节说明唯一 unavoidable 的交叉引用行）。
 
-## 0. 结论先说（四条）
+## 0. 结论先说（四条，2026-10-20 更新）
 
-1. **不存在一个能让 Pry 合法逐行照抄全部五个项目的许可。** 法律上的可照抄上限是 3/5（Satori + MaiBot/MaiCore + AstrBot），而且要同时接住 AstrBot 就必须把代码许可提到 **AGPL-3.0**。
-2. **作者选择 GPL-3.0-only，因此 AstrBot 主动出局。** GPL-3.0 收不了 AGPL 代码（AGPL-3.0 §13 允许 GPLv3 代码并入 AGPL 作品，反方向不成立）。这不是疏漏而是取舍：不为一个"现在不一定需要照抄"的项目承担 AGPL 的网络条款与今后闭源的限制。**若将来真要抄 AstrBot 代码，唯一出路是再一次整体改约为 AGPL-3.0，那属于新的作者裁决，不是任何 Agent 可以顺手做的整理。**
-3. **改约的必要性集中在 MaiBot**：Runtime 主线的规范目标是 MaiCore，而它是 GPL-3.0，Apache-2.0 单向不兼容（不能把 GPL 代码并入 Apache 项目）。改为 GPL-3.0-only 后这条链路合法；换语言（Python → C#）不解除 copyleft 义务——`Pry_1.0_Rewrite_Architecture_Plan_v3.md` 附录 K 已写明，本次只是接上可执行的操作程序。
-4. **最终可抄代码的只有两家：MaiBot/MaiCore（GPL-3.0）与 Satori（MIT）。** AstrBot、Nekro-Agent、Private Companion 三家按作者 2026-09-21 裁决**永久停留在机制与市场调研层**，执行口径见 §4.4。
+1. **不存在一个能让 Pry 合法逐行照抄全部研究对象的许可**，但 2026-10-20 之后上限已经抬高：档位选到 **AGPL-3.0-only** 时，法律上可照抄的是 Satori(MIT)、MaiBot/MaiCore(GPL-3.0，经 §13 并入)、AstrBot(AGPL-3.0)、HDS-Interlude(AGPL-3.0) 四家；Nekro-Agent 与 Private Companion 无论选哪一档都不行（理由见 §2）。
+2. **9-21 那次"选 GPL-3.0-only、因此 AstrBot 出局"已被作者 10-20 的显式改约取代**：AGPL-3.0 §13 允许 GPLv3 代码并入 AGPL 作品，所以 MaiCore 那条链路在新档位下照样合法（`src/Pry.Core/Runtime/` 那四个 `ported` 文件头一字未改，陈述的是**上游**许可，与 Pry 自己的档位无关）。**换档换来的东西要如实写清**：§13 的网络条款——"修改后的程序通过网络提供给使用者"必须同时向这些使用者提供对应源码；以及从此"闭源发行／商店售卖不附源码"与本许可正面冲突，今后要降回 GPL-3.0 或 Apache 需再一次显式改约。**AstrBot 的法律阻塞随换档自动解除，但白名单 admission 不自动**：作者 10-20 只点名 HDS，AstrBot 仍停在 `mechanism`，放开是另一次裁决。
+3. **改约的必要性从"集中在 MaiBot"变成"集中在 HDS-Interlude"**：作者要的借鉴对象是这个新项目，它的 LICENSE 实测为未改动的 FSF AGPL-3.0 全文（10-20 按固定提交 `1bfdc8b2…` 与官方文本逐字节比对，只差"如何应用本许可"模板段两处换行 ⇒ 无附加条款）。**"借鉴架构组织方式"这一半在旧档位下本来就已经允许**（`mechanism` 档对全部研究对象开放），换档真正买到的是"能把它的源码文本搬进来／跨语言移植"这条路；因此凡是只按机制吸收的文件，仍然按 §4.1 的 `mechanism` 标注，不得为了"反正能抄"而把机制吸收写成照搬。
+4. **现在可抄代码的是三家：MaiBot/MaiCore（GPL-3.0）、Satori（MIT）、HDS-Interlude（AGPL-3.0）。** AstrBot、Nekro-Agent、Private Companion、qq-bridge 四家停留在机制与市场调研层（qq-bridge 是 10-20 新登记的研究对象，作者从未点名），执行口径见 §4.4。
 
-## 1. 五个项目的许可实测
+## 1. 研究对象的许可实测（2026-09-21 五家 ＋ 2026-10-20 两家）
 
 核实方式：GitHub REST `repos/<owner>/<repo>` 的 `license.spdx_id`、`contents/LICENSE` 原文、根目录 git tree（`truncated:false`）；`raw.githubusercontent.com` 取 README 的 License 段。核实日期 2026-09-21，HEAD commit 一并记录以便复现。未做法律意见之外的合规认证。
 
@@ -31,6 +38,13 @@
 | AstrBot | `AstrBotDevs/AstrBot@6914bc3aa61e14ca9a9c2cb37a0f9ec1ff5d6334`（默认分支 `master`） | **AGPL-3.0**（LICENSE 为 FSF 官方 AGPLv3 全文，无附加条款） | ❌ **不可以（作者裁决：现在不一定需要照抄，且 GPL-3.0-only 与之不兼容）** | 若将来必须抄其代码，须先把 Pry 整体改为 AGPL-3.0（§13 允许与 GPLv3 结合，反向不成立）；在那之前只作机制参考 |
 | Nekro-Agent | `KroMiose/nekro-agent@8df1eced67cc9d6d4a98515ec98f3dbe8deda480` | **自定义"Nekro Agent 开源协议 V1.1"**（GitHub `spdx_id = NOASSERTION`；自称"基于 Apache License 2.0 修改和扩展，冲突时以新增条款为准"） | ❌ **不可以；作者 2026-09-21 已裁决降级为纯市场调研对象** | 见第 2 节逐条 |
 | Private Companion | `menglimi/astrbot_plugin_private_companion@2313fd12e1bd9b72f6db9aca17cde4359102341e` | **无 LICENSE 文件**（license API 无 license 字段；根目录 tree 无 LICENSE，`truncated:false`） | ❌ **绝对不可以；作者同日裁决降级为纯市场调研对象** | 未授予任何许可 = 默认保留所有权利。它的插件清单 `.astrbot-plugin` 只有 i18n 目录，也不含许可声明。运行在 AGPL 宿主上不会让它自动变成 AGPL |
+
+**2026-10-20 追加实测**（核实方式同上，另加一次逐字节比对；核实日期 2026-10-20）：
+
+| 项目 | 仓库 @ 实测提交 | 许可（实测） | 逐行照抄进 Pry | 承担的义务 |
+|---|---|---|---|---|
+| HDS-Interlude | `ISEKAI-MomoiCore/HDS-Interlude@1bfdc8b2b8d92bfe1e72542d4e0ff8d7ffefa090`（2026-10-20 16:42 +08:00，package 1.0.1-rc57） | **AGPL-3.0**（GitHub `contents/LICENSE` 原文 sha `ada1a8176b23b97e70d89300c3f06c3c471bec2c`，35,184 字节＝CRLF；剥掉 CR 后与 FSF 官方 `agpl-3.0.txt` **逐字节相同**，仅"如何应用本许可"模板段两处换行不同 ⇒ **未改动的官方文本、无附加条款**） | ✅ **可以（作者 2026-10-20 点名入白名单；Pry 已同档 AGPL-3.0-only）** | 同证结合无方向问题；仍要 §4.2 三处留痕、抄前锁 commit 并查目标子目录自己的 LICENSE、上游 Prompt／人设／截图／用户数据一律不取（§4.3） |
+| qq-bridge | `Derpyu520/qq-bridge@a56164e70a0521a7829138a42eee76066fde2b8b`（2026-10-18 09:43 +08:00，package 0.2.0-r4） | **MIT 正文＋追加一节"遵守的第三方组件 MIT 许可声明和注意事项"**（Snowflake SDK／Model Context Protocol／DeepSeek API 条款）；GitHub license API 判 `spdx_id = NOASSERTION`、`name = Other` | ❌ **不可以（作者未点名；本次裁决只加 HDS 一家）** | 它**不是 Satori 那种一眼干净的 MIT**：即便日后点名放行，也要先人工读那节追加项并逐个核依赖链，不能按"MIT 所以随便搬"处理。现阶段仅 `mechanism` |
 
 ## 2. 为什么 Nekro 与 Private Companion 改约也救不回来
 
@@ -45,18 +59,20 @@
 
 **Private Companion 无许可**：即使它自己的 README、注释、宿主生态看起来像开源，缺 LICENSE = 未授权。要复用只有两条路：向 `menglimi` 取得书面许可，或永久停留在"行为层面的独立设计"。它的主动消息 Generate→Review→Send、Expression 适用条件、版本化 Memory Bridge，Pry 都能通过 research 摘要获得思想而不需要它的代码。**作者裁决：走第二条，永久只作研究参考。**
 
-## 3. 档位对照（作者已选 GPL-3.0-only）
+## 3. 档位对照（作者 2026-09-21 选 GPL-3.0-only，2026-10-20 改选 AGPL-3.0-only）
 
 | Pry 代码许可 | 能照抄 | 主要代价 | 对美术协议 |
 |---|---|---|---|
-| 保持 Apache-2.0（改约前状态） | 仅 Satori(MIT) | 与 MaiBot 的照搬路线互斥；Runtime 主线参考（MaiCore）只能停在机制层——正是作者否决的结果 | 无变化 |
-| **GPL-3.0-only（✅ 作者选定，已执行）** | Satori + MaiBot/MaiCore | 接不了 AstrBot（AGPL）；今后所有衍生分发必须提供对应源码，不能再走闭源发行 | 无变化（carve-out 措辞已在 `NOTICE` 保留并改写） |
-| AGPL-3.0（本次未采用） | Satori + MaiBot + AstrBot | 3/5 解锁，但承担 §13 网络条款与更强的未来限制 | 无变化 |
+| 保持 Apache-2.0（2026-09-21 之前的状态） | 仅 Satori(MIT) | 与 MaiBot 的照搬路线互斥；Runtime 主线参考（MaiCore）只能停在机制层——正是作者否决的结果 | 无变化 |
+| GPL-3.0-only（**2026-09-21 选定，2026-10-20 被取代**） | Satori + MaiBot/MaiCore | 接不了 AstrBot 与 HDS（AGPL）；HDS 那份研读报告要的"把源码文本搬进来"在这档下不成立 | 无变化（carve-out 措辞已在 `NOTICE` 保留并改写） |
+| **AGPL-3.0-only（✅ 作者 2026-10-20 选定，已执行）** | Satori + MaiBot/MaiCore + HDS-Interlude（AstrBot 法律上同源可进，但未被点名） | 承担 §13 网络条款：通过网络向用户提供修改版时必须同时提供对应源码；比 GPL 更强的未来限制；降档需再一次显式改约 | 无变化 |
 | 其他（MPL-2.0 / LGPL / BSD 等） | 更少 | 文件级许可无法吸收 GPL/AstrBot 的整体性 copyleft，不可行 | — |
 
-**选定 GPL-3.0-only 的理由（作者裁决原话要点）**：MaiBot 是必须能抄的那一个——Runtime 是全项目核心，自研一套 Runtime 会严重拖慢进度；AstrBot 的价值在 Provider/Tool 契约与工程分层思想，机制层吸收即可，不值得为它把整个项目推到 AGPL。**"only" 而非 "or later"**：与 MaiBot 的声明保持一致，且不给 FSF 未来版本自动生效；作者是唯一版权人，将来要升到 `-or-later` 或 AGPL 都是一次显式裁决。
+**当年选定 GPL-3.0-only 的理由（作者 9-21 裁决原话要点，保留作史）**：MaiBot 是必须能抄的那一个——Runtime 是全项目核心，自研一套 Runtime 会严重拖慢进度；AstrBot 的价值在 Provider/Tool 契约与工程分层思想，机制层吸收即可，不值得为它把整个项目推到 AGPL。**"only" 而非 "or later"**：与 MaiBot 的声明保持一致，且不给 FSF 未来版本自动生效；作者是唯一版权人，将来要升到 `-or-later` 或 AGPL 都是一次显式裁决。**10-20 之后仍然成立的部分**：新档位照样是 `-only`（`AGPL-3.0-only`，不给 FSF 未来版本自动生效）；不成立的部分只剩"不值得为它推到 AGPL"那半句——作者改选了 AGPL。
 
 **接受 GPL 就意味着接受这些长期后果**（不是本次改动引入的 bug，而是选择的代价）：分发任何二进制都必须同时提供完整对应源码与构建定义（RT-008 的硬门槛）；今后"闭源发行/仅商店售卖不附源码"与本协议冲突，须由作者显式推翻本条；`docs/api-v1.md` 之外新增的公开仓库镜像也必须带源码。
+
+**接受 AGPL 在此之上多一条**（10-20 新增，1.0 本地拓扑下今天打不到，但必须写清）：**§13 网络条款**。如果 Pry 或它的某一部分（例如 Hosted Core、任何"用户在自己浏览器里连她的服务"的形态）通过网络与使用者交互，那么每个这样的使用者都有权拿到**该修改版的完整对应源码**——义务对象从"收到二进制的人"扩大到"与之远程交互的人"。`PROJECT_PLAN.md` §2.4 的范围冻结把网络形态挡在 1.0 之外，因此本次改约在当期不产生新工作量；但它把"以后做个托管版不分源码"这条路线永久关掉了，做那个决定时要先回来读这一条。
 
 ## 4. 改约后的照搬程序（无论选哪一档都成立）
 
@@ -64,9 +80,9 @@
 
 | 类型 | 允许来源 | 落库要求 |
 |---|---|---|
-| `verbatim`（逐行复制） | 仅 §4.4 白名单：MaiBot/MaiCore(GPL-3.0)、Satori(MIT) | 文件头保留上游版权行 + SPDX 标识；不得改署名 |
+| `verbatim`（逐行复制） | 仅 §4.4 白名单：MaiBot/MaiCore(GPL-3.0)、Satori(MIT)、HDS-Interlude(AGPL-3.0，作者 2026-10-20 点名) | 文件头保留上游版权行 + SPDX 标识；不得改署名 |
 | `ported`（跨语言移植同一实现） | 同上 | 文件头注明 `Ported from <repo>@<sha>:<path>`；仍属衍生作品，按上游许可 convey |
-| `mechanism`（只借架构/流程，自己写） | 全部五个（AstrBot/Nekro/PC 只有这一档） | 契约或 commit 说明记 `path:line` 来源（`PROJECT_PLAN.md` §6 已有此要求）；AstrBot/Nekro/PC 须附"未参考其源码文本"声明 |
+| `mechanism`（只借架构/流程，自己写） | 全部研究对象（AstrBot/Nekro/PC/qq-bridge 只有这一档） | 契约或 commit 说明记 `path:line` 来源（`PROJECT_PLAN.md` §6 已有此要求）；AstrBot/Nekro/PC/qq-bridge 须附"未参考其源码文本"声明 |
 
 **4.2 三处留痕（缺任一处不得进集成基线）**
 
@@ -81,23 +97,25 @@
 - 照搬群聊调出来的阈值/频率/容量参数（research 各文档明示为历史实现值）；
 - 让上游类型进入 Pry 领域层（`Satori.md` §6、`MaiBot_MaiCore.md` §7 同口径）：这是**技术边界**，与许可无关，改约不影响。
 
-**4.4 照搬白名单（作者 2026-09-21 裁决，项目侧硬约束）**
+**4.4 照搬白名单（作者 2026-09-21 裁决设立，2026-10-20 追加一家；项目侧硬约束）**
 
 | 上游 | 代码可照搬 | 允许的用法 |
 |---|---|---|
-| **MaiBot / MaiCore** | ✅ | `verbatim` / `ported` / `mechanism` 全开。Runtime（Phase 2）以 MaiCore 的模块划分与决策结构为**规范目标**；抄前先锁 commit、查该子目录的 LICENSE |
+| **MaiBot / MaiCore** | ✅ | `verbatim` / `ported` / `mechanism` 全开。Runtime（Phase 2）以 MaiCore 的模块划分与决策结构为**规范目标**；抄前先锁 commit、查该子目录的 LICENSE。上游 GPL-3.0 进 AGPL 作品走 §13，方向合法 |
 | **Satori** | ✅ | `verbatim` / `ported` 允许（MIT），但 1.0 只取其消息/资源分离与能力声明思想，不实现 Gateway；上游类型不得进领域层 |
-| **AstrBot** | ❌ | **仅 `mechanism`**：Provider/Tool 契约、Pipeline 分层、超时与 fallback 思想可由 Pry 独立实现 |
-| **Nekro-Agent** | ❌ | **仅 `mechanism` + 市场调研**：异步沉淀调度、TurnTrace 可观察记录 |
-| **Private Companion** | ❌ | **仅 `mechanism` + 市场调研**：主动消息 Generate→Review→Send、表达适用条件、Memory Bridge 版本化契约思想 |
+| **HDS-Interlude** | ✅（作者 2026-10-20 点名） | `verbatim` / `ported` / `mechanism` 全开，同证 AGPL-3.0。**点名范围＝"架构组织方式"，不是整包搬迁**：该 lane 的研读报告已列出 Pry 不该沿用的三件（故事级全局事实可见性、完整生活模拟、大型宿主协调类），报告与 §1 实测都固定在同一 commit，抄前先锁 SHA、查目标子目录 LICENSE，上游 Prompt 正文／人设／示例对话／截图一律不取（§4.3） |
+| **AstrBot** | ❌ | **仅 `mechanism`**：Provider/Tool 契约、Pipeline 分层、超时与 fallback 思想可由 Pry 独立实现。10-20 改约**已解除它的法律阻塞**（AGPL 进 AGPL 无方向问题），但作者没有把它加进白名单 ⇒ 名单没变，本行照旧 |
+| **Nekro-Agent** | ❌ | **仅 `mechanism` + 市场调研**：异步沉淀调度、TurnTrace 可观察记录。自定义协议把"设计、架构或概念"也算派生作品 ⇒ 对它的隔离要最严，连"读了源码再自己写"都要留声明 |
+| **Private Companion** | ❌ | **仅 `mechanism` + 市场调研**：主动消息 Generate→Review→Send、表达适用条件、Memory Bridge 版本化契约思想。无 LICENSE＝未授权，改约救不回来 |
+| **qq-bridge** | ❌ | **仅 `mechanism`**（10-20 新登记的研究对象，作者从未点名）：消费水位、等待语义、最小工具面、模型可见 DTO。它的 LICENSE 是 MIT 正文加一节第三方声明、GitHub 判 `NOASSERTION`，**不得按"MIT 所以能搬"处理** |
 
 "仅机制与市场调研参考"对所有人的可执行含义（三条，违反即集成基线不合格）：
 
-1. **源码文本不进仓库，也不进临时工作区**：不 `git clone`/submodule/vendor 这三家的代码到 `Pry_Project` 及其任何 worktree；不在仓库目录内留下游文件副本；临时阅读用检出只放系统临时目录，用完删除。
+1. **源码文本不进仓库，也不进临时工作区**：不 `git clone`/submodule/vendor 这四家（AstrBot／Nekro／Private Companion／qq-bridge）的代码到 `Pry_Project` 及其任何 worktree；不在仓库目录内留下游文件副本；临时阅读用检出只放系统临时目录，用完删除。
 2. **不打开源码文本做"参考实现"**：需要机制时读 `docs/research/` 摘要与本表所列条目；确有必要读源码的，读后在第 8 节追加"已读符号 + 未复制声明"，且实现不得逐行对应（Nekro 还额外主张"架构/概念"即派生作品，因此对它的隔离要最严）。
 3. **不取用其非代码内容**：Prompt 文案、角色设定、示例数据、截图、UI 文案、图标、表情包、README 插图一律不得复制进 Pry（那是独立于代码权利的另一层）。
 
-要改变本表只能由作者裁决：AstrBot 需先把 Pry 升到 AGPL-3.0；Nekro 需其维护方另行授权；Private Companion 需 `menglimi` 补出许可或书面许可。
+要改变本表只能由作者裁决：AstrBot 的**许可前提已在 2026-10-20 达成**，只差他点名；Nekro 需其维护方另行授权；Private Companion 需 `menglimi` 补出许可或书面许可；qq-bridge 需作者点名并且人工读完它那节第三方声明。
 
 ## 5. 需要一起改的文件（代码/文档侧）与美术侧的例外
 
@@ -173,12 +191,43 @@
 
 历史事实也要写清：v0.0.1/v0.0.2 已按 Apache-2.0 分发，那些既有副本持有人的 Apache 权利不因本次变更而消失；变更只约束其后的 conveying。仓库 git 历史 92 个提交作者均为 LemPhyth（唯一版权人），无需第三方同意、无 CLA 障碍。
 
-## 6. 作者裁决记录（2026-09-21，三点全部定档）
+### 5.2 2026-10-20 改约的声明位清单（一次改完，不留自相矛盾的许可文本）
+
+| 文件 | 改约前 | 改动 | 状态 |
+|---|---|---|---|
+| `LICENSE` | FSF GPL-3.0 全文（674 行） | 换成 FSF 官方 **AGPL-3.0** 全文（逐字 661 行，LF）；与上游 HDS 固定提交的 LICENSE 剥 CRLF 后逐字节相同 | ✅ 已入库 |
+| `NOTICE` | "GNU General Public License, Version 3 only (GPL-3.0-only)"；"not licensed under the GNU GPL"；"Only upstreams whose license is compatible with GPL-3.0-only" | 三处同步为 AGPL-3.0-only／GNU AGPL，并把改约链写成"2026-09-21 由 Apache-2.0、2026-10-20 由 GPL-3.0-only"，两类既有副本都不追溯撤回；白名单那句改为"只列在授权名单里的上游"＋指明 GPL 代码经 §13 进 AGPL | ✅ 已入库 |
+| `README.md` 许可段 | "GNU General Public License 3.0（仅版本 3）"；"GPL-3.0 不适用于……美术素材" | 许可名同步＋补一句 §13 的网络义务与两次改约日期；美术那句只换许可名，结构不变 | ✅ 已入库 |
+| `CHANGELOG.md` | Unreleased/Changed 只有 9-21 那条 Apache→GPL | 顶部新增"GPL-3.0-only → AGPL-3.0-only"一条，含代价、白名单变化与追溯边界 | ✅ 已入库 |
+| `docs/README.md` 索引行 | "五个上游项目的许可实测、Pry 代码许可（GPL-3.0-only）" | 改"七个上游项目……（AGPL-3.0-only，2026-10-20 由 GPL-3.0-only 变更）" | ✅ 已入库 |
+| `licenses/THIRD-PARTY-NOTICES.md` | ":3" "Pry's GPL-3.0-only code license"；表内五行 | 许可名同步；表新增 HDS（✅）与 qq-bridge（❌）两行，AstrBot 那行的理由改为"阻塞已随 10-20 改约消失，但未获点名"，MaiBot 那行写明走 §13 | ✅ 已入库 |
+| `scripts/package-release.ps1:135` | 随包说明"程序代码为 GPL-3.0-only" | 改为 AGPL-3.0-only（**单独一把刀**：脚本与文档分刀） | ✅ 已入库 |
+| `docs/upstream-license-compatibility.md` | §0／§1／§3／§4.1／§4.4／§6／§8 全部按 GPL-3.0-only 写 | 本文件即改动处；历史段保留并逐条标注"已被 10-20 取代"，不静默改写史 | ✅ 本刀 |
+| `docs/research/{README,COMPETITIVE_MATRIX,AGENT_REFERENCE_GUIDE,MaiBot_MaiCore,Satori,AstrBot}.md` | 顶部与表格写"Pry 代码许可 GPL-3.0-only，因此 AGPL 不兼容／可抄只有两家" | 许可名与白名单同步为三家；`AstrBot.md` 那条"要抄得先整体改 AGPL-3.0"的前提**已达成**，须改写为"前提已到、名单未点名"，否则下一个读它的人会以为还要再改一次约 | ✅ 本刀 |
+| `AGENTS.md` 第 7–8 条 | "代码适用 GPL-3.0-only"；白名单两家 | 同步（**该文件被 `.gitignore` 排除，改动不进提交、不传播到其他 worktree**——这正是 9-21 写下"权威文本必须落在已跟踪文件里"的原因）；第 7 条补写 §13 的网络义务与改约链，第 8 条明写"AstrBot 的法律阻塞已消失但仍未点名" | ✅ 已改，不入库 |
+| `docs/freeze-20261020-line-inventory.md` §3 表、§4 墙清单、§6 第 4 条 | §3 那行写 "`LICENSE`（GPL-3.0-only）……白名单仍只有 MaiBot/MaiCore＋Satori"、"法律面换架构一字不改"；§4 把许可列在墙里并注"动了要单独明令"；§6 的丙还是一句抽象输入 | §3 同步为 AGPL-3.0-only 与三家白名单，并把这次改约如实登记成 §4 那句话所要求的「单独明令」——明令只覆盖代码档位，素材侧与"不提交"清单照旧未动；§6 的丙落成两个可指认形状（HDS 型＝换生成中心／qq-bridge 型＝换进程拓扑），并新增一句仍欠的：`ASSETS_LICENSE.md:11` 只能作者本人改 | ✅ 本刀 |
+| `docs/full-scope-sprint.md` §0（作者唯一读的那页） | 只有"换架构"那条裁定，没有这次改约 | 按四段口径补：能做到＝代码许可已升到 AGPL-3.0-only、HDS 源码文本可搬进白名单；做不到＝AstrBot 与 qq-bridge 仍未获点名，美术那行旧许可名只有作者能改；挡路一件事与要拍哪件不变 | ✅ 本刀 |
+| `ASSETS_LICENSE.md:11` | "适用根目录 `LICENSE` 所载的 GPL-3.0" | 只改这一句许可名指向，实质条款不动 | ⛔ **守门人未改，留给作者本人**（9-21 的分工就是这一行由他改，本次未获任何豁免） |
+
+`src/Pry.Core/Runtime/` 四个 `Ported from Mai-with-u/MaiBot@…` 文件头**一字未动**：它们陈述的是上游许可（GPL-3.0），与 Pry 自己的档位无关，且 §13 让"GPL-3.0 代码并入 AGPL 作品"这条方向合法。`docs/eval/scenarios.json` 与 `tests/` 里没有任何一条判据读许可字符串（10-20 当场 `git grep -i "GPL\|LICENSE" -- tests/` 零命中），所以改约不产生红例；在册 988／0／2 的读数不因文本改动而改写，也不由守门人改写。
+
+## 6. 作者裁决记录（2026-09-21 三点定档；2026-10-20 追加改约）
 
 1. **目标许可档位** → **GPL-3.0-only**。原话："确定改成 GPL-3.0"。放弃 AGPL 档，因此**接受 AstrBot 代码出局**。
 2. **必须能抄的是 MaiBot/MaiCore** → 确认。原话："我觉得需要照抄 MaiBot，否则现在开始自研一套 Runtime 极其拖慢开发进度"。**AstrBot 现在不一定需要照抄** → 降为机制参考。
 3. **Nekro-Agent 与 Private Companion** → 原话："那就不照抄 Nekro 和 Private Companion，仅作为市场调研的研究参考对象，同时这份约束也写到文档里面"。**永久仅研究参考**，执行口径见 §4.4。
 4. **美术侧** → 指令保持不变且优先级最高："绝对不要变更关于美术资源的协议"。本次未编辑 `ASSETS_LICENSE.md`、`FAN_CONTENT_POLICY.md` 的任何一个字。
+
+**2026-10-20 追加裁决（逐字："将许可证变更为AGPL-3.0，我需要借鉴HDS项目的架构组织方式"）**：
+
+1. **档位** → **AGPL-3.0-only**（`-only` 口径与 9-21 一致，不给 FSF 未来版本自动生效）。这条正是 §3 当年留的那句"作者是唯一版权人，将来要升到 `-or-later` 或 AGPL 都是一次显式裁决"里的那一次显式裁决。
+2. **点名对象** → HDS-Interlude 进白名单（§4.4 现表）。**点名的是"架构组织方式"**，所以本裁决不等于把该项目的产品范围搬进 Pry：`PROJECT_PLAN.md` §2.4 的范围冻结照旧，完整生活模拟、共享世界、多参与者关系、复杂日程这些仍未获准进入 1.0，新架构方案要哪一块必须另外登记。
+3. **未点名者照旧** → AstrBot／Nekro-Agent／Private Companion／qq-bridge 仍是 `mechanism`；AstrBot 这次是"前提已到、名单未改"，不是被拒绝第二次。
+4. **唯一版权人前提当场重核**（照搬 §5 末段那条历史事实的做法）：`git log --format='%an <%ae>'` 在 10-20 线尾共 **159 个提交**，作者全部是 LemPhyth（两个邮箱 `2478270568@qq.com` 与 `135735898+LemPhyth@users.noreply.github.com` 指向同一人），无第三方贡献者、无 CLA 缺口 ⇒ 由作者单方改约成立。**每次改约都要重跑这条核对**，一旦出现第二个作者名就必须停下来先取得同意。
+5. **追溯边界**：已按 Apache-2.0 分发的 v0.0.1／v0.0.2，以及 2026-09-21 之后按 GPL-3.0-only 分发的副本，各自保留其既有权利；本次变更只约束其后的 conveying。`LICENSE` 文本本身不含"or later"，所以没有任何东西自动升级到 FSF 未来版本。
+6. **美术侧** → 优先级最高的那条禁令照旧生效，本刀未编辑 `ASSETS_LICENSE.md` 与 `FAN_CONTENT_POLICY.md` 的任何一个字。`ASSETS_LICENSE.md:11` 那句"适用根目录 `LICENSE` 所载的 GPL-3.0"是唯一的耦合点，按 9-21 立的规矩（该行当年由作者本人改）**留给作者改**；守门人已当面登记，并在 `docs/full-scope-sprint.md` §0 与本页 §5.2 记为改约后今天唯一还写着旧许可名的一行。
+
+**执行分工（10-20 这一轮）**：守门人改 `LICENSE`、`NOTICE`、`README.md` 许可段、`CHANGELOG.md`、`docs/README.md`、`licenses/THIRD-PARTY-NOTICES.md`、`scripts/package-release.ps1` 随包说明、`docs/research/` 六份入口与项目文档顶部的白名单叙述、本文件，以及不受跟踪的 `AGENTS.md` 第 7–8 条；`ASSETS_LICENSE.md` 那一行由作者本人确认。
 
 **执行分工（按上述裁决落地）**：守门人改 `LICENSE`、`NOTICE`、`AGENTS.md`、`licenses/THIRD-PARTY-NOTICES.md`、`scripts/package-release.ps1` 与本文件（已完成，未提交）；`README.md`、`CHANGELOG.md`、`docs/README.md` 因承载其他协作者的未提交改动而**留待其负责人或改约提交处理**，目标文本已写在 §5.1；`ASSETS_LICENSE.md` §1 那一行由作者确认。
 
@@ -196,7 +245,7 @@
 
 ## 8. 本文的证据边界
 
-- 许可结论来自 2026-09-21 的 GitHub API 与文件实测，记录于第 1 节表格的 SHA；上游随时可能改约，**执行照搬前重新核对该 SHA 之后是否变更**。抄 MaiBot 具体文件前还要锁当时的 commit 并查该子目录自己的 LICENSE（其 EULA §2.1 明示可能存在不同许可）。
-- 本文不是法律意见。作者据此决策前，若要发行 GPL 二进制，建议就"Corresponding Source 的提供方式与安装载体（Windows 安装包、代码签名、商店分发）"做一次专业复核。
-- `LICENSE` 已换成 FSF 官方 GPL-3.0 全文（逐字，674 行）；本文与 `docs/research/` 一样目前**未纳入版本控制**，入库随改约提交一并处理，避免改约与文档变更分叉。
-- **已裁决事项不再重新讨论**：档位（GPL-3.0-only）、AstrBot/Nekro/PC 仅机制参考、美术协议不变。本文后续若出现"是否改 AGPL""是否抄 Nekro"的疑问，答案在本节之前的裁决记录里，不要靠记忆重开。
+- 许可结论来自 2026-09-21 的 GitHub API 与文件实测（§1 前五行的 SHA），以及 2026-10-20 对 HDS-Interlude／qq-bridge 两个固定提交的追加实测（§1 末表：前者做了一次与 FSF 官方文本的逐字节比对，后者取的是 GitHub `contents/LICENSE` 原文与 license API 判定）。上游随时可能改约，**执行照搬前重新核对该 SHA 之后是否变更**。抄 MaiBot／HDS 具体文件前还要锁当时的 commit 并查该子目录自己的 LICENSE（MaiBot EULA §2.1 明示可能存在不同许可）。
+- 本文不是法律意见。作者据此决策前，若要发行 GPL 二进制，建议就"Corresponding Source 的提供方式与安装载体（Windows 安装包、代码签名、商店分发）"做一次专业复核。**10-20 改约后这一条更适用**：AGPL 还多一层 §13 的"与使用者远程交互"判定，若将来出现托管形态需要重新问一次。
+- `LICENSE` 现为 FSF 官方 **AGPL-3.0** 全文（逐字，661 行；2026-10-20 替换掉 2026-09-21 那份 GPL-3.0 全文 674 行），已随改约提交入库。
+- **已裁决事项不再重新讨论**：档位（**AGPL-3.0-only**，2026-10-20 定；上一档 GPL-3.0-only 已于同日被显式取代）、白名单＝MaiBot/MaiCore ＋ Satori ＋ HDS-Interlude 三家、Nekro/PC 仅机制参考、美术协议不变。本文后续若再出现"要不要改 AGPL""是否抄 Nekro"的疑问，答案在本节之前的裁决记录里，不要靠记忆重开。**唯一仍然开放的是 AstrBot 与 qq-bridge 的 admission**：它们的许可前提问题（前者）与名单点名问题（两者）都没有被 10-20 那条裁决回答。

@@ -6,7 +6,7 @@
 
 七个 Agent 都先读 [README](README.md) 的证据边界、**照搬边界（`DOC-005`）**与 1.0 范围，再读 [COMPETITIVE_MATRIX](COMPETITIVE_MATRIX.md)。涉及某项接口时回到项目文档的 Caveat，不能只引用矩阵中的一句话。
 
-**照搬白名单是硬边界，不是偏好。** 作者 2026-09-21 把 Pry 代码许可改为 **GPL-3.0-only**，据此只有 **MaiBot / MaiCore（GPL-3.0）** 与 **Satori（MIT）** 允许把上游源码文本搬进仓库；**AstrBot（AGPL-3.0）、Nekro-Agent（自定义协议 V1.1）、Private Companion（无 LICENSE）永久只作机制参考**。白名单内也不等于范围扩张——仍受各 Agent 的 1.0 取舍与契约冻结约束。依据、实测 SHA 与三处留痕义务见 `docs/upstream-license-compatibility.md` §1、§4。各 Agent 不得自行放宽，也不得用"换语言重写"绕过禁止名单：那同样触发 copyleft 义务。
+**照搬白名单是硬边界，不是偏好。** 作者 2026-09-21 把 Pry 代码许可改为 **GPL-3.0-only**，2026-10-20 又改为 **AGPL-3.0-only**（逐字："将许可证变更为AGPL-3.0，我需要借鉴HDS项目的架构组织方式"）。据此允许把上游源码文本搬进仓库的是 **MaiBot / MaiCore（GPL-3.0，经 AGPL §13 并入）**、**Satori（MIT）**、**HDS-Interlude（AGPL-3.0，10-20 点名）** 三家；**AstrBot（AGPL-3.0）、Nekro-Agent（自定义协议 V1.1）、Private Companion（无 LICENSE）、qq-bridge（MIT 正文另加一节第三方声明，GitHub 判 `NOASSERTION`）只作机制参考**。注意 AstrBot 这一行的性质变了：10-20 的改约**已经解除它的法律阻塞**，它现在出不来只是因为**作者没有点名**，所以不要写"因为许可不兼容所以不能抄"那种旧理由，也不要以为再改一次约就自动放行。白名单内也不等于范围扩张——仍受各 Agent 的 1.0 取舍与契约冻结约束。依据、实测 SHA 与三处留痕义务见 `docs/upstream-license-compatibility.md` §1、§4。各 Agent 不得自行放宽，也不得用"换语言重写"绕过禁止名单：那同样触发 copyleft 义务。
 
 将研究转为实现建议时，明确说明：参考哪个项目/章节；借鉴的是机制还是具体接口；属于 1.0 还是未来；影响哪个 Contract；需要何种验证。源码符号是定位线索，重新使用上游实现前须锁定 commit 并复核。
 
@@ -60,7 +60,7 @@ MaiCore 现在不只是"参考"：作者已裁决 Runtime 按 `DOC-005` 白名�
 
 Satori 必须逐项保留 alpha、resume、auth/internal/proxy、QQ Official 的 caveat。Nekro 的 Docker 和 RPC Token 不能替代安全边界设计。1.0 小插件不应默认获得整个容器/服务集合或应用级无限扩展面。
 
-本 Agent 的两个首要来源恰好在禁止名单两侧：Satori（MIT）可照抄，AstrBot（AGPL-3.0）只可搬机制——Provider/Schema 转换、能力声明、生命周期分层这些由 Pry 自己写。真正的阻塞点在契约而非许可：协议改动仍先更新 `docs/api-v1.md` 并走 PLAT-005 的冻结节奏，白名单不豁免它。
+这两个来源的**许可**情况在 2026-10-20 之后都通了：Satori（MIT）可照抄，AstrBot（AGPL-3.0）与 Pry 现行许可同族，法律上不再是障碍。但白名单是按项目点名而不是按许可筛的（`docs/upstream-license-compatibility.md` §4.4），作者此刻只点名了 MaiBot/MaiCore、Satori 与 HDS-Interlude，所以 AstrBot 仍然**只可搬机制**——Provider/Schema 转换、能力声明、生命周期分层这些由 Pry 自己写。别把"许可通了"写成"可以抄了"。真正的阻塞点在契约而非许可：协议改动仍先更新 `docs/api-v1.md` 并走 PLAT-005 的冻结节奏，白名单不豁免它。
 
 验证重点：模型超时/fallback、能力不支持、插件失败、资源引用失效；未来接入时再做断线补发、路由认证、RPC 授权与上传链路测试。
 

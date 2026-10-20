@@ -1,7 +1,7 @@
 # MaiBot / MaiCore：长期社交与角色 Runtime
 
 > **⚖️ 照搬白名单内（作者 2026-09-21 裁决，`DOC-005`）：本项目允许逐行照抄。**
-> 原话："我觉得需要照抄 MaiBot，否则现在开始自研一套 Runtime 极其拖慢开发进度。" Pry 代码许可已改为 **GPL-3.0-only**，与上游 **GPL-3.0** 同族兼容；MaiCore 的模块划分与决策结构是 Phase 2（RT-002 ConversationRuntime）的**规范目标**，与上游不同的地方必须是契约里显式写出的决定 + 理由，不是"我当时想的一套"。
+> 原话："我觉得需要照抄 MaiBot，否则现在开始自研一套 Runtime 极其拖慢开发进度。" Pry 代码许可现为 **AGPL-3.0-only**（2026-10-20 由 GPL-3.0-only 变更），上游 **GPL-3.0** 代码经 AGPL 第 13 条允许并入 AGPL 作品，所以照抄仍然合法；该方向是单向的——GPL-3.0 进 AGPL 可以，反过来不行。MaiCore 的模块划分与决策结构是 Phase 2（RT-002 ConversationRuntime）的**规范目标**，与上游不同的地方必须是契约里显式写出的决定 + 理由，不是"我当时想的一套"。
 > **照抄义务（缺任一不进集成基线）**：① 锁 commit 并读真源码（已核实 `Mai-with-u/MaiBot@fb4a8bd917d6fe373df9e3c22289d229e7f1b344`）；② 抄哪个文件先查该子目录自己的 LICENSE——上游 EULA §2.1 明示子目录/第三方组件可能另属他人许可；③ 文件头写 `Ported from Mai-with-u/MaiBot@<sha>:<path>` 并保留上游版权行；④ 上游许可文本进 `licenses/upstream/`，并在 `licenses/THIRD-PARTY-NOTICES.md` 的照搬来源表登记一行。
 > **仍然禁止**：照搬群聊触发阈值/频率/约 100 个 Runtime 的容量等历史参数；把上游 Python 类型或内部状态模型当作 Pry 契约；取用上游美术、Prompt 文案与示例数据。细则见 `docs/upstream-license-compatibility.md` §4。
 

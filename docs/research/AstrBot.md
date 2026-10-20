@@ -1,8 +1,8 @@
 # AstrBot：通用 Agent Task / Harness
 
 > **⚖️ 照搬边界（作者 2026-09-21 裁决，`DOC-005`）：本项目只作机制参考，源码文本不进 Pry 仓库。**
-> 原因：AstrBot 是 **AGPL-3.0**，而作者把 Pry 的代码许可定为 **GPL-3.0-only**（理由是"现在不一定需要照抄 AstrBot"，不值得为它承担 AGPL 的网络条款）。AGPL 代码不能放进 GPL-3.0-only 的作品，反方向才合法。
-> 所以本文件的 §3/§4（Provider 与工具契约分离、分层生命周期、超时与 fallback、渐进式工具披露、大结果外置）按**机制**吸收，由 Pry 自己写；**不复制、不逐行翻译其 Python 文本**。若将来确实需要抄 AstrBot 代码，前置条件是先把 Pry 整体改为 AGPL-3.0——那是新的作者裁决，不是 Agent 可顺手做的整理。细则见 `docs/upstream-license-compatibility.md` §3、§4.4。
+> 原因（2026-09-21 当时的口径）：AstrBot 是 **AGPL-3.0**，而作者当时把 Pry 的代码许可定为 **GPL-3.0-only**（理由是"现在不一定需要照抄 AstrBot"，不值得为它承担 AGPL 的网络条款）；AGPL 代码不能放进 GPL-3.0-only 的作品，反方向才合法。
+> **这条法律前提已在 2026-10-20 失效**：作者当日把 Pry 代码许可改为 **AGPL-3.0-only**，AGPL 对 AGPL 同族已不构成障碍。但白名单是按项目点名、不按许可筛（`docs/upstream-license-compatibility.md` §4.4），作者此刻只点名了 MaiBot/MaiCore、Satori 与 HDS-Interlude，所以本文件的 §3/§4（Provider 与工具契约分离、分层生命周期、超时与 fallback、渐进式工具披露、大结果外置）仍按**机制**吸收，由 Pry 自己写；**不复制、不逐行翻译其 Python 文本**。将来确实需要抄 AstrBot 代码时，缺的是作者点名，不是再改一次许可证。细则见 `docs/upstream-license-compatibility.md` §3、§4.4。
 
 来源：R1（2026-09-15），见 [README](README.md)。这是原研究默认分支的历史观察，未锁定 commit；联合报告尾部截断，不据缺失内容补写结论。许可实测日期 2026-09-21，`AstrBotDevs/AstrBot`（默认分支 `master`）HEAD `6914bc3aa61e14ca9a9c2cb37a0f9ec1ff5d6334`。
 

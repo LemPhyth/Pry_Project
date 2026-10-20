@@ -45,7 +45,7 @@
 | 门禁脚本 | `scripts/` 共 6 只：`download-models.ps1`、`install-local-runtime.ps1`、`measure-fixed-eval.ps1`、`package-release.ps1`、`verify-repository.ps1`、`verify-window-close-paths.ps1` | 除 `package-release` 的产物形状外，全部是"从仓库外验证仓库"的仪器 |
 | 历轮验收报告 | `docs/eval/reports/` 共 25 份（最新＝`2026-10-20-tip-e82499b-merged-tree-rolling-revalidation-and-four-knife-falsification.md`） | 它们是判据链的证据，不是代码；新架构开工时"谁验过什么"全靠它们顶账 |
 | 工单本体 | `docs/dispatch-*.md` 共 9 张 | 每张自带事实表＋完成标准＋反向约束；那批"不许走哪几条捷径"是踩过的坑，与架构无关 |
-| 许可与素材边界 | `LICENSE`（GPL-3.0-only）、`ASSETS_LICENSE.md`、`FAN_CONTENT_POLICY.md`、`docs/upstream-license-compatibility.md`、`licenses/` | 法律面，换架构一字不改；照搬白名单仍只有 MaiBot/MaiCore＋Satori |
+| 许可与素材边界 | `LICENSE`（AGPL-3.0-only）、`ASSETS_LICENSE.md`、`FAN_CONTENT_POLICY.md`、`docs/upstream-license-compatibility.md`、`licenses/` | 法律面与架构无关，换架构本身不动它；照搬白名单现为 MaiBot/MaiCore＋Satori＋HDS-Interlude 三家。**本行今日被改动过一次，但改动来源不是架构**：作者 2026-10-20 点名要借鉴同证 AGPL 的 HDS，显式把档位由 GPL-3.0-only 升到 AGPL-3.0-only——这正是本行原话"动了要单独明令"里的那次明令，美术协议（`ASSETS_LICENSE.md`／`FAN_CONTENT_POLICY.md`）一字未动 |
 | 判据规模（文件级度量） | 测试 `.cs` 共 147 个文件；`[Fact]` 标记＝Core 320／App 160／Api 194／Client 63（合计 737 处标记；9 个 csproj＝5 产品＋4 测试） | 注意一句防误读：`[Fact]` 标记数不等于在册 988（Theory 与 `InlineData` 会展开成多条执行用例）。跨架构迁移时只有 988 那个口径能顶账，标记数只用来回答"哪些文件存在" |
 
 ## 4. 随架构重写的界面（守门人按今日读码认的层，等丙落笔修正）
@@ -63,7 +63,7 @@
 - 记忆的事实语义与检索地板：`MemoryQueryService.cs:22` 的 `Confidence >= .5` 与 `Status == "active"`。它回答"什么算她记得"，与谁跑推理无关。**参数标定属第 6 层，本轮不许动那个数字。**
 - SQLite 持久层与 schema 迁移登记（`MemoryDatabase.cs`；`SchemaVersion` 当前写死 10，没有按版本号的迁移登记）——`PLAT-003` 的落点，换运行架构后照样要有数据库。
 - 表达／行为学习的证据入口规矩：只从「就是这样／别这样说」两下明按钮取证，不从上下文猜用户态度（作者 2026-10-15 原话承重，本条不因换架构解除）。
-- 许可与素材边界、模型／运行库／密钥／日志／用户数据不提交、§8 五条发布前检查、§2.4 范围冻结。
+- 许可与素材边界、模型／运行库／密钥／日志／用户数据不提交、§8 五条发布前检查、§2.4 范围冻结。**本行在 10-20 当日被动过一次，动的只有代码档位**：作者点名要借鉴同证 AGPL 的 HDS-Interlude，显式把 `LICENSE` 从 GPL-3.0-only 改为 AGPL-3.0-only——那正是本行要求的"单独明令"（逐字与原话见 `docs/upstream-license-compatibility.md` §6 末段）。素材侧（`ASSETS_LICENSE.md`／`FAN_CONTENT_POLICY.md`）与"不提交"清单、发布前检查、范围冻结一字未动，那句明令也没有覆盖它们。
 
 ## 5. 仪器坑（这批是本轮实测踩到的，换架构的人第一天就会撞上）
 
@@ -82,7 +82,7 @@
 1. Memory & Context lane：索引里那两份文件要么提交、要么撤回。不解决＝主线永远合不了任何东西（这是本轮唯一的技术性阻塞）。
 2. 守门人（本角色，等第 1 件条件成立就做）：把 `2954dbc`（`QA-TIP1019-03` 的客户端判据）合进线，形状由并行那轮守门人已定＝`git merge` 保留 `2954dbc`，不用 `git rebase --onto`。合流后请 QA 从新线尾总复采。
 3. QA：下一次落地后从线尾建干净 `--detach` 副本复采＋独立证伪（在册 988 的改写权在他们手里）。
-4. 作者：① 丙——新架构替换面的最小一句（进程拓扑／对话循环与协议／Provider 与模型层），这是当前唯一"守门人不能替你写"的输入；② 乙是否补授予（给冻结点打 tag，本轮未答＝未打）；③ 照旧欠着的三件明令——托盘「退出…」那一次人工点击、tag／push／打包、各阶段结案词。
+4. 作者：① 丙——新架构替换面的最小一句（进程拓扑／对话循环与协议／Provider 与模型层），这是当前唯一"守门人不能替你写"的输入。**10-20 已答到一半**：借鉴对象点名了 HDS-Interlude，许可档位也为此显式改到 AGPL-3.0-only；仍未答的是"进程拓扑换不换"——HDS 型＝只换生成中心（对话循环与 `src/Pry.Api/Runtime/*` 重写，数据库、记忆语义、发布门照旧），qq-bridge 型＝把智能搬到外部 Harness（动到本文件第 1 件墙的底边）。② 乙是否补授予（给冻结点打 tag，本轮未答＝未打）；③ 照旧欠着的三件明令——托盘「退出…」那一次人工点击、tag／push／打包、各阶段结案词；④ 新增一句仍欠的：`ASSETS_LICENSE.md:11` 那行还写着 GPL-3.0，全仓库只剩这一处旧许可名，而它是美术声明——守门人不改（作者 9-21 的先例＝这一行由他本人手改）。
 
 ## 7. 解冻条件
 
