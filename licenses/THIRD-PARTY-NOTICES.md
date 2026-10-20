@@ -1,6 +1,6 @@
 # Third-party notices
 
-Pry depends on third-party software and can optionally be used with separately downloaded runtimes and model weights. Each component remains subject to its own license; Pry's GPL-3.0-only code license does not replace those terms.
+Pry depends on third-party software and can optionally be used with separately downloaded runtimes and model weights. Each component remains subject to its own license; Pry's AGPL-3.0-only code license does not replace those terms.
 
 ## Direct application dependencies
 
@@ -51,15 +51,18 @@ The v0.0.2 public package does not contain model weights. Any future package tha
 
 Pry borrows architecture and mechanisms from researched projects. Verbatim or
 line-by-line code reuse is restricted to the authorized list in
-`docs/upstream-license-compatibility.md` §4.4 (author decision 2026-09-21):
+`docs/upstream-license-compatibility.md` §4.4 (author decisions 2026-09-21 and
+2026-10-20):
 
 | Upstream | License | Code reuse |
 |---|---|---|
-| `Mai-with-u/MaiBot` (MaiCore) | GPL-3.0 | ✅ allowed (this project is GPL-3.0-only); check the per-directory LICENSE of the exact path before porting |
+| `Mai-with-u/MaiBot` (MaiCore) | GPL-3.0 | ✅ allowed — GPL-3.0 code enters this AGPL-3.0-only work through AGPL section 13; check the per-directory LICENSE of the exact path before porting |
 | `satorijs/satori` | MIT | ✅ allowed with the copyright/notice text retained under `licenses/upstream/` |
-| `AstrBotDevs/AstrBot` | AGPL-3.0 | ❌ mechanism reference only — AGPL code cannot be placed under a GPL-3.0-only work |
+| `ISEKAI-MomoiCore/HDS-Interlude` | AGPL-3.0 | ✅ allowed (same license; author decision 2026-10-20) — pin the commit, store `licenses/upstream/<repo>_<commit>/LICENSE`, and keep its per-directory and prompt/asset exclusions |
+| `AstrBotDevs/AstrBot` | AGPL-3.0 | ❌ mechanism reference only — the AGPL incompatibility was removed by the 2026-10-20 relicense, but the author has not added this upstream to the list |
 | `KroMiose/nekro-agent` | custom "Nekro Agent 开源协议 V1.1" | ❌ mechanism and market research only |
 | `menglimi/astrbot_plugin_private_companion` | none published | ❌ mechanism and market research only |
+| `Derpyu520/qq-bridge` | MIT text plus an appended third-party notice section (GitHub reports `NOASSERTION`) | ❌ mechanism reference only — not named by any author decision |
 
 Every file that is copied or ported must carry a provenance header naming
 `<repo>@<commit>:<path>`, retain the upstream copyright notice, and have its

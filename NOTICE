@@ -2,14 +2,16 @@ Pry
 Copyright 2026 LemPhyth
 
 Except for material expressly excluded below, the source code and project
-documentation in this repository are licensed under the GNU General Public
-License, Version 3 only (GPL-3.0-only), found in the LICENSE file. This
-relicensing took effect on 2026-09-21; copies of Pry that were already
-conveyed under the Apache License 2.0 (v0.0.1 and v0.0.2) remain governed by
-that grant for those recipients, and this change does not revoke it.
+documentation in this repository are licensed under the GNU Affero General
+Public License, Version 3 only (AGPL-3.0-only), found in the LICENSE file.
+This relicensing took effect on 2026-10-20 and supersedes the GNU General
+Public License, Version 3 only (GPL-3.0-only) grant that took effect on
+2026-09-21; copies of Pry that were already conveyed under the Apache
+License 2.0 (v0.0.1 and v0.0.2), or under GPL-3.0-only, remain governed by
+those grants for those recipients, and this change does not revoke them.
 
 Original character designs, illustrations, avatars, animation artwork, logos,
-audio, and other artistic assets are not licensed under the GNU GPL and are
+audio, and other artistic assets are not licensed under the GNU AGPL and are
 not free software. Those works remain the property of their respective
 copyright holders and are governed by ASSETS_LICENSE.md and
 FAN_CONTENT_POLICY.md, unless a file or its accompanying notice states
@@ -22,8 +24,9 @@ Some source files may be derived from or ported from upstream open source
 projects. Every such file carries a provenance header naming the project, the
 commit, and the upstream path, its upstream copyright notice is retained, and
 the corresponding upstream license text is stored under licenses/upstream/.
-Only upstreams whose license is compatible with GPL-3.0-only may appear there;
-see docs/upstream-license-compatibility.md for the authorized list.
+Only upstreams named in the authorized list may appear there; see
+docs/upstream-license-compatibility.md for that list and for the compatibility
+rule (GPL-3.0 code enters an AGPL work through AGPL section 13).
 
 Qwen is licensed under the Qwen RESEARCH LICENSE AGREEMENT,
 Copyright (c) Alibaba Cloud. All Rights Reserved.

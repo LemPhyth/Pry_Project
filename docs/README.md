@@ -25,7 +25,7 @@
 | [`ui-visual-review.md`](ui-visual-review.md) | 消息布局恢复、跨页面视觉统一、共享样式及验证记录 | UI-023；保留前端功能，细化阅读底面与组件实现 |
 | [`ui-appearance-options.md`](ui-appearance-options.md) | 分区域透明、毛玻璃、空会话图片＋标语组合与壁纸应用范围 | UI-024 新增规格；功能接入与视觉绘制分工，尚未实现 |
 | [`role-driven-companion.md`](role-driven-companion.md) | 头像互动、戳一戳、主动话题、角色主题与桌宠联动 | 已确认产品需求；接口尚未冻结 |
-| [`upstream-license-compatibility.md`](upstream-license-compatibility.md) | 五个上游项目的许可实测、Pry 代码许可（GPL-3.0-only）与照搬白名单、留痕程序 | 许可与复用边界的权威文本；谁可抄源码文本、谁只可作机制参考以此为准 |
+| [`upstream-license-compatibility.md`](upstream-license-compatibility.md) | 七个上游项目的许可实测、Pry 代码许可（AGPL-3.0-only，2026-10-20 由 GPL-3.0-only 变更）与照搬白名单、留痕程序 | 许可与复用边界的权威文本；谁可抄源码文本、谁只可作机制参考以此为准 |
 | [`research/README.md`](research/README.md) | 五个成熟开源项目的源码研究资料包入口与证据边界 | 机制参考；开工前必读，照搬边界以 `upstream-license-compatibility.md` 为准 |
 | [`full-scope-sprint.md`](full-scope-sprint.md) | 「1.0 清单一次冲完」的刀序、Owner、前置、完成标准与反向约束，外加版本命名规则（本轮产物不叫 1.0）与作者的三笔裁定记录（①A 托盘常驻、②B 删记录不撤回事实，均 2026-10-12 落笔；③仍待） | 作者 2026-10-12 裁定的执行基准；**命名降级 ≠ 判据降级**，`PROJECT_PLAN.md` 不受跟踪，规则以本文件为准 |
 | [`decision-request-protocol.md`](decision-request-protocol.md) | 向 Product Owner 请求裁决时必须给出的四部分与选项写法 | 全部 Agent 的提问形态约束（作者 2026-09-24 定）；不改变任何验收判据 |
