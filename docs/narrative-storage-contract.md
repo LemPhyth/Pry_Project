@@ -19,7 +19,7 @@
 
 本文**不覆盖**也不修改上面任何一份；出现分歧时以 v4 架构方案为准，并把分歧登记到 §12。
 
-类型落点：`src/Pry.Core/Narrative/`（7 个新文件，全部为纯领域类型，无 HTTP／Avalonia／SQLite／进程／文件系统依赖）。
+类型落点：`src/Pry.Core/Narrative/`（8 个新文件，全部为纯领域类型，无 HTTP／Avalonia／SQLite／进程／文件系统依赖）。
 测试落点：`tests/Pry.Core.Tests/NarrativeIdentityContractTests.cs`、`tests/Pry.Core.Tests/NarrativeStorageContractTests.cs`（均为新建独立文件，未改动他人测试）。
 
 ---
@@ -52,7 +52,7 @@
 - `src/Pry.Api/Runtime/CharacterIntelligenceGateway.cs:336` —
   `CharacterInstanceId = character.Id`：今天所谓「实例身份」传下去的就是角色卡 ID 本身。
   同文件 26–31 行的注释自己登记了这个缺口（`docs/character-intelligence.md` §8 缺口 ③）：出现一卡多实例时，两处必须一起改，否则删卡的 `PurgeAsync` 会静默漏掉后建的实例。
-- `CharacterIntelligenceGateway.LocalUserId = "local"`（同文件 39 行）：产品当前一台机器一个用户，但这个常量只活在 gateway 里，没有任何地方把它和角色 ID 一起持久化成一条实例记录。
+- `CharacterIntelligenceGateway.LocalUserId = "local"`（同文件 38 行）：产品当前一台机器一个用户，但这个常量只活在 gateway 里，没有任何地方把它和角色 ID 一起持久化成一条实例记录。
 - 结论：**当前不存在「实例」这一层**，只有「角色卡」这一层被当作实例用。每次启动不需要重建身份（因为身份就是卡 ID），代价是身份里天生缺用户维、也无法表达一卡多实例。
 
 ### 2.2 本契约定成什么
@@ -89,7 +89,7 @@
 
 ### 3.1 现在是什么
 
-- 今天的回复链路是 `BehaviorPlanner → ReplyGenerationRenderer → ReplyPlanner`（`src/Pry.Core/TurnTaking/ReplyPlanner.cs:12`），生成结果直接写进 `reply_plans` / `planned_messages`（`src/Pry.Core/Memory/MemoryDatabase.Runtime.cs:143`）。
+- 今天的回复链路是 `BehaviorPlanner → ReplyGenerationRenderer → ReplyPlanner`（`src/Pry.Core/TurnTaking/ReplyPlanner.cs:12`），生成结果直接写进 `reply_plans` / `planned_messages`（`src/Pry.Core/Memory/MemoryDatabase.Runtime.cs:146`）。
 - 这一条链上**没有「宿主签发的回合凭据」这个概念**：模型侧不需要携带实例身份、批次上界、故事版本、所有权代次，也不携带叙事原文；`ReplyPlan`（`src/Pry.Core/Models/DomainModels.cs:107`）就是待发文本本身。
 - 因此今天无法回答「这条回复是哪一次叙事的哪个切片」，也无法阻止一个提案把作用域写成别的会话。
 
@@ -216,7 +216,7 @@
 
 ### 8.1 现在是什么
 
-`reply_plans`（配 `planned_messages`）就是当前的「可发送真相」：写路径是 `ReplyPlanner` 生成 → 落 `reply_plans` → 宿主按计划发送。表上已经有 `fence_epoch`，条件更新用 `WHERE r.id=$p AND r.status='open' AND rtm.epoch=$epoch AND r.fence_epoch=$epoch`（`MemoryDatabase.Runtime.cs:197`、`MemoryDatabase.Proactive.cs:215`）——** fencing 的形状已经存在**，但它只保护「同一条 plan 不被过期epoch 改写」，没有回答「这一轮到底谁有权产生待发文本」。
+`reply_plans`（配 `planned_messages`）就是当前的「可发送真相」：写路径是 `ReplyPlanner` 生成 → 落 `reply_plans` → 宿主按计划发送。表上已经有 `fence_epoch`，条件更新用 `WHERE r.id=$p AND r.status='open' AND rtm.epoch=$epoch AND r.fence_epoch=$epoch`（`MemoryDatabase.Runtime.cs:200`、`MemoryDatabase.Proactive.cs:217`）——** fencing 的形状已经存在**，但它只保护「同一条 plan 不被过期epoch 改写」，没有回答「这一轮到底谁有权产生待发文本」。
 所以：叙事 outbox 一旦上线，同一次输入可能既产出 reply plan 又产出 outbox 条目，两份都能被发送。这就是派工单点名的「不许走的捷径」之一，本契约正面禁止。
 
 ### 8.2 本契约定成什么
@@ -288,7 +288,7 @@
 
 - `src/Pry.Api/Services/RuntimeDescriptorService.cs` 写 `runtime.json`，内容是 `{Pid, Port, Token, PryProtocol.Version, MemoryDatabase.SchemaVersion, StartedAt}`。
 - 同文件 `ReportLeftover()`（71–89 行）今天的处理方式是**「发现上一实例遗留的描述文件 ⇒ 打一条 LogWarning ⇒ 继续启动并覆盖它」**（日志原文：「发现上一实例遗留的 {File}（{Observed}），本次启动将覆盖它；遗留文件的端口与令牌自此失效，读取方必须重新发现」）。
-- 也就是说：**当前没有任何进程级独占写锁**。两个宿主同时指向同一数据目录时，第二个只会「告警之后继续写」；SQLite 侧只有 `PRAGMA busy_timeout=5000`（`MemoryDatabase.cs:924`）这种行级让路，救不了「两份 runtime.json 互相覆盖 + 两写者各自推进水位」。
+- 也就是说：**当前没有任何进程级独占写锁**。两个宿主同时指向同一数据目录时，第二个只会「告警之后继续写」；SQLite 侧只有 `PRAGMA busy_timeout=5000`（`MemoryDatabase.cs:974`）这种行级让路，救不了「两份 runtime.json 互相覆盖 + 两写者各自推进水位」。
 - 这正是派工单点名禁止的形状，本契约把它定成必拒项。
 
 ### 10.2 本契约定成什么
@@ -318,26 +318,31 @@
 
 ### 11.1 现在是什么（迁移落点的事实）
 
-- **没有 `PRAGMA user_version`**（全仓 grep 无命中）。结构版本落在 `schema_info` 表：
-  `CREATE TABLE IF NOT EXISTS schema_info(version INTEGER NOT NULL); INSERT INTO schema_info(version) SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_info);`（`MemoryDatabase.cs:31–32`），读数统一是 `SELECT COALESCE(MAX(version), 1) FROM schema_info`（933/956/969 行），推进是 `UPDATE schema_info SET version=$version WHERE version<$version`（977 行，单调、只升不降）。
-- 加列走 `EnsureColumnAsync(connection, table, column, declaration)`（938–951 行，`PRAGMA table_info` 判存后 `ALTER TABLE ADD COLUMN`）。
-- 已有的一次迁移是**硬编码步长**：`UpgradeMemoryIndexAsync`（953–962 行）读当前版本，`if (current >= 2) return;` 然后 `INSERT INTO memory_fts(memory_fts) VALUES('rebuild'); UPDATE schema_info SET version=2;`。
-- 结构版本还被 `RuntimeDescriptorService` 读出来写进 `runtime.json`（协议握手与诊断用）。
+本波开工时（起点 `1c2e83d`）迁移落点是散的形状；工作期间 **HDS-001 已落地并把这一节改写成了下面这样**（`8ef7d01`，本分支已 rebase 到 `86cd08c` 之后复测）。所以这里同时记「开工时」与「现在」：
+
+- **开工时**：结构版本落在 `schema_info` 表——`CREATE TABLE IF NOT EXISTS schema_info(version INTEGER NOT NULL); INSERT INTO schema_info(version) SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_info);`，读数统一是 `SELECT COALESCE(MAX(version), 1) FROM schema_info`，推进是 `UPDATE schema_info SET version=$version WHERE version<$version`（单调、只升不降）；加列走 `EnsureColumnAsync`（`PRAGMA table_info` 判存后 `ALTER TABLE ADD COLUMN`）；唯一的一次版本升级是硬编码步长 `UpgradeMemoryIndexAsync`（`if (current >= 2) return;` 后 `rebuild` FTS 并 `UPDATE … version=2`）。当时的行号（`MemoryDatabase.cs:31/933/956/969/977/938–962`）现已随 HDS-001 重排，不另作更正。**全仓没有 `PRAGMA user_version`**（grep 无命中），今天依然没有。
+- **现在（HDS-001 落地后）**：迁移变成**可注册的具名步骤清单**——`src/Pry.Core/Memory/MemorySchemaMigrator.cs` 的 `SchemaMigrationStep(int TargetVersion, string Id, string Name, SchemaMigrationMode Mode, Func<SchemaMigrationContext, CancellationToken, Task> Apply)`，模式五种（`SelfHealingBaseline` / `VersionGatedUpgrade` / `IdempotentRepair` / `IdempotentRepairOwnsConnection` / `VersionAlign`），清单由 `MemoryDatabase.BuildMigrationSteps()`（`MemoryDatabase.cs:48`）提供、`InitializeAsync` 第 37 行整体交给 `MemorySchemaMigrator.RunAsync(connection, versionBefore, steps, token)` 执行。登记要求写在代码注释里且已被执行：`Id` 稳定唯一点分命名、`TargetVersion` **不得超过当前二进制的 `MemoryDatabase.SchemaVersion`**（不冒领新版本号）、每步幂等、每步一个事务边界、任何一步失败即回滚该步并以 `MemoryMigrationException` 停下——**不允许「跳过坏步骤继续往后写」**。
+- 另有 `src/Pry.Core/Memory/SchemaVersionGuard.cs`：库里登记的版本高于当前二进制已知版本时，在**任何写入之前**抛 `SchemaVersionTooNewException`（`RetryAllowed=false`，且实现 `IUserPresentableError` 把拒绝原样呈现给用户）。这就是本文要的 fail-closed 形状，只不过它守的是结构版本，不守叙事契约版本。
+- 结构版本仍被 `RuntimeDescriptorService` 读出来写进 `runtime.json`（协议握手与诊断用）——它是**发现**信息，§10 关于「描述文件不是锁」的判断不受影响。
 
 ### 11.2 本契约定成什么（设计要求，**不落表、不占版本号**）
 
-1. **版本来源仍是 `schema_info`**（或 HDS-001 统一选定的等价登记表），**不得**改用 `PRAGMA user_version` 造成两套版本真相；一个库只能有一个「当前结构版本」的问法。
-2. **迁移必须是可注册的具名步骤序列**，而不是今天这种「散在 `InitializeAsync` 里的 if current>=N」。每一步至少声明：`From`、`To`（允许跳过号段，但必须单调）、`Name`（进登记行，供诊断与复采引用）、`IsIdempotent`、`RequiresBackfill`、`FenceRequirement`（必须持有 §10 的目录写锁才能跑）。
-   —— 本波**不分配任何 `To` 数值**：号段是 HDS-001/005 的落点，先占号就是替别人定基线。
-3. **只允许前进，禁止就地降级**；被拒的迁移不留半件（`RequiresBackfill` 的步骤必须在单事务内完成或整体回滚）。
-4. **幂等性必须被验证，而不是被假设**：`IsIdempotent` 为 false 的步骤不得在未持锁状态下重跑（崩溃恢复路径尤其）。
-5. **身份映射的存储要求**（§2 的落地面）：`character_instance`（自然键 User × Character、当前 `instance_id`、provenance、mapping_contract_version、origin_alias）与 `character_instance_alias`（别名 → 当前实例）两张映射账，**每个别名只有一条当前有效记录**；迁移写入必须整批 all-or-nothing（对应 `MigrateIdentities` 的 107）。本波不建表、不写 DDL。
-6. **契约版本 ≠ 结构版本**：`NarrativeContractVersions` 四个常量（IdentityMapping / NarrativeDocument / DeliveryContract / OutboxOwnership）都是「文档形状」的版本，明确不与任何表名或 `schema_info` 数值绑定。加叙事契约版本必须同时加迁移说明（`IsSupportedNarrativeVersion` 是唯一入口）。
-7. **迁移的可观测性**：每一步执行前后要能回答「库里现在有 0 个还是 1 个实例账」「这一批换发落了 3 条还是 0 条」——派工单把「迁移前后实例账数量的可测证据」列为要求，本波因不落表而无法提供，登记为未决项 U-6，交由 HDS-001/005 在真实迁移上采集。
+1. **版本来源仍是 `schema_info` 这一张登记账**，**不得**改用 `PRAGMA user_version` 造成两套版本真相；一个库只能有一个「当前结构版本」的问法。HDS-001 已按这一条实现（读 `MAX(version)`、`VersionAlign` 步骤在事务里跟随成功步骤推进），本契约认可并保持。
+2. **迁移走已落地的 `SchemaMigrationStep` 清单**，不再新增第二套「散装 if」。叙事侧将来要落的每一步（实例身份映射、别名账、投递段表、水位列）**必须登记成清单里的步骤**，而不是在 `InitializeAsync` 里就地补一段 SQL。本波不新增任何步骤、不分配任何 `TargetVersion`：号段归 HDS-001/005，先占号就是替别人定基线。
+3. **叙事侧对迁移清单追加两项要求**（现有 `SchemaMigrationStep` 形状里没有，需在 HDS-005 落表时补，属未决项 U-6/U-11）：
+   - `FenceRequirement`：该步骤是否必须持有 §10 的目录写锁才允许跑（结构变更属于写入，不能靠「我只是迁移」绕过独占锁）；
+   - `BackfillEvidence`：需要回填历史数据的步骤要能回答「回填前后各有多少行」，即派工单要求的**迁移前后可测证据**。
+4. **只允许前进，禁止就地降级**；被拒的迁移不留半件（回填类步骤必须在单事务内完成或整体回滚，沿用 `VersionGatedUpgrade` 的事务边界语义）。
+5. **幂等性必须被验证而不是被假设**：`IdempotentRepair`/`SelfHealingBaseline` 两档每次初始化都跑，其幂等由 HDS-001 的测试守；`VersionGatedUpgrade` 档「跳过」是闸门语义，不得被读成「漏跑」。
+6. **身份映射的存储要求**（§2 的落地面）：`character_instance`（自然键 User × Character、当前 `instance_id`、provenance、mapping_contract_version、origin_alias）与 `character_instance_alias`（别名 → 当前实例）两张映射账，**每个别名只有一条当前有效记录**；迁移写入必须整批 all-or-nothing（对应 `MigrateIdentities` 的 107）。本波不建表、不写 DDL、不占号。
+7. **契约版本 ≠ 结构版本**：`NarrativeContractVersions` 四个常量（IdentityMapping / NarrativeDocument / DeliveryContract / OutboxOwnership）都是「文档形状」的版本，明确不与任何表名或 `schema_info` 数值绑定。加叙事契约版本必须同时加迁移说明（`IsSupportedNarrativeVersion` 是唯一入口）。
+8. **两类 fail-closed 要一致**：`SchemaVersionGuard` 已经在结构版本上做到「读不懂就先别写」；本契约要求在**叙事文档形状**上有同样的处理——`ContractVersionUnsupported`(212) 在条件写第 3 关拒绝，语义与它一致：宁可停下，不猜形状。
+
+9. **迁移的可观测性**：每一步执行前后要能回答「库里现在有 0 个还是 1 个实例账」「这一批换发落了 3 条还是 0 条」——派工单把「迁移前后实例账数量的可测证据」列为要求，本波因不落表而无法提供，登记为未决项 U-6，交由 HDS-001/005 在真实迁移上采集。
 
 ### 11.3 违反时怎样被拒
 
-- 本波没有任何表变更，因此「抢跑建表」这类违例在 diff 里就应当可见：本次改动集只有 `src/Pry.Core/Narrative/*`（7 个新文件）与两个新测试文件，未修改任何现存 `.cs`、任何 `.sql`、`MemoryDatabase*.cs`、`docs/plans/*`。
+- 本波没有任何表变更，因此「抢跑建表」这类违例在 diff 里就应当可见：本次改动集只有 `src/Pry.Core/Narrative/*`（8 个新文件）与两个新测试文件，未修改任何现存 `.cs`、任何 `.sql`、`MemoryDatabase*.cs`、`MemorySchemaMigrator.cs`、`docs/plans/*`。
 - 契约版本不认识 ⇒ 条件写第 3 关 `ContractVersionUnsupported`(212)（测试 `Commit_with_an_unknown_contract_version_is_refused`）：将来某条提交带着本进程不认的版本进来，是拒，不是「按最接近的形状猜一次」。
 
 ---
@@ -351,11 +356,13 @@
 | U-3 | 目录级 `FencingEpoch` 与实例级 `OwnershipEpoch` 的联动规则（目录换主是否强制实例交接） | 需要真实重启路径才能验证，纸面定死会造出假规则 | HDS-001 + HDS-005 |
 | U-4 | 多段投递的原文切分算法：段边界由叙事给出还是由宿主按行/句号切 | 本波只锁「逐字来自绑定切片 + 封口还原完整切片」这一不变式；切分策略会随渲染实现变 | HDS-003/HDS-005 |
 | U-5 | 旧 `reply_plans`/`planned_messages` 的清点与关闭流程（`legacyPendingPlanCount` 的真实取数与关单动作） | 涉及别人的表与写路径；本波只定「不为 0 就不许声明新 outbox」 | HDS-005 |
-| U-6 | 迁移前后可测证据（实例账数量、映射行数变化） | 不建表就采不到；见 §11.2 第 7 点 | HDS-001/005 |
+| U-6 | 迁移前后可测证据（实例账数量、映射行数变化） | 不建表就采不到；见 §11.2 第 3、9 点 | HDS-001/005 |
 | U-7 | `CommitId`／`ContentHash` 的生成规范（宿主算：内容散列算法、ID 形状、长度上限） | Core 只要求「存在且稳定」，算法选型属实现 | HDS-005 |
 | U-8 | `NarrativeDraft` 的模型侧 JSON schema 与流式解析（v4 §7 的解析层） | 属 HDS-003  narrator 侧 | HDS-003 |
 | U-9 | 契约类型与 `IReplyAdvisor`/`ReplyPlanner` 的接线时机与灰度形状 | 派工单明令本波不得接线；接线即双真相风险 | HDS-004 |
 | U-10 | 一卡多实例时 `CharacterIntelligenceGateway` 的传参修正（现状传 `character.Id`，见 §2.1） | 改动他人运行时文件，且要等映射账落表 | HDS-005 |
+| U-11 | 往 HDS-001 已落地的 `SchemaMigrationStep` 上追加 `FenceRequirement`／`BackfillEvidence` 两项（§11.2 第 3 点） | 该类型属 HDS-001 名下文件，本波只登记设计要求，不改他人形状 | HDS-001 + HDS-005 |
+| U-12 | 目录写锁与 `SchemaVersionGuard` 的先后关系（先取锁再读版本，还是读版本时不取锁） | 属初始化时序，需真实宿主进程才能验证；本波只定「迁移也是写，必须持锁」这一条 | HDS-001 |
 
 ---
 
