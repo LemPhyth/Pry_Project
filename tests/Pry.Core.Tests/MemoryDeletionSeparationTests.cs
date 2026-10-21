@@ -275,7 +275,9 @@ public sealed class MemoryDeletionSeparationTests : IAsyncLifetime
     {
         Assert.Equal(2, await Number("SELECT MAX(version) FROM memory_schema"));
         await Run("UPDATE memory_schema SET version=3");
-        await Assert.ThrowsAsync<InvalidOperationException>(() => new SqliteMemoryRepository(Database).InitializeAsync(Token));
+        // DEF-MEMDUAL-01：拒写语义不变（版本 3 照旧被拦），换的是"以什么形状拦"——可呈现的组件账拒绝，
+        // 两账并存与呈现链判据见 MemoryDualSchemaLedgerTests；这里的拒写/单调/自愈回 2 逐条照钉。
+        await Assert.ThrowsAsync<MemoryComponentSchemaRejectedException>(() => new SqliteMemoryRepository(Database).InitializeAsync(Token));
         // A version-2 database may already hold orphaned rows, so it must start without migrating from 1.
         await Run("UPDATE memory_schema SET version=2");
         await new SqliteMemoryRepository(Database).InitializeAsync(Token);
@@ -284,7 +286,7 @@ public sealed class MemoryDeletionSeparationTests : IAsyncLifetime
         await new SqliteMemoryRepository(Database).InitializeAsync(Token);
         Assert.Equal(2, await Number("SELECT MAX(version) FROM memory_schema"));
         await Run("UPDATE memory_schema SET version=0");
-        await Assert.ThrowsAsync<InvalidOperationException>(() => new SqliteMemoryRepository(Database).InitializeAsync(Token));
+        await Assert.ThrowsAsync<MemoryComponentSchemaRejectedException>(() => new SqliteMemoryRepository(Database).InitializeAsync(Token));
     }
 
     private async Task Run(string sql)
