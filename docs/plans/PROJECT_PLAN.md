@@ -4,7 +4,7 @@
 
 **当前主线：以 HDS 启发的持续叙事，替换借鉴 MaiCore 的 AI 回复生成架构。** 现有问题必须在迁移中解决，但不再要求先补完旧回复链才能开始验证新生成中心。架构细节与完整验收见 [v4 计划](Pry_HDS_Rewrite_Architecture_Plan_v4.md)。
 
-**状态：研究与计划已入库（`a7e62c1`）；产品架构尚未切换。第一波派单中 HDS-011 的 AUD-01／06／04 切片已归位为主线 `faf8ecf`（已实现待验，待 QA 从线尾复采）；HDS-001 与 HDS-002 在各自隔离 worktree 进行中；HDS-003 待 002 的类型归位后开工，HDS-004～010／012 未派发。** 计划的入库不代表实现、测试、合流或发行已经完成，结案词由作者写。
+**状态：研究与计划已入库（`a7e62c1`）；产品架构尚未切换。第一波派单中两把已归位待验——HDS-011 的 AUD-01／06／04 切片（`faf8ecf`）与 HDS-001 的可恢复地基（`8ef7d01`），均待 QA 从线尾复采；HDS-002 在隔离 worktree 进行中；HDS-003 待 002 的类型归位后开工，HDS-004～010／012 未派发。** 计划的入库不代表实现、测试、合流或发行已经完成，结案词由作者写。
 
 ## 1. 项目与计划边界
 
@@ -69,7 +69,7 @@
 |---|---|---|---|
 | ARCH-HDS-001 | 研究与 v4 架构计划 | Codex / 文档已入库 `a7e62c1`，待作者结案 | HDS 固定源码复核、替换边界、问题映射、12 项实施任务与 24 项核心验收 |
 | DOC-HDS-002 | 共同入口与总计划整理 | Codex / 文档已入库 `a7e62c1`，待作者结案 | 本目录统一计划与任务状态；历史完整归档；根目录与文档入口同步 |
-| HDS-001 | 资产保全与可恢复地基 | **进行中**／守门人代派至隔离 worktree（分支起点 `a839e5f`，出口证据未采齐前不写已完成） | 无；先合成数据，一致性备份、隔离恢复与未知高版保护 |
+| HDS-001 | 资产保全与可恢复地基 | **已实现待验**／守门人代派至隔离 worktree（实现 `3b65ccc`，已归位为主线 `8ef7d01`）；备份／恢复**未接生产路径**（无端点、无 UI 入口，触发时机属产品决策） | 无；先合成数据，一致性备份、隔离恢复与未知高版保护 |
 | HDS-002 | 稳定身份与存储契约 | **进行中**／守门人代派至隔离 worktree（本波只做契约设计＋纯领域类型；出口证据未采齐前不写已完成。HDS-003 押在它归位之后再开工，避免两支笔同时写 `Pry.Core.Narrative`） | 001 的数据保护；契约设计可先行；身份、版本、提交与迁移边界 |
 | HDS-003 | 新生成中心隔离原型 | 已派发 HDS-WAVE-1，待认领；Owner 建议 Runtime / Intelligence | v4；可与 001/002 隔离推进；七段上下文、Narrator、绑定、沉默/延迟和真实模型对照（模型实验需作者点头） |
 | HDS-004 | 叙事生命周期 | 未认领 / 待认领；建议 Runtime | 002、003 语义验证；幂等、单写者、公平调度、失效和预算 |
@@ -180,6 +180,23 @@ git diff --cached --check
 数据库回退按实际 schema 和数据验证，不能拿历史 v7 的“可忽略新增表”保证未来恢复。备份考虑 SQLite WAL 一致性；恢复先在隔离目录验证，不能复活备份之后已明确遗忘的内容，也不能只回滚程序而忽略数据兼容。
 
 ## 9. 最近交接
+
+### 2026-10-21｜守门人｜HDS-001 可恢复地基归位合流树
+
+- 载体：隔离 worktree `.qoder/worktrees/agent-general-purpose-fde9331c`，实现提交 `3b65ccc`（父提交 `a839e5f`＝派单当夜的线尾，所以这把的基线只落后 4 个文档提交——与上一把落后 76 个提交相反，认领时数基线的动作照旧要做）。合流载体 `.qoder/worktrees/gate-hds001` ＝ `7307583` ＋ `3b65ccc` 无冲突合并，验证完已删除。落地内容 22 文件、+2428/−144，可指认提交＝主线 `8ef7d01`。
+- 复核（逐文件读真实 diff，不只读自报）：
+  - 数据库走 `VACUUM INTO` 在线一致性快照，**不复制主 .db**；`BackupInclusionPolicy.AlwaysDeniedExtensions` 主动拒绝 `.db`/`.db-wal`/`.db-shm`/`.db-journal`/`.sqlite`/`.sqlite3` 的原始拷贝。`Online_snapshot_carries_committed_rows_that_still_rest_in_the_write_ahead_log` 守"WAL 里已提交的行还在"，`Bundle_never_ships_wal_or_shm_sidecars_and_the_snapshot_is_a_single_self_contained_file` 守"侧文件不许上船"，`A_missing_wal_sidecar_still_yields_a_consistent_snapshot_of_what_the_main_file_holds`／`An_inconsistent_wal_sidefile_never_travels_into_the_bundle` 守两侧缺件。逐文件散列＋`PRAGMA integrity_check`，`Verification_fails_loudly_when_any_bundled_file_was_tampered_afterwards` 守篡改。
+  - 方向是**白名单**（只点名收：`characters`／`interaction-profiles`／`media`／`stickers`／`character-media`／`theme-media`／`preferences.json`／`character.json`），其余默认排除并**在清单里写明原因**（`ExcludedRootEntries`，恢复后"少了什么"不靠猜）；`logs`／`attachments`（用户导入）／`temp`／`clipboard`／`runtime`／`runtime.json`／`.log`／`.key`／`.pfx`／`.pem`／`.secret`／`.token` 硬排除，而且白名单目录内部逐文件再过一遍——`Secrets_logs_runtime_and_user_imports_never_enter_or_leave_the_bundle` 把假密钥塞进 `media/` 也不许上船。
+  - 恢复只落**隔离目录**，核对报告按 v4 §9.3 逐格点名（`DataRestoreService.cs:108-155`：散列／完整性／结构版本／行数／稳定 ID／索引集合／外键／墓碑数量与摘要／删除水位／孤立态／引用计数／偏好可解析），任一格不一致能指到具体那一格；目标非空拒、路径穿越与"落在包内"拒、future schema 在第一个字节写入前拒、中断不发布最终目录且可重试。
+  - 未知高版拒写：`EnsureWritableSchemaVersion` 跑在任何写入之前（代码注释自己写了原因——`PRAGMA journal_mode=WAL` 本身就是写）；迁移改为登记清单九步、每步一个事务边界、失败整步回滚且版本不推进、全部幂等（重跑初始化＝完整恢复路径，NR-23）；`ValidateRegistry` 拒空清单、拒重复登记号、**拒 `TargetVersion > SchemaVersion`**——工单"不许顺手预占 schema 11"这条由代码里的闸守住，不只是嘴上；`UpgradeMemoryIndexAsync` 删除，`EnsureColumnAsync` 可挂进步骤事务。
+  - 对旧形状的实际改动（当场 `git show 7307583:` 比过）：初始化原来是**一段无事务的大 SQL 批次**＋六个 `EnsureColumnAsync`＋`SetSchemaVersionAsync`，`versionBefore` 只进日志——也就是说版本比二进制高的库照样会被按旧理解改表、并把登记版本**写回较低的数**。现在先拒写、再按清单分步跑。用户可见后果＝这种库第一次会明确报"本机数据库来自更新版本的 Pry，已拒绝写入任何数据"（`RetryAllowed=false`，防止界面引导人反复启动加深伤害），而不是静默降级。
+  - `PryErrorPresentation` 新增 `StorageGuarded` 一档，`IUserPresentableError` 分支放在 `Describe` 最前；当场核过全仓只有那两个新守卫实现该接口 ⇒ 不遮蔽既有异常归因。**无新增 NuGet 依赖**（`*.csproj`／`*.json` diff 为空），Core 未引入 Avalonia 或 HTTP；`IUserPresentableError` 落在 `Pry.Contracts`（Core 与 Client 早已共同依赖它）。
+- 合流门禁（**一次性跑完，之后不再重复构建**）：`dotnet build Pry.slnx -c Release` ⇒ 0 警告 0 错误；`dotnet test --no-build --results-directory C:/Users/24782/gate-hds001-trx --logger trx` ⇒ **Client 106／App 233／Api 251／Core 462（执行 460、通过 460）**，总 **1052／失败 0／跳过 2**，四个 `<Counters>` 当场从各自 TRX 读出、程序集归属按 `Pry.<X>.Tests` 前缀；两条 `outcome="NotExecuted"` 点名为 `Pry.Core.Tests.CoreTests.Configured_sense_voice_model_can_run_offline` 与 `Pry.Core.Tests.LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key`（与基线同两条环境跳过）。`measure-fixed-eval.ps1 -ResultsDirectory` ⇒ Passed=1050; Failed=0; Other=2，Catalog valid: 76。
+- 新判据顶账：+37 例＝Core +32（`SchemaVersionGuardTests` 4 `[Fact]`＋1 `[Theory]`/3 `[InlineData]`＝7、`MemorySchemaMigrationRegistryTests` 6、`DataBackupServiceTests` 10、`DataRestoreServiceTests` 9）、Client +5（`StorageGuardErrorPresentationTests` 5），App／Api 不动。逐文件先数过属性再对分项：1015→1052 与 Core 430→462、Client 101→106 两处一致。**在册基线仍是 QA 复采的 988／0／2，本 entry 不自封基线**；改写权在 QA，需要 QA 从明确载体（现线尾 `8ef7d01`）重采。
+- 仓库扫描的一处真实修复（不是放宽判据）：`verify-repository` 第一次判红——测试夹具里的假密钥串 `sk-FAKE-…` 命中了仓库的密钥扫描。改法是换字面而不是改扫描：三处哨兵去掉 `sk-` 前缀，并加一行注释说明"排除由文件名／扩展名决定，不由内容形状决定"。反证照旧跑过：`-t:Rebuild` 后把白名单目录里那个伪装件改回普通名字，那条断言当场打红 ⇒ 门还在守；改回后与提交内 blob 逐字节相同（`tests/Pry.Core.Tests/DataBackupServiceTests.cs` md5 `6fed87544dbc06eea9be5acb52344067`，工作树与 `8ef7d01` 那份同值）。最终 `verify-repository` ⇒ **Repository verification passed for 514 tracked files**（499＋本刀新文件与文档；跟踪格数非门槛），`git diff --check` 干净。
+- 工单出口证据对账（`docs/dispatch-hds-wave1-20261021.md` HDS-001 节）：合成数据上的可复现备份—破坏—恢复＝已落（上列用例）；未知高版拒写的行为测试＝已落；"一份真实数据未被写入的核对"这一格由守门人以只读方式当场补采——`%LOCALAPPDATA%/PryCompanion` 共 40 个文件、树内最新写入 `2026-10-19 13:27`（他自己跑程序留下的），本轮全部测试跑在临时目录 ⇒ 本轮对该目录零写入。**仍未接生产路径**：没有 HTTP 端点、没有 UI 入口，触发时机（手动／定期／退出前）属产品决策——所以这一格不能读成"你能点备份了"，只读成"数据地基有了、还没有门走得出去"。
+- 归位方式：主工作区索引里仍有他人两份**已暂存**文件（`docs/dispatch-tip1020-02-memory-group-judgment.md` 1/1、`tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs` 63/0），故不 `git merge`、不裸 `git commit`——按 `.gitattributes`（`*.cs text eol=lf`）把合流树内容逐字节写入工作区，新文件先 `git add` 建立索引条目，再 `git commit --only -- <22 显式路径>`。提交后他人暂存仍 1/1 与 63/0 未变，`git diff --stat` 只剩我自己名下的 `docs/plans/PROJECT_PLAN.md`。main 已 fast-forward 到 `8ef7d01`，差距 0。
+- 状态词：§4.2 的 HDS-001 填"已实现待验"，不是"已完成"——独立复采与结案词都还没发生，结案词归作者。下一把按派单是 HDS-011 剩余范围里的 AUD-07（表情附带文本绕过长度验证），以及等 HDS-002 的类型归位后开工的 HDS-003。
 
 ### 2026-10-21｜守门人｜HDS-011 切片（AUD-01／06／04）归位合流树
 
