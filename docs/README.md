@@ -2,12 +2,18 @@
 
 本页是前端、后端及集成开发者的统一入口。开始修改前先确认当前分支、工作区和任务归属，再按下列顺序阅读相关资料。历史实现不自动构成契约；代码与文档冲突时，应先停止扩散现有行为并确认权威边界。
 
+**2026-10-21 当前目标**：作者要求以 HDS 启发的持续叙事替换现有 MaiCore 式回复生成中心。所有 Agent 先读 [共同计划入口](plans/README.md)、[共享总计划](plans/PROJECT_PLAN.md) 和 [v4 架构重写计划](plans/Pry_HDS_Rewrite_Architecture_Plan_v4.md)。这是目标与迁移路线，不表示产品实现已经改变；本页其它历史进度和研究中的“规范目标”按 v4 的保留/替代关系读取。
+
 ## 1. 文档入口与权威顺序
 
 | 文档 | 用途 | 权威范围 |
 |---|---|---|
+| [`plans/README.md`](plans/README.md) | 所有 Agent 的共同入口、阅读顺序和独立工作区读取方式 | 本轮新共同目录；未被忽略，但尚未提交同步 |
+| [`plans/PROJECT_PLAN.md`](plans/PROJECT_PLAN.md) | 当前目标、任务与负责人、依赖、状态、验证、发行与最近交接 | 当前任务状态唯一登记处；根目录同名文件仅为入口 |
+| [`plans/Pry_HDS_Rewrite_Architecture_Plan_v4.md`](plans/Pry_HDS_Rewrite_Architecture_Plan_v4.md) | 持续叙事生成中心、HDS 固定源码复核、数据/投递边界、迁移任务及验收 | 当前目标架构；仅计划交付，替代 v3 的旧回复中心与实施排期，不提前改变稳定 API |
+| [`plans/HISTORY.md`](plans/HISTORY.md) | 旧总计划完整备份、摘要、历史裁定与证据索引 | 旧台账不再充当当前待办；原文备份仅保留在本机 |
 | [`README.md`](../README.md) | 构建、运行、发行包和项目概览 | 用户与开发环境入口 |
-| [`PROJECT_PLAN.md`](../PROJECT_PLAN.md) | 当前任务、优先级、验证及发行基线 | 当前本机协作计划；按仓库策略不公开提交 |
+| [`PROJECT_PLAN.md`](../PROJECT_PLAN.md) | 根目录旧入口 | 本机兼容指针，按仓库策略不公开提交；任务请直接读共享总计划 |
 | [`architecture.md`](architecture.md) | 前端、Client、Contracts、API 与 Core 边界 | 架构职责 |
 | [`api-v1.md`](api-v1.md) | 路径、Method、DTO、状态码、错误和 SSE | 稳定接口契约 |
 | [`memory-context-implementation.md`](memory-context-implementation.md) | MEM-005 证据、异步写回、检索、预算及迁移 | 长期记忆实现与集成边界（2026-10-13 已移植进主线） |
@@ -27,7 +33,7 @@
 | [`role-driven-companion.md`](role-driven-companion.md) | 头像互动、戳一戳、主动话题、角色主题与桌宠联动 | 已确认产品需求；接口尚未冻结 |
 | [`upstream-license-compatibility.md`](upstream-license-compatibility.md) | 七个上游项目的许可实测、Pry 代码许可（AGPL-3.0-only，2026-10-20 由 GPL-3.0-only 变更）与照搬白名单、留痕程序 | 许可与复用边界的权威文本；谁可抄源码文本、谁只可作机制参考以此为准 |
 | [`research/README.md`](research/README.md) | 五个成熟开源项目的源码研究资料包入口与证据边界 | 机制参考；开工前必读，照搬边界以 `upstream-license-compatibility.md` 为准 |
-| [`full-scope-sprint.md`](full-scope-sprint.md) | 「1.0 清单一次冲完」的刀序、Owner、前置、完成标准与反向约束，外加版本命名规则（本轮产物不叫 1.0）与作者的三笔裁定记录（①A 托盘常驻、②B 删记录不撤回事实，均 2026-10-12 落笔；③仍待） | 作者 2026-10-12 裁定的执行基准；**命名降级 ≠ 判据降级**，`PROJECT_PLAN.md` 不受跟踪，规则以本文件为准 |
+| [`full-scope-sprint.md`](full-scope-sprint.md) | 旧全量收敛的任务、Owner、完成标准、版本命名与作者裁定记录 | 旧线资产和有效义务的依据；新任务与替代关系以共享总计划及 v4 为准，**命名降级 ≠ 判据降级** |
 | [`decision-request-protocol.md`](decision-request-protocol.md) | 向 Product Owner 请求裁决时必须给出的四部分与选项写法 | 全部 Agent 的提问形态约束（作者 2026-09-24 定）；不改变任何验收判据 |
 | [`dispatch-rt004-drain.md`](dispatch-rt004-drain.md) | 第 1 层 `RT-004-DRAIN` 的可交接工单：把表达学习的排空接进生产，含今天的事实表、八条完成标准、八条反向约束、推荐形状与门禁口径 | 作者 2026-10-14 派工的载体；Owner＝Character Intelligence，判定归 QA；本文件只写约束与出判面，不新增验收判据本体 |
 | [`dispatch-p4learn-approval-entry.md`](dispatch-p4learn-approval-entry.md) | 第 1 层 `DEF-P4LEARN-01` 的可交接工单：把"就是这样／别这样说"这个认可入口接进生产，含今天的事实表、九条完成标准、九条反向约束、推荐形状与门禁口径 | 作者 2026-10-15 裁定入口形状后的载体（原话已逐字记入）；Owner＝Character Intelligence，判定归 QA；本文件只写约束与出判面，不新增验收判据本体 |
@@ -38,7 +44,7 @@
 | [`dispatch-tip1019-02-retrieval-floor-judgment.md`](dispatch-tip1019-02-retrieval-floor-judgment.md) | `QA-TIP1019-02`（Medium）的可交接工单：给检索地板 `Confidence >= .5` 补一条行为判据（`.45`／`.4` 的 active 记忆不许进上下文），含五行事实表、四条完成标准、六条反向约束与门禁口径 | 作者 2026-10-19 授权轮的延伸派单（2026-10-20 落成白纸单）；Owner＝Memory & Context，判定归 QA 从可指认提交复采，结案词归作者；判据刀·零产品代码，明令不许为写好判据去放宽那个数字，也不许用源码扫描形状门冒充行为判据 |
 | [`dispatch-tip1020-02-memory-group-judgment.md`](dispatch-tip1020-02-memory-group-judgment.md) | `QA-TIP1020-02`（Low，不卡结案）的可交接工单：记忆页"分两组"的谓词可被掏空而 988 条全绿，补一条"这个条件真的在起作用"的判据，含事实表、形状二选一、完成标准与 QA 原文的三条捷径禁令 | 缺陷事实出自 QA 2026-10-20 报告 §5（`eval-QA-TIP1020-1020`，突变 M17）；Owner＝Memory & Context 界面半边，判定归 QA 重拆 M17；判据刀·零产品代码，界面文件只读、`MainWindow.axaml.cs` 一行不碰 |
 | [`dispatch-tip1019-03-client-route-judgment.md`](dispatch-tip1019-03-client-route-judgment.md) | `QA-TIP1019-03`（Low，不卡结案）的可交接工单：给 `Pry.Client` 的 `ConfirmKeepMemoryAsync` 与 `DeleteConversationAsync(…, forgetExclusiveMemories)` 各一条纯客户端 URL 形状判据（转义与小写布尔），含事实表、完成标准与六条反向约束 | 作者 2026-10-19 授权轮的延伸派单（2026-10-20 落成白纸单）；Owner＝Windows Client，判定归 QA；判据刀·零产品代码，`PryBackendClient.cs` 只读（10-19 该文件是双 lane 撞行热点），不许借本单碰重连与 `unauthorized` 语义 |
-| [`freeze-20261020-line-inventory.md`](freeze-20261020-line-inventory.md) | 作者 2026-10-20「甲」裁定的冻结登记：这条线停在哪个提交号、在册数怎么读、哪几张单被停／押／照旧、换运行架构时带得走的资产清单与必然重写的界面、八条仪器坑 | 守门人 2026-10-20 收口快照；不是结案词也不是状态词，不新增判据；`PROJECT_PLAN.md` 不受跟踪 ⇒ 新架构重开 worktree 时这份是唯一能随提交被看见的桥 |
+| [`freeze-20261020-line-inventory.md`](freeze-20261020-line-inventory.md) | 作者 2026-10-20「甲」裁定的旧线冻结登记、资产与欠账、八条仪器坑 | 历史收口快照，保留旧证据；当前共同计划已迁到 `plans/`，不再只靠本文件衔接 |
 | [`client-error-and-reconnect.md`](client-error-and-reconnect.md) | 错误呈现层怎么把异常翻成用户语言、SSE 重连的档位与判据、换后端后活客户端怎么自己接回来、哪些界面位已经交出去 | UI-027 客户端侧现状与防复发门（`NoticeContentFactory`、`UserFacingNoticeBoundaryTests`、`StaleSessionRecoveryTests`） |
 | [`window-close-paths.md`](window-close-paths.md) | 关窗/收窗/真实退出三条路径、两块判据面（`WindowLifecycle` 决策次序＋源码门）与真机仪器的用法 | 第 0 层 `0-5` 托盘常驻的实现与验收面；裁定本体仍以 `full-scope-sprint.md` 为准 |
 | [`engineering-pitfalls.md`](engineering-pitfalls.md) | 已发生故障、根因和防复发规则 | 集成与排障经验 |
@@ -46,9 +52,11 @@
 
 判断冲突时采用以下顺序：
 
+当前行为与目标设计分别核对：`api-v1.md` 和服务端验证描述现有行为；v4 描述要实现的变化。发生冲突必须按 v4 迁移任务显式更新契约，不能拿目标方案假称已有接口，或拿旧架构规则阻止作者已要求的替换。下面旧排序只用于未被 v4 改变的现有行为。
+
 1. 已冻结的 `api-v1.md` 接口语义和服务端验证。
 2. `architecture.md` 的职责边界。
-3. 根目录当前计划中的任务状态和发行决策。
+3. `plans/PROJECT_PLAN.md` 中的任务状态和发行边界；根目录同名文件仅作入口。
 4. README 的使用说明。
 5. 历史提交、旧计划或事故记录只用于解释背景，不作为新增兼容行为的依据。
 

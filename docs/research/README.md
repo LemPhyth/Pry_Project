@@ -1,5 +1,7 @@
 # Pry 开源项目源码研究资料包
 
+> **2026-10-21 当前路线**：AI 回复生成架构改按 [HDS-v4 计划](../plans/Pry_HDS_Rewrite_Architecture_Plan_v4.md)；所有 Agent 从 [共同计划入口](../plans/README.md) 和 [共享总计划](../plans/PROJECT_PLAN.md) 获取任务与状态。下文是原研究资料包的历史说明，不将旧 MaiCore 主链建议当作新架构前置。HDS 固定源码复核及用户提供补充报告的证据边界见 v4 §2/§17；本轮不改写原始研究报告。
+
 整理日期：2026-09-20。用途：供 Pry 的 Architecture / Runtime / Intelligence / Memory / Platform / Client / QA 七个 Agent 阅读、讨论架构和制定验证任务。
 
 ## 资料性质与证据边界
