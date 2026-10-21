@@ -1,6 +1,6 @@
 # 工单 `QA-TIP1019-02`（第 2 层 · 检索地板 `.5` 的行为判据）
 
-- **状态词**：已派工·待认领（守门人 2026-10-20 按作者授权落成白纸单；Owner＝Memory & Context，与 `RT-005-MANAGE` 同一条 lane；判定归 QA 从可指认提交复采，结案词归作者）
+- **状态词**：**已实现待验**（2026-10-22 由守门人按出口证据对账后归位为本线尾 `9f88a0c`；写入者＝Memory & Context 的代派 lane，隔离 worktree `.qoder/worktrees/agent-general-purpose-5b952707`，起点追平至 `c148fbf`；判定归 QA 从可指认提交复采，结案词归作者。原「已派工·待认领」由本行作废）
 - **载体基线**：开工当日先 `git rev-parse` 与 `git status` 重取线尾。在册读数＝**988／0／2（总 990）**，分项＝Client 101／App 233／Api 248／Core executed 406 passed 406＋2 条环境跳过（`eval-QA-TIP1020-1020`，QA 从 `e82499b` 建干净 `--detach` 副本七次复采、七次分项逐位相同）。本单不改写它，也不把自跑数顶给它。
 - **授权来源（逐字）**：作者 2026-10-19 原话「**我不想思考了，你就继续给我派工单，该提交的提交吧，早点做完之后再回来大修**」⇒ 守门人据此把这条 10-19 只登记在验收面的欠账落成可交接单。**本单不需要作者再拍任何东西**，全是执行活。
 - **刀的体量**：**判据刀，零产品代码**。预计 1 个文件内 1 条用例（可加 fixture 装配），不动阈值、不动接口、不动界面。
@@ -64,3 +64,14 @@
 - **预期读数**：本刀之后四分项＝Api 258／Core 523＋本刀新增条数／App 233／Client 106。守门人 2026-10-22 从 `c148fbf` 的合流等价树读到的就是 1120／失败 0／通过 1118，两条跳过点名＝`LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key`、`CoreTests.Configured_sense_voice_model_can_run_offline`。在册基线 988／0／2 的改写权在 QA，本单不自封基线。
 - **落点收窄（避免撞位）**：只在 `tests/Pry.Core.Tests/` 新建一份自己的文件（建议 `MemoryRetrievalFloorTests.cs`），**不要**把用例追加进 `MemoryContextTests.cs`——同族的 `RT-005-MANAGE` 实现此刻正悬在主工作区索引里（他人名下 `tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs` 63/0 未归位）。`src/` 零改动这条不变。
 - 单一写者、文档与代码分刀提交、未 push、未 tag、未打包、真实数据目录禁区、绝不动他人进程——全部照 §3／§4 执行；归位由守门人做。
+
+## 9. 交接记录（实现方读数＋守门人独立对账，2026-10-22）
+
+- **落点**：只新建 `tests/Pry.Core.Tests/MemoryRetrievalFloorTests.cs`（66 行，1 条 `[Fact]`，0 条 `[Theory]`/`[InlineData]`）。没追加进 `MemoryContextTests.cs`，没碰 §8 点名的他人名下 63/0。`src/` 零改动：归位后本线对该文件的 diff 只有一个新建测试文件。
+- **判据形状**：同一作用域两行 `Status="active"` 记忆，置信度写字面量 `.5`（贴地板）与 `.45`（地板下），共用同一查询词与同一重要性；夹具先自检"两行都 active"（不许状态那半替本判据背书），断言面钉在 `MemoryQueryService.RetrieveAsync` 返回的 `Hits`——`Assert.Single(hits)` ＋摘要比对 ＋ `DoesNotContain` 那一行地板下的。**没有**用源码文本门，**没有**断端到端提示词（§7 F6／§8 那个假绿坑）。
+- **突变（本单承重墙）**：方向＝`MemoryQueryService.cs:22` 的 `>= .5` → `>= .4`。红例名＝`Pry.Core.Tests.MemoryRetrievalFloorTests.Active_memory_at_confidence_floor_is_retrieved_while_active_memory_below_floor_is_not`，报错原文＝`Assert.Single() Failure: The collection contained 2 items`，多出来那项正是 `Confidence = 0.45`、`Summary = 用户喜欢后摇演出`；改回 `.5` 后定向跑转绿。**未做双突变** ⇒ 第二道门（`ContextBuilder.cs:164`）本轮仍无判据，按 §7 原口径登记为"防御纵深未覆盖"，不是"单点绿当覆盖"。
+- **出口读数（守门人当场逐份读那四份 TRX 的 `<Counters>`，不靠实现方转述）**：Core total 524／executed 522／passed 522／failed 0；Api 258/258；App 233/233；Client 106/106；总 **1121**＝524+258+233+106，失败 0，通过 1119。两条跳过按 `outcome="NotExecuted"` 点名＝`CoreTests.Configured_sense_voice_model_can_run_offline`、`LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key`（`notExecuted` 计数恒 0，照 §4）。地板那条例子在 Core 的 TRX 里按名字可见。顶账：Core 523→524＝本刀 1 条，其余三分项逐位不变，与 §8 的预期完全吻合。
+- **构建次数**：解决方案级完整构建与全量测试各**一次**（`dotnet build Pry.slnx -c Release` 0 警告 0 错误，紧跟全量，没有拿 `--no-build` 旧 dll 充证据）；绿→突变红→还原绿全部走单项目 `-t:Rebuild`＋`--filter` 定向跑法。起跑前核点 `dotnet.exe`，他人进程一律未动。
+- **其余门禁**：`scripts/measure-fixed-eval.ps1 -ResultsDirectory <本单专属目录>` exit=0、catalog 仍 **76**；`git diff --check` 干净；`CHANGELOG.md` 与 `docs/eval/scenarios.json` 零改动（本刀不改变任何行为）。跟踪格数随归位上一格：`git ls-files` 现数到 **528**（527＋这份新测试）。
+- **归位方式（守门人做）**：该 lane 的两枚提交里，文档那枚基于**没有 §8 的旧版工单**，整枚收下会把 §8 补正二删掉——所以只把测试那枚 `4cb4b7a` cherry-pick 到线尾 `8776a5b` 上得 `9f88a0c`，主工作树以 `git merge --ff-only` 收下；工单文字由守门人在本节重写。`main` 按作者 10-15「可以并线」跟到线尾（只挪 ref，gap=0）。
+- **下一步（不属本单）**：QA 从线尾 `9f88a0c` 建干净 `--detach` 副本复采，并亲手把 `>= .5` 那半改松看会不会红——本单的结案词不由本角色与实现 lane 写。
