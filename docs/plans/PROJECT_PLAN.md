@@ -4,7 +4,7 @@
 
 **当前主线：以 HDS 启发的持续叙事，替换借鉴 MaiCore 的 AI 回复生成架构。** 现有问题必须在迁移中解决，但不再要求先补完旧回复链才能开始验证新生成中心。架构细节与完整验收见 [v4 计划](Pry_HDS_Rewrite_Architecture_Plan_v4.md)。
 
-**状态：研究与计划已入库（`a7e62c1`）；产品架构尚未切换。第一波派单中两把已归位待验——HDS-011 的 AUD-01／06／04 切片（`faf8ecf`）与 HDS-001 的可恢复地基（`8ef7d01`），均待 QA 从线尾复采；HDS-002 在隔离 worktree 进行中；HDS-003 待 002 的类型归位后开工，HDS-004～010／012 未派发。** 计划的入库不代表实现、测试、合流或发行已经完成，结案词由作者写。
+**状态：研究与计划已入库（`a7e62c1`）；产品架构尚未切换。第一波派单的三把已归位待验——HDS-011 的 AUD-01／06／04 切片（`faf8ecf`）、HDS-001 的可恢复地基（`8ef7d01`）、HDS-002 的身份与存储契约（`5145bde`＋文档代归位 `e9a8055`），均待 QA 从线尾复采；HDS-003 的前置随 002 的类型归位而解除，仍无人认领；HDS-004～010／012 未派发。** 计划的入库不代表实现、测试、合流或发行已经完成，结案词由作者写。
 
 ## 1. 项目与计划边界
 
@@ -70,8 +70,8 @@
 | ARCH-HDS-001 | 研究与 v4 架构计划 | Codex / 文档已入库 `a7e62c1`，待作者结案 | HDS 固定源码复核、替换边界、问题映射、12 项实施任务与 24 项核心验收 |
 | DOC-HDS-002 | 共同入口与总计划整理 | Codex / 文档已入库 `a7e62c1`，待作者结案 | 本目录统一计划与任务状态；历史完整归档；根目录与文档入口同步 |
 | HDS-001 | 资产保全与可恢复地基 | **已实现待验**／守门人代派至隔离 worktree（实现 `3b65ccc`，已归位为主线 `8ef7d01`）；备份／恢复**未接生产路径**（无端点、无 UI 入口，触发时机属产品决策） | 无；先合成数据，一致性备份、隔离恢复与未知高版保护 |
-| HDS-002 | 稳定身份与存储契约 | **进行中**／守门人代派至隔离 worktree（本波只做契约设计＋纯领域类型；出口证据未采齐前不写已完成。HDS-003 押在它归位之后再开工，避免两支笔同时写 `Pry.Core.Narrative`） | 001 的数据保护；契约设计可先行；身份、版本、提交与迁移边界 |
-| HDS-003 | 新生成中心隔离原型 | 已派发 HDS-WAVE-1，待认领；Owner 建议 Runtime / Intelligence | v4；可与 001/002 隔离推进；七段上下文、Narrator、绑定、沉默/延迟和真实模型对照（模型实验需作者点头） |
+| HDS-002 | 稳定身份与存储契约 | **已实现待验**／守门人代派至隔离 worktree（实现 `5145bde`，契约文档的未提交更正由守门人代归位为 `e9a8055`；本波只做契约设计＋纯领域类型，不落表、不接线）；该 lane 到 150 轮上限停机，最后一轮自跑读数作废（详见 §9 同日 entry） | 001 的数据保护；契约设计可先行；身份、版本、提交与迁移边界 |
+| HDS-003 | 新生成中心隔离原型 | **前置已解除**／`Pry.Core.Narrative` 类型已归位，单一写者判据不再挡它；仍待认领，真实模型实验需作者点头。Owner 建议 Runtime / Intelligence | v4；002 的契约与类型；七段上下文、Narrator、绑定、沉默/延迟和真实模型对照 |
 | HDS-004 | 叙事生命周期 | 未认领 / 待认领；建议 Runtime | 002、003 语义验证；幂等、单写者、公平调度、失效和预算 |
 | HDS-005 | 原子提交与投递 | 未认领 / 待认领；建议 Runtime / Persistence | 002/004；输入处理、叙事、outbox、逐段历史与崩溃恢复 |
 | HDS-006 | 记忆与删除全链 | 未认领 / 待认领；建议 Memory & Context | 002；生产接线依赖 005；证据身份、统一检索、派生物删除与撤销 CAS |
@@ -180,6 +180,21 @@ git diff --cached --check
 数据库回退按实际 schema 和数据验证，不能拿历史 v7 的“可忽略新增表”保证未来恢复。备份考虑 SQLite WAL 一致性；恢复先在隔离目录验证，不能复活备份之后已明确遗忘的内容，也不能只回滚程序而忽略数据兼容。
 
 ## 9. 最近交接
+
+### 2026-10-21｜守门人｜HDS-002 契约刀归位＋它的自跑读数被证伪
+
+- 载体与结局：`.local-notes/hds-002-contract`，分支 `codex/hds-002-identity-storage-contract`，起点 `1c2e83d`，实现提交 `5145bde`（父提交 `86cd08c`＝该分支 rebase 到当时线尾之后）。**该 lane 在 23:40 撞到 150 轮上限被系统停掉**，它留下的最后一句是"Core builds clean. Now the test files."——而 `git log` 显示它在 23:37:28 已经把实现＋两份测试＋契约文档都提交了。**教训按事实记下来：lane 的最后一句话不能当状态读，状态读 git。**
+- 落地内容：11 个文件、+3754/**−0**（8 个 `src/Pry.Core/Narrative/` 纯领域文件、2 份新建测试文件、1 份 `docs/narrative-storage-contract.md`）；**没有一个现存文件被改动**，所以这一把对用户可见行为是零影响（契约是文字与形状，还没有人读这些类型）。
+- 纯度复核（不靠构建）：8 个 Narrative 文件**连一行 `using` 都没有**；`git diff --stat` 对 `*.csproj`／`*.json`／`*.props`／`*.targets` 为空；全文只有 `DataDirectoryWriteGate` 里一个名为 `ExclusiveWriteLockHeldByAnotherProcess` 的布尔属性提到"进程"，那不是进程 API。工单"本波只做契约＋纯领域类型、不落表、不预占版本、不接线"照字面成立。
+- **它的自跑门禁被逐份 TRX 证伪**（`.local-evidence/gate`，23:35:43）：Core total=491 里 `DataBackupServiceTests`／`DataRestoreServiceTests`／`SchemaVersionGuardTests`／`MemorySchemaMigrationRegistryTests` **四个类全部缺席**（32 例），Client total=101 少了 HDS-001 的 5 例——`491 = 462 − 32 + 61` 刚好对上，即 `dotnet test --no-build` 跑的是**它 rebase 之前编出来的旧二进制**。它的 `hds002-core/core-run1..3`（4 红／1 红／0 红）是开发迭代不是出口读数。**所以那一份自报门禁整批作废**，合流树由守门人重跑一次（见下）。
+- 守门人门禁（**一次构建＋一次全量测试，只此一轮**；载体＝`5145bde` 的 detached worktree `.qoder/worktrees/gate-hds002`，用完已删）：`dotnet build Pry.slnx -c Release` ⇒ **1 个警告、0 个错误**——那条警告是它自己的 `tests/Pry.Core.Tests/NarrativeStorageContractTests.cs:313` 用 `Assert.False()` 判集合成员（xUnit2012）。**没有当场改**：改一行就要再来一轮构建，而作者 10-21 夜明确不许反复构建；登记为"下一把该构建时顺手带走的一行"，本轮不动。`dotnet test --no-build --results-directory C:/Users/24782/gate-hds002-trx --logger trx` ⇒ **Client 106／App 233／Api 251／Core 523（执行 521、通过 521）**，总 **1113／失败 0／跳过 2**，四条 `<Counters>` 从各自 TRX 当场读；两条 `outcome="NotExecuted"` 点名 `CoreTests.Configured_sense_voice_model_can_run_offline` 与 `LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key`（与基线同两条）。`measure-fixed-eval.ps1` ⇒ Catalog valid: 76，Passed=1111; Failed=0; Other=2。`verify-repository` ⇒ **Repository verification passed for 525 tracked files**（514＋11，格数非门槛），`git diff --check` 干净。
+- 新判据顶账（先逐文件数属性再对分项）：`NarrativeIdentityContractTests.cs` 17 `[Fact]`＋3 `[Theory]`/14 `[InlineData]`＝31 例、`NarrativeStorageContractTests.cs` 30 `[Fact]`＝30 例，合计 **+61**；Core 462→523 与总 1052→1113 两处独立对上（TRX 里按类计数就是 31 与 30，没有 `Skip=`）。**在册基线仍是 QA 复采的 988／0／2，本 entry 不自封基线。**
+- 它的三条反证（先红后绿）复核到能核的程度：提交信息逐条写了拆掉哪道守卫与报错行号——第二写者（`Assert.False(second.Accepted)`，第 63 行）、投递段唯一键改成覆盖写（第 164 行）、代次落后的条件写（第 306／96／261 行三条同红）；守门人**当场核过这五个行号确实是那五条断言本身**，`red1/red2/red3` 三份 TRX 的失败用例名与之逐条相符（1／1／3 红）。诚实边界：TRX 只能证明"这些用例红过"，不能证明"红是因为守卫被拆而不是断言被改"——那一遍仍归 QA 独立做。
+- 契约文档的未提交更正由守门人代归位＝`e9a8055`（与来源文件逐字节相同，md5 `eeb6ca7c9606823a221eaa6ed42acfaf`）：lane 停机时把这批修改留在工作树里，内容是把 §11.2 从"迁移落点是散的 if"改写成按**已落地的** `SchemaMigrationStep`／`VersionAlign`／`IdempotentRepair` 记账，并新增未决项 U-11（往该类型追加 `FenceRequirement`／`BackfillEvidence`）与 U-12（目录写锁与版本读取的先后）；另有五处源码引用行号更正，守门人逐条对现树核过（`CharacterIntelligenceGateway.cs:38`、`MemoryDatabase.Runtime.cs:146`、`:200`、`MemoryDatabase.Proactive.cs:217`、`TurnTaking/ReplyPlanner.cs:12`、Narrative 目录 8 个文件）。该文档里有 2 处加粗形状缺陷（`**` 后紧跟空格、`**` 后紧跟全角引号，第 219／290 行），`bold-flank-newonly` 对 HEAD 比出 **NEW_DEFECTS=0** ⇒ 不是这次带进来的，是它自己提交的行文；不是作者那两页，本轮不代改，登记为外观小账。
+- 归位方式：`5145bde` 是线尾 `86cd08c` 的**严格后代**，所以这次用 `git merge --ff-only`（不是 blob 手术）——前提是先确认它不动他人名下文件：他人的两份**已暂存**文件（1/1 与 63/0）在合并前后逐字节不变，合并后 `git status` 只剩那两份，`git rev-list --count 5145bde..HEAD`＝0。main 随后跟到线尾。
+- 这一把不给用户任何新东西，也**没有解除两条真实风险**：① "同一实例不许同时有两份可发送真相"目前只是契约文字＋内存形状判定，真正可执行要等 HDS-005 落 outbox 与表；② 实例身份（LocalUser×Character）今天仍不存在落库通道，`CharacterIntelligenceGateway` 传的"实例身份"还是角色卡 ID 本身。§12 的未决项从 10 条变成 12 条（U-1…U-12），HDS-003／005 开工时要逐条对着读。
+- 状态词：§4.2 的 HDS-002 填"已实现待验"；HDS-003 的前置（单一写者判据）随本轮归位解除，仍待认领，真实模型实验需作者点头。结案词归作者。
+
 
 ### 2026-10-21｜守门人｜HDS-001 可恢复地基归位合流树
 
