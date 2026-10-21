@@ -12,9 +12,11 @@ namespace Pry.Core.Memory;
 /// </summary>
 public sealed partial class MemoryDatabase
 {
-    private static async Task InitializeRuntimeStateAsync(SqliteConnection connection, CancellationToken token)
+    private static async Task InitializeRuntimeStateAsync(SqliteConnection connection, CancellationToken token,
+        SqliteTransaction? transaction = null)
     {
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             CREATE TABLE IF NOT EXISTS conversation_runtime(
               conversation_id TEXT PRIMARY KEY,
@@ -26,14 +28,15 @@ public sealed partial class MemoryDatabase
             );
             """;
         await command.ExecuteNonQueryAsync(token);
-        await EnsureColumnAsync(connection, "reply_plans", "turn_id", "INTEGER NULL", token);
-        await EnsureColumnAsync(connection, "reply_plans", "generation_id", "INTEGER NULL", token);
-        await EnsureColumnAsync(connection, "reply_plans", "fence_epoch", "INTEGER NULL", token);
-        await EnsureColumnAsync(connection, "reply_plans", "status", "TEXT NOT NULL DEFAULT 'open'", token);
-        await EnsureColumnAsync(connection, "reply_plans", "source", "TEXT NULL", token);
-        await EnsureColumnAsync(connection, "reply_plans", "commit_token", "TEXT NULL", token);
-        await EnsureColumnAsync(connection, "reply_plans", "planned_count", "INTEGER NULL", token);
+        await EnsureColumnAsync(connection, "reply_plans", "turn_id", "INTEGER NULL", token, transaction);
+        await EnsureColumnAsync(connection, "reply_plans", "generation_id", "INTEGER NULL", token, transaction);
+        await EnsureColumnAsync(connection, "reply_plans", "fence_epoch", "INTEGER NULL", token, transaction);
+        await EnsureColumnAsync(connection, "reply_plans", "status", "TEXT NOT NULL DEFAULT 'open'", token, transaction);
+        await EnsureColumnAsync(connection, "reply_plans", "source", "TEXT NULL", token, transaction);
+        await EnsureColumnAsync(connection, "reply_plans", "commit_token", "TEXT NULL", token, transaction);
+        await EnsureColumnAsync(connection, "reply_plans", "planned_count", "INTEGER NULL", token, transaction);
         await using var index = connection.CreateCommand();
+        index.Transaction = transaction;
         index.CommandText = """
             CREATE INDEX IF NOT EXISTS ix_reply_plans_status ON reply_plans(status,id);
             CREATE INDEX IF NOT EXISTS ix_reply_plans_conversation ON reply_plans(conversation_id,id DESC);

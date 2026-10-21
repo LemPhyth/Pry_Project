@@ -18,9 +18,11 @@ public sealed partial class MemoryDatabase
 
     public static bool IsDurableEvent(string type) => !VolatileEventTypes.Contains(type, StringComparer.Ordinal);
 
-    private static async Task InitializeProtocolEventsAsync(SqliteConnection connection, CancellationToken token)
+    private static async Task InitializeProtocolEventsAsync(SqliteConnection connection, CancellationToken token,
+        SqliteTransaction? transaction = null)
     {
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             CREATE TABLE IF NOT EXISTS protocol_events(
               sequence INTEGER PRIMARY KEY AUTOINCREMENT,

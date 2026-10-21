@@ -6,9 +6,11 @@ namespace Pry.Core.Memory;
 
 public sealed partial class MemoryDatabase
 {
-    private static async Task InitializeProactivePoliciesAsync(SqliteConnection connection, CancellationToken token)
+    private static async Task InitializeProactivePoliciesAsync(SqliteConnection connection, CancellationToken token,
+        SqliteTransaction? transaction = null)
     {
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             CREATE TABLE IF NOT EXISTS proactive_policies(
               character_id TEXT PRIMARY KEY,

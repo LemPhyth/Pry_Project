@@ -19,9 +19,11 @@ namespace Pry.Core.Memory;
 /// </summary>
 public sealed partial class MemoryDatabase
 {
-    private static async Task InitializeIntelligenceAsync(SqliteConnection connection, CancellationToken token)
+    private static async Task InitializeIntelligenceAsync(SqliteConnection connection, CancellationToken token,
+        SqliteTransaction? transaction = null)
     {
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             CREATE TABLE IF NOT EXISTS character_state(
               character_id TEXT NOT NULL,

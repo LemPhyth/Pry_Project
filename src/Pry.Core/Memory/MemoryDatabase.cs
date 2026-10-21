@@ -25,127 +25,177 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(databasePath))!);
         await using var connection = await OpenAsync(cancellationToken);
         var versionBefore = await ReadSchemaVersionAsync(connection, cancellationToken);
-        var sql = """
-            PRAGMA journal_mode=WAL;
-            PRAGMA foreign_keys=ON;
-            CREATE TABLE IF NOT EXISTS schema_info(version INTEGER NOT NULL);
-            INSERT INTO schema_info(version) SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_info);
-            CREATE TABLE IF NOT EXISTS messages(
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              conversation_id TEXT NOT NULL,
-              role TEXT NOT NULL,
-              content TEXT NOT NULL,
-              image_path TEXT NULL,
-              sticker_id TEXT NULL,
-              source TEXT NOT NULL DEFAULT 'legacy',
-              created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS ix_messages_conversation ON messages(conversation_id, id DESC);
-            CREATE TABLE IF NOT EXISTS conversations(
-              id TEXT PRIMARY KEY,
-              title TEXT NOT NULL DEFAULT '新对话',
-              character_id TEXT NULL,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS conversation_folders(
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS ix_conversations_updated ON conversations(updated_at DESC);
-            CREATE TABLE IF NOT EXISTS interaction_commands(
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              conversation_id TEXT NOT NULL,
-              idempotency_key TEXT NOT NULL,
-              character_id TEXT NOT NULL,
-              action_id TEXT NOT NULL,
-              message_id INTEGER NULL,
-              outcome TEXT NOT NULL,
-              expression_intent TEXT NULL,
-              created_at TEXT NOT NULL,
-              UNIQUE(conversation_id,idempotency_key),
-              FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS ix_interaction_commands_cooldown
-              ON interaction_commands(conversation_id,action_id,created_at DESC);
-            INSERT OR IGNORE INTO conversations(id,title,created_at,updated_at)
-            SELECT m.conversation_id,
-              COALESCE(NULLIF((SELECT u.content FROM messages u WHERE u.conversation_id=m.conversation_id AND u.role='user' AND u.content<>'' ORDER BY u.id LIMIT 1),''),'旧对话'),
-              MIN(m.created_at),MAX(m.created_at)
-            FROM messages m GROUP BY m.conversation_id;
-            CREATE TABLE IF NOT EXISTS memories(
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              character_id TEXT NOT NULL,
-              kind TEXT NOT NULL,
-              summary TEXT NOT NULL,
-              tags TEXT NOT NULL DEFAULT '',
-              importance REAL NOT NULL DEFAULT 0.5,
-              source_message_id INTEGER NULL,
-              created_at TEXT NOT NULL,
-              FOREIGN KEY(source_message_id) REFERENCES messages(id) ON DELETE SET NULL
-            );
-            CREATE INDEX IF NOT EXISTS ix_memories_character ON memories(character_id, importance DESC);
-            CREATE TABLE IF NOT EXISTS memory_embeddings(
-              memory_id INTEGER NOT NULL,
-              model_id TEXT NOT NULL,
-              dimensions INTEGER NOT NULL,
-              vector BLOB NOT NULL,
-              content_fingerprint TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              PRIMARY KEY(memory_id, model_id),
-              FOREIGN KEY(memory_id) REFERENCES memories(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS ix_memory_embeddings_model ON memory_embeddings(model_id, memory_id);
-            CREATE TABLE IF NOT EXISTS reply_plans(
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              conversation_id TEXT NOT NULL,
-              created_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS planned_messages(
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              reply_plan_id INTEGER NOT NULL,
-              sequence INTEGER NOT NULL,
-              type TEXT NOT NULL,
-              content TEXT NULL,
-              sticker_id TEXT NULL,
-              state TEXT NOT NULL,
-              delivered_at TEXT NULL,
-              FOREIGN KEY(reply_plan_id) REFERENCES reply_plans(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS ix_planned_messages_plan ON planned_messages(reply_plan_id, sequence);
-            CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(summary, tags, content='memories', content_rowid='id', tokenize='unicode61');
-            CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
-              INSERT INTO memory_fts(rowid, summary, tags) VALUES (new.id, new.summary, new.tags);
-            END;
-            CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
-              INSERT INTO memory_fts(memory_fts, rowid, summary, tags) VALUES('delete', old.id, old.summary, old.tags);
-            END;
-            CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE OF summary, tags ON memories BEGIN
-              INSERT INTO memory_fts(memory_fts, rowid, summary, tags) VALUES('delete', old.id, old.summary, old.tags);
-              INSERT INTO memory_fts(rowid, summary, tags) VALUES (new.id, new.summary, new.tags);
-            END;
-            """;
-        await using var command = connection.CreateCommand();
-        command.CommandText = sql;
-        await command.ExecuteNonQueryAsync(cancellationToken);
-        await EnsureColumnAsync(connection, "messages", "sticker_id", "TEXT NULL", cancellationToken);
-        await EnsureColumnAsync(connection, "messages", "source", "TEXT NOT NULL DEFAULT 'legacy'", cancellationToken);
-        await EnsureColumnAsync(connection, "memories", "updated_at", "TEXT NULL", cancellationToken);
-        await EnsureColumnAsync(connection, "memories", "last_used_at", "TEXT NULL", cancellationToken);
-        await EnsureColumnAsync(connection, "conversations", "folder_id", "TEXT NULL", cancellationToken);
-        await EnsureColumnAsync(connection, "conversations", "is_pinned", "INTEGER NOT NULL DEFAULT 0", cancellationToken);
-        await UpgradeMemoryIndexAsync(connection, cancellationToken);
-        await LongTerm.InitializeAsync(cancellationToken);
-        await InitializeProactivePoliciesAsync(connection, cancellationToken);
-        await InitializeReadStateAsync(connection, cancellationToken);
-        await InitializeRuntimeStateAsync(connection, cancellationToken);
-        await InitializeProtocolEventsAsync(connection, cancellationToken);
-        await InitializeIntelligenceAsync(connection, cancellationToken);
-        await SetSchemaVersionAsync(connection, SchemaVersion, cancellationToken);
+        // 未知高版本保护必须在**任何写入之前**（HDS-001 E 条 / v4 §9.3 / AUD-05）：
+        // 下面第一批语句里的 `PRAGMA journal_mode=WAL` 就是写——高版本库绝不能先被改了口径再报错。
+        EnsureWritableSchemaVersion(versionBefore, "初始化");
+        // PRAGMA 留在事务外：journal_mode 不允许在事务内切换，它也不是迁移步骤，只是连接形态设置。
+        await using var pragma = connection.CreateCommand();
+        pragma.CommandText = "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;";
+        await pragma.ExecuteNonQueryAsync(cancellationToken);
+        // 建表/补列/版本推进从"一条直线"改为登记清单执行（HDS-001 F 条）：每步一个事务边界，
+        // 失败整步回滚、版本不推进；全部步骤幂等，重跑初始化就是恢复路径。
+        await MemorySchemaMigrator.RunAsync(connection, versionBefore, BuildMigrationSteps(), cancellationToken);
         // 版本、表与列名是标识符不是内容；这里不写文件名也不写任何用户数据（PLAT-006 "secrets 不进日志"）。
         _logger.LogInformation("持久层就绪：schema {VersionBefore} → {SchemaVersion}，用时 {ElapsedMilliseconds} 毫秒",
             versionBefore, SchemaVersion, Environment.TickCount64 - started);
+    }
+
+    /// <summary>
+    /// 迁移登记清单（HDS-001 F 条）。步骤内容是本刀之前**已经存在**的结构动作，逐条原样收编——
+    /// 本刀只搭治理（登记、事务边界、失败回滚、幂等要求），不定义任何新结构、不预占新版本号（v4 §9.1）。
+    /// 闸门档步骤 <c>memory-fts-rebuild</c> 保留历史语义：仅对登记版本低于 2 的库执行一次。
+    /// </summary>
+    public IReadOnlyList<SchemaMigrationStep> BuildMigrationSteps() =>
+    [
+        new(1, "baseline.schema", "既有结构的自愈建表与列补齐", SchemaMigrationMode.SelfHealingBaseline,
+            static async (context, token) =>
+            {
+                var (connection, transaction) = (context.Connection, context.Transaction);
+                await using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = """
+                    CREATE TABLE IF NOT EXISTS schema_info(version INTEGER NOT NULL);
+                    INSERT INTO schema_info(version) SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_info);
+                    CREATE TABLE IF NOT EXISTS messages(
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      conversation_id TEXT NOT NULL,
+                      role TEXT NOT NULL,
+                      content TEXT NOT NULL,
+                      image_path TEXT NULL,
+                      sticker_id TEXT NULL,
+                      source TEXT NOT NULL DEFAULT 'legacy',
+                      created_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_messages_conversation ON messages(conversation_id, id DESC);
+                    CREATE TABLE IF NOT EXISTS conversations(
+                      id TEXT PRIMARY KEY,
+                      title TEXT NOT NULL DEFAULT '新对话',
+                      character_id TEXT NULL,
+                      created_at TEXT NOT NULL,
+                      updated_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS conversation_folders(
+                      id TEXT PRIMARY KEY,
+                      name TEXT NOT NULL,
+                      created_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_conversations_updated ON conversations(updated_at DESC);
+                    CREATE TABLE IF NOT EXISTS interaction_commands(
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      conversation_id TEXT NOT NULL,
+                      idempotency_key TEXT NOT NULL,
+                      character_id TEXT NOT NULL,
+                      action_id TEXT NOT NULL,
+                      message_id INTEGER NULL,
+                      outcome TEXT NOT NULL,
+                      expression_intent TEXT NULL,
+                      created_at TEXT NOT NULL,
+                      UNIQUE(conversation_id,idempotency_key),
+                      FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_interaction_commands_cooldown
+                      ON interaction_commands(conversation_id,action_id,created_at DESC);
+                    INSERT OR IGNORE INTO conversations(id,title,created_at,updated_at)
+                    SELECT m.conversation_id,
+                      COALESCE(NULLIF((SELECT u.content FROM messages u WHERE u.conversation_id=m.conversation_id AND u.role='user' AND u.content<>'' ORDER BY u.id LIMIT 1),''),'旧对话'),
+                      MIN(m.created_at),MAX(m.created_at)
+                    FROM messages m GROUP BY m.conversation_id;
+                    CREATE TABLE IF NOT EXISTS memories(
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      character_id TEXT NOT NULL,
+                      kind TEXT NOT NULL,
+                      summary TEXT NOT NULL,
+                      tags TEXT NOT NULL DEFAULT '',
+                      importance REAL NOT NULL DEFAULT 0.5,
+                      source_message_id INTEGER NULL,
+                      created_at TEXT NOT NULL,
+                      FOREIGN KEY(source_message_id) REFERENCES messages(id) ON DELETE SET NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_memories_character ON memories(character_id, importance DESC);
+                    CREATE TABLE IF NOT EXISTS memory_embeddings(
+                      memory_id INTEGER NOT NULL,
+                      model_id TEXT NOT NULL,
+                      dimensions INTEGER NOT NULL,
+                      vector BLOB NOT NULL,
+                      content_fingerprint TEXT NOT NULL,
+                      updated_at TEXT NOT NULL,
+                      PRIMARY KEY(memory_id, model_id),
+                      FOREIGN KEY(memory_id) REFERENCES memories(id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_memory_embeddings_model ON memory_embeddings(model_id, memory_id);
+                    CREATE TABLE IF NOT EXISTS reply_plans(
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      conversation_id TEXT NOT NULL,
+                      created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS planned_messages(
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      reply_plan_id INTEGER NOT NULL,
+                      sequence INTEGER NOT NULL,
+                      type TEXT NOT NULL,
+                      content TEXT NULL,
+                      sticker_id TEXT NULL,
+                      state TEXT NOT NULL,
+                      delivered_at TEXT NULL,
+                      FOREIGN KEY(reply_plan_id) REFERENCES reply_plans(id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS ix_planned_messages_plan ON planned_messages(reply_plan_id, sequence);
+                    CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(summary, tags, content='memories', content_rowid='id', tokenize='unicode61');
+                    CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+                      INSERT INTO memory_fts(rowid, summary, tags) VALUES (new.id, new.summary, new.tags);
+                    END;
+                    CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+                      INSERT INTO memory_fts(memory_fts, rowid, summary, tags) VALUES('delete', old.id, old.summary, old.tags);
+                    END;
+                    CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE OF summary, tags ON memories BEGIN
+                      INSERT INTO memory_fts(memory_fts, rowid, summary, tags) VALUES('delete', old.id, old.summary, old.tags);
+                      INSERT INTO memory_fts(rowid, summary, tags) VALUES (new.id, new.summary, new.tags);
+                    END;
+                    """;
+                await command.ExecuteNonQueryAsync(token);
+                await EnsureColumnAsync(connection, "messages", "sticker_id", "TEXT NULL", token, transaction);
+                await EnsureColumnAsync(connection, "messages", "source", "TEXT NOT NULL DEFAULT 'legacy'", token, transaction);
+                await EnsureColumnAsync(connection, "memories", "updated_at", "TEXT NULL", token, transaction);
+                await EnsureColumnAsync(connection, "memories", "last_used_at", "TEXT NULL", token, transaction);
+                await EnsureColumnAsync(connection, "conversations", "folder_id", "TEXT NULL", token, transaction);
+                await EnsureColumnAsync(connection, "conversations", "is_pinned", "INTEGER NOT NULL DEFAULT 0", token, transaction);
+            }),
+        new(2, "upgrade.memory-fts-rebuild", "长期记忆全文索引重建", SchemaMigrationMode.VersionGatedUpgrade,
+            static async (context, token) =>
+            {
+                await using var migrate = context.Connection.CreateCommand();
+                migrate.Transaction = context.Transaction;
+                // 历史欠账（PLAT-003 P2）：这两句曾经串跑且没有事务包裹。现在重建与版本推进同处
+                // 本步骤的事务边界——要么一起生效，要么一起消失。
+                migrate.CommandText = "INSERT INTO memory_fts(memory_fts) VALUES('rebuild'); UPDATE schema_info SET version=2;";
+                await migrate.ExecuteNonQueryAsync(token);
+            }),
+        new(SchemaVersion, "repair.long-term-memory", "长期记忆仓储整备",
+            SchemaMigrationMode.IdempotentRepairOwnsConnection,
+            (context, token) => LongTerm.InitializeAsync(token)),
+        new(SchemaVersion, "repair.proactive-policies", "主动消息策略表整备", SchemaMigrationMode.IdempotentRepair,
+            static async (context, token) => await InitializeProactivePoliciesAsync(context.Connection, token, context.Transaction)),
+        new(SchemaVersion, "repair.read-state", "会话读水位整备", SchemaMigrationMode.IdempotentRepair,
+            static async (context, token) => await InitializeReadStateAsync(context.Connection, token, context.Transaction)),
+        new(SchemaVersion, "repair.runtime-state", "对话 Runtime 整备", SchemaMigrationMode.IdempotentRepair,
+            static async (context, token) => await InitializeRuntimeStateAsync(context.Connection, token, context.Transaction)),
+        new(SchemaVersion, "repair.protocol-events", "协议事件账本整备", SchemaMigrationMode.IdempotentRepair,
+            static async (context, token) => await InitializeProtocolEventsAsync(context.Connection, token, context.Transaction)),
+        new(SchemaVersion, "repair.intelligence", "学习状态表整备", SchemaMigrationMode.IdempotentRepair,
+            static async (context, token) => await InitializeIntelligenceAsync(context.Connection, token, context.Transaction)),
+        new(SchemaVersion, "align.schema-version", "登记版本对齐", SchemaMigrationMode.VersionAlign,
+            static async (context, token) =>
+                await SetSchemaVersionAsync(context.Connection, SchemaVersion, token, context.Transaction)),
+    ];
+
+    /// <summary>
+    /// 未知高版本拒写门（HDS-001 E 条）：登记版本高于当前二进制已知版本时，在任何写入发生前抛出
+    /// <see cref="SchemaVersionTooNewException"/>。等号放行（同版本或可升级的旧版本照常走迁移清单）。
+    /// </summary>
+    private static void EnsureWritableSchemaVersion(int databaseSchemaVersion, string stage)
+    {
+        if (databaseSchemaVersion <= SchemaVersion) return;
+        throw new SchemaVersionTooNewException(SchemaVersion, databaseSchemaVersion, stage);
     }
 
     /// <summary>
@@ -936,9 +986,10 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
     }
 
     private static async Task EnsureColumnAsync(SqliteConnection connection, string table, string column,
-        string declaration, CancellationToken cancellationToken)
+        string declaration, CancellationToken cancellationToken, SqliteTransaction? transaction = null)
     {
         await using var check = connection.CreateCommand();
+        check.Transaction = transaction;
         check.CommandText = $"PRAGMA table_info({table})";
         await using var reader = await check.ExecuteReaderAsync(cancellationToken);
         var exists = false;
@@ -946,19 +997,9 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
         await reader.DisposeAsync();
         if (exists) return;
         await using var alter = connection.CreateCommand();
+        alter.Transaction = transaction;
         alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {declaration}";
         await alter.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    private static async Task UpgradeMemoryIndexAsync(SqliteConnection connection, CancellationToken cancellationToken)
-    {
-        await using var version = connection.CreateCommand();
-        version.CommandText = "SELECT COALESCE(MAX(version), 1) FROM schema_info";
-        var current = Convert.ToInt32(await version.ExecuteScalarAsync(cancellationToken));
-        if (current >= 2) return;
-        await using var migrate = connection.CreateCommand();
-        migrate.CommandText = "INSERT INTO memory_fts(memory_fts) VALUES('rebuild'); UPDATE schema_info SET version=2;";
-        await migrate.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>当前数据库结构版本，供协议握手与诊断读取；SQL 不出本层。</summary>
@@ -971,9 +1012,10 @@ public sealed partial class MemoryDatabase(string databasePath, ILogger? logger 
     }
 
     private static async Task SetSchemaVersionAsync(SqliteConnection connection, int version,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, SqliteTransaction? transaction = null)
     {
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "UPDATE schema_info SET version=$version WHERE version<$version";
         command.Parameters.AddWithValue("$version", version);
         await command.ExecuteNonQueryAsync(cancellationToken);

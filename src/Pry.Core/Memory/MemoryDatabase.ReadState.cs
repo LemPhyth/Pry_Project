@@ -5,10 +5,12 @@ namespace Pry.Core.Memory;
 
 public sealed partial class MemoryDatabase
 {
-    private static async Task InitializeReadStateAsync(SqliteConnection connection, CancellationToken token)
+    private static async Task InitializeReadStateAsync(SqliteConnection connection, CancellationToken token,
+        SqliteTransaction? transaction = null)
     {
-        await EnsureColumnAsync(connection, "conversations", "last_read_message_id", "INTEGER NOT NULL DEFAULT 0 CHECK(last_read_message_id >= 0)", token);
+        await EnsureColumnAsync(connection, "conversations", "last_read_message_id", "INTEGER NOT NULL DEFAULT 0 CHECK(last_read_message_id >= 0)", token, transaction);
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "CREATE INDEX IF NOT EXISTS ix_messages_conversation_role_id ON messages(conversation_id,role,id)";
         await command.ExecuteNonQueryAsync(token);
     }

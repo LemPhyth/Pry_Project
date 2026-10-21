@@ -20,6 +20,8 @@ public enum PryErrorKind
     ProtocolMismatch,
     SessionRejected,
     ProviderRejected,
+    /// <summary>数据保护守卫拦下的动作（如未知高版本结构拒写，HDS-001）：错误自带用户文案，不走泛化兜底。</summary>
+    StorageGuarded,
     Unknown
 }
 
@@ -45,6 +47,10 @@ public static class PryErrorPresenter
 
     public static PryUserError Describe(Exception exception) => exception switch
     {
+        // 守卫类拒绝先于一切分类：它们发生在 HTTP 通道之前（启动、恢复核对），
+        // 文案由持有者自己按契约给出——泛化兜底会把"版本不认识的库"说成"稍后重试"，那是撒谎。
+        IUserPresentableError guarded => new PryUserError(PryErrorKind.StorageGuarded, guarded.Headline, guarded.Body,
+            $"异常类型：{exception.GetType().Name} · detail={exception.Message}", guarded.RetryAllowed),
         PryBackendException backend => DescribeBackend(backend),
         HttpRequestException transport => DescribeTransport(transport),
         TimeoutException or TaskCanceledException => new PryUserError(PryErrorKind.Timeout,
