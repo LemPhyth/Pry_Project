@@ -69,3 +69,38 @@ public sealed class MemoryMigrationException : Exception, IUserPresentableError
 
     public bool RetryAllowed => true;
 }
+
+/// <summary>
+/// 第二套结构版本账的拒写门（DEF-MEMDUAL-01）：同一份 SQLite 里除了 <c>schema_info</c>
+/// （<see cref="MemoryDatabase.SchemaVersion"/>，平台登记账）之外，还有一张记忆组件自己的
+/// <c>memory_schema</c>（由 <see cref="SqliteMemoryRepository"/> 维护，当前合法区间 1..2）。
+/// 该账版本落在区间之外（高于 2 ＝来自更新版本的 Pry；低于 1 ＝结构不可解释）时，
+/// 初始化在组件做任何自愈写入之前抛本异常。它与 <see cref="SchemaVersionTooNewException"/>
+/// 是两道各自独立的门：拦下者的类型必须能区分归属，所以不合并、不互相顶名。
+/// <para>
+/// 与平台账同构，本异常实现 <see cref="IUserPresentableError"/>：两账的拒绝都要能原样呈现给用户，
+/// 并明说"重试不会改变结果"；技术细节（版本号与组件名）留在 <c>Message</c> 里。
+/// "一个库只有一个当前结构版本"的合并迁移归 HDS-005，本类型只补可见性。
+/// </para>
+/// </summary>
+public sealed class MemoryComponentSchemaRejectedException : Exception, IUserPresentableError
+{
+    public MemoryComponentSchemaRejectedException(int componentVersion)
+        : base($"记忆组件（memory_schema）登记版本 {componentVersion} 不在当前程序可写入的范围 1..2 内；" +
+               "已拒绝写入任何数据，本次初始化没有任何语句生效。")
+    {
+        ComponentVersion = componentVersion;
+    }
+
+    /// <summary>memory_schema 账上的版本号；落在合法区间之外才走到本异常。</summary>
+    public int ComponentVersion { get; }
+
+    public string Headline => "记忆组件的结构来自更新版本的 Pry";
+
+    public string Body =>
+        $"这份数据库的记忆组件结构版本（{ComponentVersion}）不是当前 Pry 能安全写入的版本，" +
+        "Pry 已在写入之前停止，记忆数据一份都没有被改动。重试不会改变结果：只要还是这份数据库，同一条拒绝会再次生效。" +
+        "请使用与该结构同版本或更新的 Pry 启动；如必须回到当前版本，请先用备份恢复到另一个目录，不要就地改写这份库。";
+
+    public bool RetryAllowed => false;
+}

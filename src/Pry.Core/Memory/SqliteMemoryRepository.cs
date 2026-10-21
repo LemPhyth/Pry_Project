@@ -97,7 +97,7 @@ public sealed class SqliteMemoryRepository(string databasePath) : IMemoryReposit
             CREATE INDEX IF NOT EXISTS ix_memory_scope_active ON memories(scope_key,status);
             """, token);
         var version = await Number(c, tx, "SELECT MAX(version) FROM memory_schema", token);
-        if (version is < 1 or > 2) throw new InvalidOperationException("Unsupported memory component schema version.");
+        if (version is < 1 or > 2) throw new MemoryComponentSchemaRejectedException((int)version);
         var legacy = new List<(long Id, string Character, string Kind, string Content)>();
         await using (var cmd = Command(c, tx, "SELECT id,character_id,kind,summary FROM memories WHERE scope_key='' OR fingerprint=''"))
         await using (var reader = await cmd.ExecuteReaderAsync(token))

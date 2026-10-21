@@ -91,7 +91,10 @@ public static class MemorySchemaMigrator
                     catch (SqliteException) { /* 连接已断时回滚是空操作；事务句柄释放即可。 */ }
                     await transaction.DisposeAsync();
                 }
-                if (error is MemoryMigrationException or SchemaVersionTooNewException) throw;
+                // 守卫类拒绝原样上抛（DEF-MEMDUAL-01）：MemoryComponentSchemaRejectedException 一旦被裹进
+                // MemoryMigrationException，界面就会拿着"解决后重跑即可"的 RetryAllowed=true 去引导用户
+                // 反复启动一份来自更新版本 Pry 的库——那正是这道门要禁止的事。
+                if (error is MemoryMigrationException or SchemaVersionTooNewException or MemoryComponentSchemaRejectedException) throw;
                 throw new MemoryMigrationException(step.Id, step.Name, error);
             }
             finally
