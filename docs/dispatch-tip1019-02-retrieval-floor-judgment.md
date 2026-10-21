@@ -53,3 +53,14 @@
   ⇒ 写法照既有 F2 那条用例的口径（`Assert.Empty((await Query("…")).Hits)` 这一族，直接拿 `MemoryQueryService` 的返回；`MemoryDatabase.SearchMemoriesAsync` 是同一入口的另一头）；§2.2 的突变只松 F1 那半，必须红。
   ⇒ 若还想给第二道门留证据，唯一诚实的形状是**双突变**：两处 `.5` 同时松到 `.4` ⇒ `.45` 的 active 行必须出现在提示词里 ⇒ 必须红；§9 要如实写「两处各自单点为绿、双点为红」，**不许把单点绿当覆盖**。
 - **同族、明确不属于本单的两处数字**（只登记，认领人不许顺手补，守门人下一轮派单时再定级别与 Owner）：`src/Pry.Core/Intelligence/RelationshipState.cs:139` `Reliable => Confidence >= 0.5`（唯一消费者 `CharacterStateService.cs:181`；抓手＝`CharacterIntelligenceTests.cs:251`／`:254` 的 0.2 拒、0.9 放行——**两侧都不贴边**，所以地板下调无人知晓、上调会被发现）；`src/Pry.Core/Intelligence/BehaviorPlanner.cs:125` `x.Confidence >= 0.55`（抓手＝`CharacterIntelligenceTests.cs:345` 那条喂 `Confidence = 0.7` 的用例，同样是只钉住上界）。这两条比本单轻：它们不是零抓手，是**单边抓手**，本单的 `.5` 是零抓手。
+
+## 8. 开工前补正二（守门人 2026-10-22 凌晨，线尾 `c148fbf`；本单由守门人代派至隔离 worktree）
+
+- **状态词**：从"已派工·待认领"改成"进行中"（写入者＝本单，Owner＝Memory & Context 的代派 lane；归位与结案词仍由守门人与作者写）。
+- **§1 的 F1 锚点当场重读，逐字复现**：`src/Pry.Core/Memory/MemoryQueryService.cs:22` 仍是 `.Where(x => x.Status == "active" && x.Confidence >= .5 && x.ScopeKey == query.Scope.Key).ToArray();`——同一行三个条件，本单只许钉住中间那半。
+- **§7 那条 F6 的行号已经漂移，认领人以本轮读数为准**：第二道同值地板现在在 `src/Pry.Core/Prompting/ContextBuilder.cs:164`（`var fresh = ... .Where(x => x.Status == "active" && x.Confidence >= .5)`），`request.Memory.Hits.Take(6)` 在 `:172`，`dropped(..., "stale_or_deleted")` 在 `:176`。上一版写的 `:88`／`:96-100` 别再照抄。F6 的两条结论一字不改：断言面钉在 `MemoryQueryService` 的返回、不钉端到端；要给第二道门留证据只能用双突变，并如实写"两处各自单点为绿、双点为红"。
+- **§2.3 的门禁面按作者指令降档（这是本轮唯一的口径变更）**：作者 2026-10-21 原话「你 下一次 不要 再 反复构建 触发那个防火墙 烦我打游戏 再这样 我要给你喂史了」⇒ 原来的"解决方案级连续两次全绿且分项逐位相同"改成**一次**完整 `dotnet build Pry.slnx -c Release` ＋**一次**全量测试（跑完先数到四份 `.trx` 再逐份读 `<Counters>`）。其余读数口径一字不动：长参 `--results-directory` 绝对路径、`--logger trx`、跳过只按 `outcome="NotExecuted"` 点名、引用总数必须写全四分项。反证一律定向跑（单项目 `-t:Rebuild` ＋ `--filter "FullyQualifiedName~<用例名>"`），不许为反证重跑全量；出口那轮必须紧跟一次完整编译，严禁拿 `--no-build` 的旧 dll 当证据（昨天 HDS-002 那把就栽在这里）。完整规矩＝`docs/dispatch-hds-wave2-20261021.md` 全局约束第 3／4／5 条。
+- **起点先数格子**：基线＝线尾 `c148fbf`；开工先 `git rev-list --count <你的起点>..HEAD`，落后就 `git merge --ff-only` 追平（HDS-011b 那把落后 86 格，这是常态不是意外）。
+- **预期读数**：本刀之后四分项＝Api 258／Core 523＋本刀新增条数／App 233／Client 106。守门人 2026-10-22 从 `c148fbf` 的合流等价树读到的就是 1120／失败 0／通过 1118，两条跳过点名＝`LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key`、`CoreTests.Configured_sense_voice_model_can_run_offline`。在册基线 988／0／2 的改写权在 QA，本单不自封基线。
+- **落点收窄（避免撞位）**：只在 `tests/Pry.Core.Tests/` 新建一份自己的文件（建议 `MemoryRetrievalFloorTests.cs`），**不要**把用例追加进 `MemoryContextTests.cs`——同族的 `RT-005-MANAGE` 实现此刻正悬在主工作区索引里（他人名下 `tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs` 63/0 未归位）。`src/` 零改动这条不变。
+- 单一写者、文档与代码分刀提交、未 push、未 tag、未打包、真实数据目录禁区、绝不动他人进程——全部照 §3／§4 执行；归位由守门人做。

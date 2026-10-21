@@ -4,7 +4,7 @@
 
 **当前主线：以 HDS 启发的持续叙事，替换借鉴 MaiCore 的 AI 回复生成架构。** 现有问题必须在迁移中解决，但不再要求先补完旧回复链才能开始验证新生成中心。架构细节与完整验收见 [v4 计划](Pry_HDS_Rewrite_Architecture_Plan_v4.md)。
 
-**状态：研究与计划已入库（`a7e62c1`）；产品架构尚未切换。第一波派单的三把已归位待验——HDS-011 的 AUD-01／06／04 切片（`faf8ecf`）、HDS-001 的可恢复地基（`8ef7d01`）、HDS-002 的身份与存储契约（`5145bde`＋文档代归位 `e9a8055`），均待 QA 从线尾复采；HDS-003 的前置随 002 的类型归位而解除，仍无人认领；HDS-004～010／012 未派发。** 计划的入库不代表实现、测试、合流或发行已经完成，结案词由作者写。
+**状态：研究与计划已入库（`a7e62c1`）；产品架构尚未切换。第一波派单的三把已归位待验——HDS-011 的 AUD-01／06／04 切片（`faf8ecf`）、HDS-001 的可恢复地基（`8ef7d01`）、HDS-002 的身份与存储契约（`5145bde`＋文档代归位 `e9a8055`）；第二波的第一把也已归位待验——HDS-011b 的 AUD-07 长度校验切片（`1edf69e`＋`c148fbf`，同场消掉 002 那一条警告）。四把均待 QA 从线尾复采；HDS-003 的前置随 002 的类型归位而解除，仍无人认领，且它的真实模型对照要作者点头才派；HDS-004～010／012 未派发。** 计划的入库不代表实现、测试、合流或发行已经完成，结案词由作者写。
 
 ## 1. 项目与计划边界
 
@@ -79,7 +79,7 @@
 | HDS-008 | 客户端与协议迁移 | 未认领 / 待认领；建议 Windows Client / API | 004/005 接口冻结；等待、失败、许可、兼容和完整接口契约 |
 | HDS-009 | 状态与显式学习迁移 | 未认领 / 待认领；建议 Intelligence / Memory | 005/006；角色 Canon/Overlay、关系经验、真实投递与显式反馈归因 |
 | HDS-010 | 生产切换与旧链退役 | 未认领 / 待认领；建议 Architecture / Integration | 003～006/008/009 关键验收；每实例单引擎、迁移、去除旧主链及死入口 |
-| HDS-011 | 安全、性能与发行基础 | 切片 AUD-01／06／04 **已实现待验**／守门人代派至隔离 worktree（实现 `ae67267`，已归位为主线 `faf8ecf`）；**AUD-07 切片＝HDS-011b 进行中**／守门人代派至隔离 worktree（工单 `docs/dispatch-hds-wave2-20261021.md`，捆上一把留下的那一行警告；出口证据未采齐前不写已完成）；其余范围未开工 | 已暴露旧缺陷可独立修；新链检查依赖 005；资源限额、依赖和版本/许可 |
+| HDS-011 | 安全、性能与发行基础 | 切片 AUD-01／06／04 **已实现待验**／守门人代派至隔离 worktree（实现 `ae67267`，已归位为主线 `faf8ecf`）；**AUD-07 切片＝HDS-011b 已实现待验**／守门人代派至隔离 worktree（实现两把 `1edf69e`＋`c148fbf`，rebase 到线尾后由守门人以 fast-forward 归位为本线尾 `c148fbf`；工单 `docs/dispatch-hds-wave2-20261021.md`；上一把留下的那一条警告同场归零）；其余范围未开工 | 已暴露旧缺陷可独立修；新链检查依赖 005；资源限额、依赖和版本/许可 |
 | HDS-012 | 独立验收与候选包 | 未认领 / 待认领；建议 QA / Release | 007/010/011；模型体验、故障、恢复/安装/退出、统一 SHA；发布另按明确指令 |
 
 完整任务交付与验收以 v4 §13/§14 为准。本表维护状态，v4 不再另维护一套实时负责人。
@@ -180,6 +180,26 @@ git diff --cached --check
 数据库回退按实际 schema 和数据验证，不能拿历史 v7 的“可忽略新增表”保证未来恢复。备份考虑 SQLite WAL 一致性；恢复先在隔离目录验证，不能复活备份之后已明确遗忘的内容，也不能只回滚程序而忽略数据兼容。
 
 ## 9. 最近交接
+
+### 2026-10-22｜守门人｜门禁口径由"连续两次全绿"降为"一轮构建＋一轮全量"，并据此续派 `QA-TIP1019-02`
+
+- 依据（作者指令逐字）：「你 下一次 不要 再 反复构建 触发那个防火墙 烦我打游戏 再这样 我要给你喂史了」。据此，一切工单里"解决方案级连续两次全绿且分项逐位相同"这项要求降为**一次**完整 `dotnet build Pry.slnx -c Release` ＋**一次**全量测试；改写权由守门人承担并在此登记，不改的部分＝四份 TRX 逐份读 `<Counters>`、长参绝对路径 `--results-directory`、`--logger trx`、跳过按 `outcome="NotExecuted"` 点名、引用总数必须写全四分项、出口那轮必须紧跟完整编译（严禁 `--no-build` 旧 dll）、反证只许定向跑不重跑全量。
+- 代价写清楚（不是白拿的）：少了一次"同树重跑"的稳定性对照，历史上 `gate-expr-flake` 那一类表达式抖动因此可能漏检。补偿口径＝四分项必须逐位对上预期算术，对不上就当场停下并登记为读数作废，而不是"再跑一遍看看"。真需要第二次全量时（例如读数与顶账不符）由守门人自己起，并在那把的 §9 里写明为什么多花一次弹窗。
+- 续派：`QA-TIP1019-02`（检索地板 `.5` 的行为判据，零产品代码，不许动那个数字）。工单 `docs/dispatch-tip1019-02-retrieval-floor-judgment.md` 新增 §8「开工前补正二」，内容＝锚点当场重读结果（F1 仍在 `MemoryQueryService.cs:22`；第二道地板行号从 `ContextBuilder.cs:88` 漂到 `:164`，`Take(6)` 在 `:172`、`stale_or_deleted` 在 `:176`）、门禁降档、基线＝`c148fbf`、预期读数顶账（Api 258／Core 523＋新增／App 233／Client 106）、落点收窄为新建 `tests/Pry.Core.Tests/MemoryRetrievalFloorTests.cs`（不追加进 `MemoryContextTests.cs`，避让主工作区索引里他人名下那 63/0）。
+- 本 entry 零构建、零测试、零模型：只读码与跑加粗形状仪器（正向对照 DEFECT_LINES=2，改动四份文档 NEW_DEFECTS=0，`git diff --check` 干净）。
+
+### 2026-10-22｜守门人｜HDS-011b 归位（AUD-07 长度校验＋那一行警告）＋守门人这一把为什么没复跑全量
+
+- 载体与结局：`.qoder/worktrees/agent-general-purpose-464436d4`，分支 `codex/hds-011b-sticker-content-length`。起点落后线尾 86 格，先 `git merge --ff-only 7d8ab03` 追平才动手；工单前提（那两行的三元形状）当场复核仍成立。实现两把 `5c06938`（fix）＋`34783af`（test），守门人 rebase 到线尾 `5304c7c` 后得 `1edf69e`＋`c148fbf`，主工作树以 `git merge --ff-only` 归位，现线尾＝`c148fbf`。
+- 落地内容：5 个文件、+210／−5＝`src/Pry.Api/Services/ConversationSessionService.cs`、`src/Pry.Api/Services/ConversationApplicationService.cs`、`src/Pry.Contracts/ApiContracts.cs`、新建 `tests/Pry.Api.Tests/StickerContentLengthGuardTests.cs`、`tests/Pry.Core.Tests/NarrativeStorageContractTests.cs` 的一行。`*.csproj`／`*.json`／NuGet 零变化＝没新增依赖，Core 仍不依赖 Avalonia／HTTP。
+- 改法复核（读码得出，不靠构建）：新增唯一校验点 `ContractValidation.MessageContent(value, requireText)`，长度判断刻意放在分支**之前**，`requireText` 只决定"能不能一个字都不带"；上限 `MessageContentMaxLength = 20_000` 全仓只在 `ApiContracts.cs` 声明一处。错误面与旧路径逐字相同（`ApiValidationException` 的 field 仍是 `content`，文案仍是"不能为空"／"长度不能超过 20000"），所以纯文本那支的用户可见行为没变，变的只是带贴纸那支从此也被同一把尺量到，且拒绝发生在落库之前。
+- 出口读数（lane 自报、守门人核对算术与属性计数，**没有复跑**）：`dotnet build Pry.slnx -c Release` 0 警告 0 错误，紧跟一轮全量测试得四份 TRX＝Api 258／Core 523（executed 521、passed 521）／App 233／Client 106，总 **1120**／失败 0／通过 1118；两条跳过按 `outcome="NotExecuted"` 点名＝`LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key`、`CoreTests.Configured_sense_voice_model_can_run_offline`。顶账：1120＝258+523+233+106＝上一把归位后的 1113＋本刀 7 条；7 条＝新文件 3 个 `[Fact]`＋2 个 `[Theory]`×2 个 `[InlineData]`，守门人逐文件 `grep -c` 复核过这三个数。在册基线仍是 988／0／2，改写权在 QA。
+- 为什么这一把守门人不再跑全量（对着作者那句硬约束）：lane 出口那轮已经紧跟一次完整编译（工单全局约束第 5 条），而它缺的那一格 `5304c7c` 是纯文档提交——`git diff --name-only 7d8ab03..5304c7c` 只有两份 docs，编译输入与 lane 的建树同一；rebase 后守门人再数 `git diff --stat 34783af..HEAD -- src tests`＝空输出，代码树没动。换在昨天 HDS-002 那种"rebase 后带代码漂移"的形状上，这个读数是要作废的。
+- 反证（lane 交的红例名与报错原文，守门人核对过对应断言行真实存在）：① 掏空 `MessageContent` 里的长度判断 ⇒ 4 红 3 绿，原文 `Assert.Throws() Failure: No exception was thrown / Expected: typeof(Pry.Contracts.ApiValidationException)`；② 把 `ConversationSessionService.SubmitAsync` 恢复成原三元形状 ⇒ 2 红 5 绿，红在 `Content_accompanying_a_sticker_is_rejected_over_the_shared_limit(entry: TurnSubmission)` 和源码门 `Both_message_entries_call_the_one_ruler_and_no_second_ceiling_is_declared`（`Assert.Equal() Failure: Values differ`）。两次都用单项目 `-t:Rebuild`＋`--filter`，没有为反证重跑全量。
+- 这一把守不住的形状（诚实边界，别读过头）：那条源码门的"不许有第二把尺"只认字面量 `20_000`——谁用 `20000`、别的数字或别的常量名另起一套正文上限，它不会红；它被证到的是"只补一个入口"和"字面上的第二把尺"。同时它按整行字面量匹配调用点，重排格式会假红（与既有 seam 门同一手法，已知代价）。两条都不卡结案，记在这里供 QA 判覆盖面。
+- 主工作树安全：他人索引全程未动，归位前后各数一次＝`docs/dispatch-tip1020-02-memory-group-judgment.md` 1/1、`tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs` 63/0；`git merge --ff-only` 不产生合并提交，因此不会消费他人已暂存的条目；本刀未使用 `reset`／`checkout --`／`clean`。真实数据目录 `%LOCALAPPDATA%/PryCompanion` 没当测试载体（新测试自建 `Path.GetTempPath()` 临时目录，并按自身库文件清连接池）。
+- 仪器读数更正（顶账）：lane 报 `verify-repository`＝526 tracked files，那是它把新测试文件补进去之前跑的；归位后守门人当场 `git ls-files` 数到 **527**（526＋那一份新测试）。这个数每落一份文件就上一格，不是门槛变化。
+- 状态词：§4.2 的 HDS-011 行与本页顶部状态改成"已实现待验"，`已完成`／`结案` 仍归作者与 QA。本刀归位后在飞＝0，但同场按工单「本波之后」的第 2 位继续派单（`QA-TIP1019-02`＝检索地板判据刀，零产品代码，落点在 Memory 检索语义，与他人的 `MemoryManagementSurfaceTests.cs` 不同文件），所以登记完之后在飞＝1；下一把 HDS-011c 仍排队，避免与它同轮抢构建弹窗。
 
 ### 2026-10-21｜守门人｜第二波派单（HDS-011b）＋把"不许反复构建"写成可判红的跑法
 
