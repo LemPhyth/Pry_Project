@@ -310,7 +310,7 @@ public sealed class NarrativeStorageContractTests
         Assert.Equal(stateAfterFirst.LastCommitId, late.State!.LastCommitId);
         Assert.Equal(1, late.State.StoryVersion);
         Assert.Equal(102, late.State.ProcessedThrough.Seq);
-        Assert.False(_writer.Ledger.Snapshot().Any(s => s.CommitId is "commit-late" or "commit-late-2"));
+        Assert.DoesNotContain(_writer.Ledger.Snapshot(), s => s.CommitId is "commit-late" or "commit-late-2");
 
         var fresh = _writer.TryCommit(secondBatch, Commit(commitId: "commit-2", writer: "host-b", epoch: 2,
             expectedStory: 1, watermark: 103, consumed: [103], batchId: "batch-2", perceived: [Input103]));
