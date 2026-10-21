@@ -189,11 +189,33 @@ public sealed record ResourceId<T>(T Id);
 
 public static class ContractValidation
 {
+    /// <summary>
+    /// 消息正文的唯一上限（AUD-07）。纯文本消息与贴纸／表情附带文本共用这一把尺，
+    /// 上限数字只允许出现在这一处；会话的两个写入入口都经 <see cref="MessageContent"/> 走它。
+    /// </summary>
+    public const int MessageContentMaxLength = 20_000;
+
     public static string Required(string? value, string field, int maxLength)
     {
         var normalized = value?.Trim();
         if (string.IsNullOrEmpty(normalized)) throw new ApiValidationException(field, "不能为空");
         if (normalized.Length > maxLength) throw new ApiValidationException(field, $"长度不能超过 {maxLength}");
+        return normalized;
+    }
+
+    /// <summary>
+    /// 会话消息正文的唯一校验点：先裁空白，再按同一条 <see cref="MessageContentMaxLength"/> 判长度。
+    /// <paramref name="requireText"/> 只决定"能不能一个字都不带"——纯文本消息必须带字，
+    /// 带贴纸／表情的消息允许只发表情；只要带了文本，两支过的都是同一把尺，超长一律拒。
+    /// 原缺陷（AUD-07）正是带贴纸那一支绕过长度校验，所以这里刻意把长度判断放在分支之前。
+    /// </summary>
+    public static string MessageContent(string? value, bool requireText)
+    {
+        var normalized = value?.Trim() ?? "";
+        if (normalized.Length > MessageContentMaxLength)
+            throw new ApiValidationException("content", $"长度不能超过 {MessageContentMaxLength}");
+        if (requireText && normalized.Length == 0)
+            throw new ApiValidationException("content", "不能为空");
         return normalized;
     }
 

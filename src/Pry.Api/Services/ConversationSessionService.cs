@@ -34,9 +34,7 @@ public sealed class ConversationSessionService(MemoryDatabase database, BackendR
     public async Task<SubmitTurnResponse> SubmitAsync(string conversationId, SubmitTurnRequest request, CancellationToken token)
     {
         using var operation = operations is null ? null : await operations.EnterForegroundAsync(token);
-        var content = request.StickerId is null
-            ? ContractValidation.Required(request.Content, "content", 20_000)
-            : request.Content?.Trim() ?? "";
+        var content = ContractValidation.MessageContent(request.Content, requireText: request.StickerId is null);
         var stickerId = ContractValidation.OptionalId(request.StickerId, "stickerId");
         var attachments = await media.ResolveAttachmentsAsync(request.AttachmentIds, token);
         var commandGate = GetCommandGate(conversationId);

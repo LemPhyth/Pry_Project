@@ -54,7 +54,7 @@ public sealed class ConversationApplicationService(MemoryDatabase database, Comp
         _ = await GetAsync(id, token);
         if (request.Role != ChatRole.User) throw new ApiValidationException("role", "客户端只能写入 user 消息");
         if (!string.IsNullOrWhiteSpace(request.ImagePath)) throw new ApiValidationException("imagePath", "不接受客户端文件路径，请使用后续的受控媒体上传接口");
-        var content = request.StickerId is null ? ContractValidation.Required(request.Content, "content", 20_000) : request.Content?.Trim() ?? "";
+        var content = ContractValidation.MessageContent(request.Content, requireText: request.StickerId is null);
         var messageId = await database.AddMessageAsync(id, request.Role, content, request.ImagePath, token, request.StickerId);
         return await database.GetMessageAsync(id, messageId, token) ?? throw new InvalidOperationException("消息写入后无法读取");
     }
