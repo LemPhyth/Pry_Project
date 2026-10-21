@@ -4,6 +4,7 @@ using Pry.Core.Configuration;
 using Pry.Core.Intelligence;
 using Pry.Core.Memory;
 using Pry.Core.Models;
+using Pry.Core.Prompting;
 
 namespace Pry.Api.Services;
 
@@ -619,6 +620,12 @@ public sealed partial class ConfigurationApplicationService(IConfiguration confi
     {
         if (value.ContextSize is < 256 or > 1_000_000) throw new ApiValidationException("modelTunings.contextSize", "必须在 256 到 1000000 之间");
         if (value.MaxOutputTokens is < 1 or > 100_000) throw new ApiValidationException("modelTunings.maxOutputTokens", "必须在 1 到 100000 之间");
+        // AUD-01：配置保存时即校验联合预算不等式——若这一档上下文与最大输出的组合即使按规则归一化后
+        // 也留不出正的输入预算（输出保留 + 安全余量吃满窗口），在边界就拒绝，而不是等到装配才必然失败。
+        if (value.ContextSize is { } ctx && value.MaxOutputTokens is { } maxOut &&
+            !ContextBudget.TryNormalizeWindow(ctx, maxOut, out _, out _, out _))
+            throw new ApiValidationException("modelTunings.maxOutputTokens",
+                $"上下文窗口不足以在保留输出与安全余量后仍为输入留出至少 {ContextBudget.MinimumInputTokens} token");
         if (value.Temperature is { } temperature) Range(temperature, 0, 2, "modelTunings.temperature");
         if (value.GpuLayers is < 0 or > 10_000) throw new ApiValidationException("modelTunings.gpuLayers", "必须在 0 到 10000 之间");
         if (value.ComputeDevice is { Length: > 200 }) throw new ApiValidationException("modelTunings.computeDevice", "长度不能超过 200");

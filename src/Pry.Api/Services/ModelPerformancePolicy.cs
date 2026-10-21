@@ -1,5 +1,6 @@
 using Pry.Core.Inference;
 using Pry.Core.Models;
+using Pry.Core.Prompting;
 
 namespace Pry.Api.Services;
 
@@ -35,13 +36,18 @@ public sealed class ModelPerformancePolicy
         return ClassifyByName(device.Name);
     }
 
-    private static ModelProfile WithContext(ModelProfile source, int contextSize) => source with
+    private static ModelProfile WithContext(ModelProfile source, int contextSize)
     {
-        ContextSize = contextSize,
-        MaxOutputTokens = contextSize == source.ContextSize
+        // 限额先于分配：无论是否降档，都用与配置保存 / 上下文装配同一把尺（ContextBudget 规则）换算输出保留，
+        // 保证「输出保留 + 安全余量 < 实际可用上下文」。默认 1.7B 档 32768/32768 因此不会加载出负输入预算，
+        // 降档候选也沿用旧规则再归一化（不超过窗口一半、并为输入留底）。
+        var intended = contextSize == source.ContextSize
             ? source.MaxOutputTokens
-            : Math.Min(source.MaxOutputTokens, Math.Max(512, contextSize / 2))
-    };
+            : Math.Min(source.MaxOutputTokens, Math.Max(512, contextSize / 2));
+        if (!ContextBudget.TryNormalizeWindow(contextSize, intended, out var ctx, out var output, out _))
+            return source with { ContextSize = contextSize, MaxOutputTokens = 1 };
+        return source with { ContextSize = ctx, MaxOutputTokens = output };
+    }
 
     private static GpuPerformanceTier ClassifyByName(string name)
     {
