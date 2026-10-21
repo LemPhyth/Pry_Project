@@ -4,7 +4,7 @@
 
 **当前主线：以 HDS 启发的持续叙事，替换借鉴 MaiCore 的 AI 回复生成架构。** 现有问题必须在迁移中解决，但不再要求先补完旧回复链才能开始验证新生成中心。架构细节与完整验收见 [v4 计划](Pry_HDS_Rewrite_Architecture_Plan_v4.md)。
 
-**状态：研究与计划已入库（`a7e62c1`）；产品架构尚未切换。第一波派单已登记（`docs/dispatch-hds-wave1-20261021.md`，HDS-001／002／003／011 切片），待各 Owner 认领；HDS-004～010／012 未派发。** 计划的入库不代表实现、测试、合流或发行已经完成，结案词由作者写。
+**状态：研究与计划已入库（`a7e62c1`）；产品架构尚未切换。第一波派单中 HDS-011 的 AUD-01／06／04 切片已归位为主线 `faf8ecf`（已实现待验，待 QA 从线尾复采）；HDS-001／002／003 仍无人认领，HDS-004～010／012 未派发。** 计划的入库不代表实现、测试、合流或发行已经完成，结案词由作者写。
 
 ## 1. 项目与计划边界
 
@@ -79,7 +79,7 @@
 | HDS-008 | 客户端与协议迁移 | 未认领 / 待认领；建议 Windows Client / API | 004/005 接口冻结；等待、失败、许可、兼容和完整接口契约 |
 | HDS-009 | 状态与显式学习迁移 | 未认领 / 待认领；建议 Intelligence / Memory | 005/006；角色 Canon/Overlay、关系经验、真实投递与显式反馈归因 |
 | HDS-010 | 生产切换与旧链退役 | 未认领 / 待认领；建议 Architecture / Integration | 003～006/008/009 关键验收；每实例单引擎、迁移、去除旧主链及死入口 |
-| HDS-011 | 安全、性能与发行基础 | 切片**进行中**／守门人代派至隔离 worktree（AUD-01／06／04，出口证据未采齐前不写已完成） | 已暴露旧缺陷可独立修；新链检查依赖 005；资源限额、依赖和版本/许可 |
+| HDS-011 | 安全、性能与发行基础 | 切片 AUD-01／06／04 **已实现待验**／守门人代派至隔离 worktree（实现 `ae67267`，已归位为主线 `faf8ecf`）；其余范围未开工 | 已暴露旧缺陷可独立修；新链检查依赖 005；资源限额、依赖和版本/许可 |
 | HDS-012 | 独立验收与候选包 | 未认领 / 待认领；建议 QA / Release | 007/010/011；模型体验、故障、恢复/安装/退出、统一 SHA；发布另按明确指令 |
 
 完整任务交付与验收以 v4 §13/§14 为准。本表维护状态，v4 不再另维护一套实时负责人。
@@ -180,6 +180,17 @@ git diff --cached --check
 数据库回退按实际 schema 和数据验证，不能拿历史 v7 的“可忽略新增表”保证未来恢复。备份考虑 SQLite WAL 一致性；恢复先在隔离目录验证，不能复活备份之后已明确遗忘的内容，也不能只回滚程序而忽略数据兼容。
 
 ## 9. 最近交接
+
+### 2026-10-21｜守门人｜HDS-011 切片（AUD-01／06／04）归位合流树
+
+- 载体：隔离 worktree `.qoder/worktrees/agent-general-purpose-97f9e73a`，分支起点实测是 `134eddc`（落后线尾 76 个提交），实现方当场 `git merge --ff-only a839e5f` 追平后才开工——**这条要记住：隔离 worktree 的起点不保证是线尾，认领前必须自己数 `git rev-list --count`**。实现提交 `ae67267`（7 文件，+605/−22）。
+- 复核：逐文件读过真实 diff 而非只读自报。`ContextBudget` 新增 `InputBudget`／`TryNormalizeWindow`／`ForModelWindow`（输出保留≤窗口一半、`MinimumInputTokens=512`），配置保存 `ValidateTuning`、`ModelPerformancePolicy.WithContext`、每次 `BuildAsync` 三处共用同一把尺；`ContextBudgetException` 加 `Reason` 且无参构造保持原语义与原消息。AUD-06 确实删掉了 `prompt += "\n" + request.Advisory` 的旁路，改为预留份额并计入 `used`，决策文本仍逐字追加。AUD-04 改为流式：压缩比／解压字节（含伪造头后的实际字节复核）／节点数／深度／名字长度／正文字符／15 秒处理上限，`DtdProcessing.Prohibit`＋`XmlResolver = null`，取消向上传播而仅超时转限额错误。**无新增 NuGet 依赖**（`git diff --stat` 对 `*.csproj`／`*.json` 为空），Core 未引入 Avalonia 或 HTTP。
+- 合流门禁（守门人自跑的载体＝`.qoder/worktrees/gate-hds011`，`38443f6`＋`ae67267` 无冲突合并成 `4cf1681`）：`dotnet build Pry.slnx -c Release` ⇒ 0 警告 0 错误；`dotnet test --no-build --results-directory C:/Users/24782/gate-hds011-trx --logger trx` ⇒ **Client 101／App 233／Api 251／Core 430（executed 428、passed 428）**，四份 TRX 的 `<Counters>` 非零、`failed="0"`；两条 `outcome="NotExecuted"` 点名为 `LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key` 与 `CoreTests.Configured_sense_voice_model_can_run_offline`（与基线同两条环境跳过）。总计 1015／执行 1013／失败 0／跳过 2。`measure-fixed-eval.ps1 -ResultsDirectory` ⇒ Catalog valid: 76，Passed=1013; Failed=0; Other=2。`verify-repository` ⇒ 499 个受跟踪文件（496＋3 份新测试文件，格数非门槛）。
+- 新判据顶账：+25 例＝Core +22（`ContextBudgetTests` 7 `[Fact]`＋2 `[Theory]`/7 `[InlineData]`、`AttachmentLimitTests` 8 `[Fact]`）、Api +3（`ContextWindowLoadTests` 3 `[Fact]`），App／Client 不动。990→1015 与此一致。**在册基线仍是 QA 复采的 988／0／2，本 entry 不自封基线**；改写权在 QA，需要 QA 从明确载体（现线尾 `faf8ecf`）重采后才顶账。
+- 归位方式：主工作区索引有他人的两份**已暂存**文件，`git merge`／裸 `git commit` 会把它们吞进合并提交，故按本仓库既有做法落内容——先把 `4cf1681` 的七个文件按 `.gitattributes`（`*.cs text eol=lf`）逐字节写入主工作区（`git hash-object` 与 gate 树逐文件相同），再 `git commit --only -- <七路径>`。提交后他人暂存仍为 1/1 与 63/0 未变，`git diff --stat 4cf1681 HEAD` 为空 ⇒ 主线树与合流树完全一致。main 已 fast-forward 到 `faf8ecf`，差距 0。
+- 如实留着的两点（供 QA／作者复核，不因此判红）：① `AdvisoryTokens` 默认从"不占预算"改成 **2400 预留份额**，窗口极小的档位（如 256～几千 token）下原本能"静默超窗发出"的请求现在会显式失败（`AdvisoryDoesNotFit`）——这是 AUD-06 要的形状，但份额取值是否契合产品意图需要作者或 QA 定；② 实现方自报三条未采的反例：`ValidateTuning` 没有端到端 400 用例、15 秒超时→限额转换路径未测、伪造 zip 头未测。另 AUD-07（表情附带文本绕过长度验证，`ConversationSessionService.cs:37-39` 与 `ConversationApplicationService.cs:57`）本轮只定位未改，留给下一把刀。
+- 状态词：§4.2 的 HDS-011 切片填"已实现待验"，不是"已完成"——独立复采与作者结案都还没发生。HDS-001／002／003 三把刀仍无人认领。
+- 作者那页与仪器：`docs/full-scope-sprint.md` §0 的挡路栏改成"四把刀里还有三把没有 Owner＋第一把已归位待 QA"，欠话栏从三句加到四句（新增第④句＝Advisory 预留份额 2400 的取值要不要改）。加粗形状用 `.local-notes/bold-flank-range-1021.js` 当场跑：正向对照三条全过（两种缺陷形状转红、`正常**汉字**正常` 保持绿）后才引用读数；整页现存 8 处缺陷行全在我未触碰的旧长句里（L61／83／85／99／114），与 HEAD 做缺陷签名多重集对比 ⇒ **本轮新增 0 处**，`CHANGELOG.md` 同场 0 新增。`git diff --check` 干净，`verify-repository` ⇒ 499 个受跟踪文件（这一刀只改文本，格数不变）。
 
 ### 2026-10-21｜守门人｜计划入库＋HDS-WAVE-1 派单
 
