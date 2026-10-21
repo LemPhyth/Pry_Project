@@ -286,10 +286,11 @@
 
 ### 10.1 现在是什么
 
-- `src/Pry.Api/Services/RuntimeDescriptorService.cs` 写 `runtime.json`，内容是 `{Pid, Port, Token, PryProtocol.Version, MemoryDatabase.SchemaVersion, StartedAt}`。
-- 同文件 `ReportLeftover()`（71–89 行）今天的处理方式是**「发现上一实例遗留的描述文件 ⇒ 打一条 LogWarning ⇒ 继续启动并覆盖它」**（日志原文：「发现上一实例遗留的 {File}（{Observed}），本次启动将覆盖它；遗留文件的端口与令牌自此失效，读取方必须重新发现」）。
-- 也就是说：**当前没有任何进程级独占写锁**。两个宿主同时指向同一数据目录时，第二个只会「告警之后继续写」；SQLite 侧只有 `PRAGMA busy_timeout=5000`（`MemoryDatabase.cs:974`）这种行级让路，救不了「两份 runtime.json 互相覆盖 + 两写者各自推进水位」。
-- 这正是派工单点名禁止的形状，本契约把它定成必拒项。
+- `src/Pry.Api/Services/RuntimeDescriptorService.cs` 写 `runtime.json`，内容是 `{Pid, Port, Token, PryProtocol.Version, MemoryDatabase.SchemaVersion, StartedAt}`；每次写入前都要过 `DataDirectoryWriteLease.AssertWriteAllowed()`（条件写的第一问，§10.2 第 2 条），拿不到写权就没有下一步。
+- DEF-WRIGATE-01 落地后，`StartAsync` 先取得进程级独占写锁、再挂载描述文件的写入与清理回调：`DataDirectoryWriteLease`（同目录 `src/Pry.Api/Services/DataDirectoryWriteLease.cs`）以 `FileShare.None` 打开数据目录内的 `runtime-write.lock`，把观察事实填进 `DataDirectoryObservation`，并以 `ExclusiveWriteLock` 凭据向 `DataDirectoryWriteGate.TryAcquire` 申请写权。锁在别的进程手上 ⇒ 共享冲突 ⇒ 判定 `WriteLockHeldByOther`(600) ⇒ 宿主抛 `DataDirectoryWriteLockedException`：Headline 是「这个数据目录正被另一个 Pry 同时写」，`RetryAllowed == false`，经 App 既有呈现链（`IUserPresentableError`）向人呈现这一句话并拒绝启动。
+- 被拒的路径一个字节都不写：不建目录、不碰 `runtime.json`，唯一失败的操作是 OS 拒绝打开锁文件。锁句柄随宿主实例生命周期释放（`StopAsync` 与容器拆除的 `Dispose` 都归还，幂等），进程崩溃时由系统收回——后继实例因此能重新取得写权。
+- `ReportLeftover()`（`RuntimeDescriptorService.cs:83` 起）只剩崩溃恢复一种语义：能走到它说明本进程已持有独占锁，遗留文件的 pid 早已不在，覆盖它安全；「pid 还活着也告警后继续写」这条路已被锁在入口截断。
+- SQLite 侧的 `PRAGMA busy_timeout=5000`（`MemoryDatabase.cs:974`）仍是行级让路；目录级「谁有权写」不再靠 `runtime.json` 里的 pid 猜测，改由本节锁形状回答（§10.2 第 1 条）。
 
 ### 10.2 本契约定成什么
 
