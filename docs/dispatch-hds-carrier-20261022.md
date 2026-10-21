@@ -6,7 +6,8 @@
 ＋「按照计划书进行哪里那么多废话」＋「你 下一次 不要 再 反复构建 触发那个防火墙 烦我打游戏 再这样 我要给你喂史了」。
 **最后这句决定本波的形状**：三片合进同一个载体、只允许一轮全量构建＋一次全量测试——分开派就是三次弹窗。
 
-基线起点＝线尾 **`0c38be0`**（本工单自己入库后的那一枚；代码面与 `9f88a0c` 相同，其后三枚提交只动文档——起笔晚于它的人要先数 `git rev-list --count 0c38be0..HEAD`）。
+基线起点＝**派单时的线尾**（出闸时＝`5e45691`；起笔前用 `git log --oneline -1` 当场取，别抄这里的号）。
+代码面自 `9f88a0c` 起未变，其后全是文档提交，所以下面的顶账读数对任何晚于 `9f88a0c` 的线尾都成立。
 
 ---
 
@@ -15,7 +16,8 @@
 1. 开工前 `git status --short --branch`，先读最新工单与本节；**主工作区索引里他人已暂存的文件不属于你**
    （本轮实测＝`docs/dispatch-tip1020-02-memory-group-judgment.md` 1/1、`tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs` 63/0），
    不 stage、不提交、不回退、不"顺手整理"。
-2. 独立 worktree 开工；**先数基线**：`git rev-list --count 0c38be0..HEAD` 在起点上应为 0，若从别处起笔落后就 `git merge --ff-only 0c38be0` 追平再动手。
+2. 独立 worktree 开工；**先数基线**：`git rev-list --count <派单时的线尾>..HEAD`，落后就 `git merge --ff-only <线尾>` 追平再动手
+   （线尾当场用 `git log --oneline -1` 取；本单出闸时是 `5e45691`）。
 3. **整个载体只允许一轮解决方案级构建＋一次全量测试**（作者的 dotnet／testhost 会弹他机器的防火墙、打断他的对局）。
    迭代期只用 `dotnet build <单个 csproj>`（不碰整解决方案）与读码推理；把全量那一轮**留到最后一次**。
    出口之后的"先红后绿"一律走**定向**跑法：`dotnet test tests/<X>/<X>.csproj -c Release --filter "FullyQualifiedName~<用例名>"`
@@ -151,7 +153,7 @@
 ## 出口证据（一次跑齐，缺一项就不算完）
 
 1. 合流前本载体树上**四份 `.trx`** 的 `<Counters>` 全量读数：总／四分项／失败／点名跳过（跳过只按 `<UnitTestResult outcome="NotExecuted">` 点名，`notExecuted` 计数恒 0）。
-2. **顶账表**（起点＝`0c38be0` 的代码面，读数由守门人 2026-10-22 当场逐份读 TRX 采）：
+2. **顶账表**（起点＝最后一枚动过代码的提交 `9f88a0c` 的二进制面，读数由守门人 2026-10-22 当场逐份读 TRX 采）：
    Core **524**／Api **258**／App **233**／Client **106**＝总 **1121**，失败 0，通过 1119，两条环境跳过
    （`CoreTests.Configured_sense_voice_model_can_run_offline`、`LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key`）。
    出口必须写成"某分项 524 → 524＋N，N＝本片新增 X 条（逐文件 `grep -c '[Fact]'`＋`[Theory]`/`[InlineData]` 计数）"；
