@@ -216,7 +216,7 @@
 
 ### 8.1 现在是什么
 
-`reply_plans`（配 `planned_messages`）就是当前的「可发送真相」：写路径是 `ReplyPlanner` 生成 → 落 `reply_plans` → 宿主按计划发送。表上已经有 `fence_epoch`，条件更新用 `WHERE r.id=$p AND r.status='open' AND rtm.epoch=$epoch AND r.fence_epoch=$epoch`（`MemoryDatabase.Runtime.cs:200`、`MemoryDatabase.Proactive.cs:217`）——** fencing 的形状已经存在**，但它只保护「同一条 plan 不被过期epoch 改写」，没有回答「这一轮到底谁有权产生待发文本」。
+`reply_plans`（配 `planned_messages`）就是当前的「可发送真相」：写路径是 `ReplyPlanner` 生成 → 落 `reply_plans` → 宿主按计划发送。表上已经有 `fence_epoch`，条件更新用 `WHERE r.id=$p AND r.status='open' AND rtm.epoch=$epoch AND r.fence_epoch=$epoch`（`MemoryDatabase.Runtime.cs:200`、`MemoryDatabase.Proactive.cs:217`）——**fencing 的形状已经存在**，但它只保护「同一条 plan 不被过期epoch 改写」，没有回答「这一轮到底谁有权产生待发文本」。
 所以：叙事 outbox 一旦上线，同一次输入可能既产出 reply plan 又产出 outbox 条目，两份都能被发送。这就是派工单点名的「不许走的捷径」之一，本契约正面禁止。
 
 ### 8.2 本契约定成什么
