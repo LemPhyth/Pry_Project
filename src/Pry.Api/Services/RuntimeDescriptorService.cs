@@ -13,7 +13,7 @@ namespace Pry.Api.Services;
 /// 与已绑定的地址，不能靠读自己刚写的文件绕一圈——那样会把磁盘 I/O 变成启动路径的依赖。
 /// </summary>
 public sealed class RuntimeDescriptorService(IConfiguration configuration, IServer server,
-    BackendSessionToken sessionToken, IHostApplicationLifetime lifetime,
+    BackendSessionToken sessionToken, IHostApplicationLifetime lifetime, DataDirectoryWriteLease writeLease,
     ILogger<RuntimeDescriptorService> logger) : IHostedService, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -21,7 +21,10 @@ public sealed class RuntimeDescriptorService(IConfiguration configuration, IServ
     private readonly string _dataDirectory = ResolveDataDirectory(configuration);
     // DEF-WRIGATE-01 · 契约 §10.2：描述文件的写入必须先过宿主持有的进程级独占写锁。
     // runtime.json 里的 pid 只是观察事实，不是锁——写权由 DataDirectoryWriteGate 依凭句柄判定。
-    private readonly DataDirectoryWriteLease _writeLease = new(ResolveDataDirectory(configuration));
+    // DEF-WRILEASE-ORDER-01：租约由容器注入而不是在此 new——取锁已经提前到 BackendApplication.BuildAsync
+    // 里（第一次写盘之前），提前取锁的一方、本宿主服务与退出归还链必须共用同一份租约实例，
+    // 再 new 一遍就会出现"两个持有者各自记自己的写权"的第二份事实源。
+    private readonly DataDirectoryWriteLease _writeLease = writeLease;
     private CancellationTokenRegistration _started;
     private CancellationTokenRegistration _stopping;
     private int _writtenPort;
@@ -39,6 +42,9 @@ public sealed class RuntimeDescriptorService(IConfiguration configuration, IServ
         // DEF-WRIGATE-01：先取得进程级独占写权，取得不了就直接拒绝启动（异常经宿主 StartAsync 冒泡，
         // 由 App 的既有呈现链把"这个数据目录正被另一个 Pry 同时写"显示给人）。
         // 这一步必须在挂载描述文件写入回调之前：拿不到写权时一个字节都不写。
+        // DEF-WRILEASE-ORDER-01 之后真正的取锁动作已在 BackendApplication.BuildAsync 里、第一次写盘之前
+        // 做过一次；这里的 Acquire 走的是租约自己的幂等入口（已经持有就返回同一份租约），
+        // 同一份实例不会变成第二个持有者。
         var (present, alive) = ObserveDescriptorFacts();
         _writeLease.Acquire(present, alive);
 
@@ -109,16 +115,18 @@ public sealed class RuntimeDescriptorService(IConfiguration configuration, IServ
     }
 
     /// <summary>
-    /// 写权申请前的观察事实：目录里有没有描述文件、它声称的 pid 是否还活着。这两条只是喂给
-    /// <see cref="Pry.Core.Narrative.DataDirectoryWriteGate"/> 的观测（契约 §10.2 第 1 条：
-    /// 它们是发现入口的状态，不是写权的凭据），所以这里不建目录、不写文件、也不据此放行。
+    /// 写权申请前的观察事实（静态入口，DEF-WRILEASE-ORDER-01）：取锁提前到 <c>BuildAsync</c> 里之后，
+    /// 那一刻宿主服务还没被实例化，而 Core 的判定仍然要这两条观测——所以读文件这件事收在这一个静态方法里，
+    /// 实例路径与提前路径共用同一份实现，不出现第二种读法。与实例方法一样：只读，不建目录、不写文件，
+    /// 也不据此放行（契约 §10.2 第 1 条：它们是发现入口的状态，不是写权的凭据）。
     /// </summary>
-    private (bool Present, bool ProcessAlive) ObserveDescriptorFacts()
+    public static (bool Present, bool ProcessAlive) ObserveDescriptorFacts(string dataDirectory)
     {
-        if (!File.Exists(DescriptorPath)) return (false, false);
+        var descriptorPath = Path.Combine(dataDirectory, PryProtocol.RuntimeDescriptorFileName);
+        if (!File.Exists(descriptorPath)) return (false, false);
         try
         {
-            var leftover = JsonSerializer.Deserialize<RuntimeDescriptor>(File.ReadAllText(DescriptorPath), JsonOptions);
+            var leftover = JsonSerializer.Deserialize<RuntimeDescriptor>(File.ReadAllText(descriptorPath), JsonOptions);
             return (true, leftover is not null && IsProcessAlive(leftover.Pid));
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
@@ -126,6 +134,13 @@ public sealed class RuntimeDescriptorService(IConfiguration configuration, IServ
             return (true, false);
         }
     }
+
+    /// <summary>
+    /// 写权申请前的观察事实：目录里有没有描述文件、它声称的 pid 是否还活着。这两条只是喂给
+    /// <see cref="Pry.Core.Narrative.DataDirectoryWriteGate"/> 的观测（契约 §10.2 第 1 条：
+    /// 它们是发现入口的状态，不是写权的凭据），所以这里不建目录、不写文件、也不据此放行。
+    /// </summary>
+    private (bool Present, bool ProcessAlive) ObserveDescriptorFacts() => ObserveDescriptorFacts(_dataDirectory);
 
     private void WriteAtomically(RuntimeDescriptor descriptor)
     {

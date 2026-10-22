@@ -54,6 +54,10 @@ namespace Pry.Api
                 };
             });
             var dataDirectory = RuntimeDescriptorService.ResolveDataDirectory(builder.Configuration);
+            // DEF-WRILEASE-ORDER-01 · 契约 §10.2：数据目录的进程级独占写锁是"这个进程能不能写这份库"的唯一凭据。
+            // 注册成容器自己的单例（不是注册现成实例：外部实例容器拒绝 Dispose，句柄就会随容器泄漏），
+            // 于是提前取锁的一方、RuntimeDescriptorService 那枚宿主服务与退出归还链拿到的是同一份租约。
+            builder.Services.AddSingleton<DataDirectoryWriteLease>(_ => new DataDirectoryWriteLease(dataDirectory));
             // 持久层的日志器由宿主注入（PLAT-006）：Core 只开口，去哪里由这里决定。
             builder.Services.AddSingleton(provider => new MemoryDatabase(Path.Combine(dataDirectory, "memory.db"),
                 provider.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()
@@ -140,12 +144,32 @@ namespace Pry.Api
             app.UseMiddleware<ApiExceptionMiddleware>();
             app.MapHealthChecks("/health");
             app.MapControllers();
-            await app.Services.GetRequiredService<MemoryDatabase>().InitializeAsync(token);
-            // 上个进程遗留的未投递计划只清账、绝不重放：重启后不会重复发出旧消息。
-            var swept = await Pry.Core.Runtime.ConversationRuntime.RecoverStalePlansAsync(
-                new Pry.Api.Runtime.DatabaseRuntimeStore(app.Services.GetRequiredService<MemoryDatabase>()), token);
-            if (swept.Count > 0) app.Services.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()
-                .CreateLogger("Pry.Api.Runtime").LogInformation("已作废 {Count} 个上次进程遗留的投递计划", swept.Count);
+            // DEF-WRILEASE-ORDER-01：取锁要排在第一次写盘之前。下面两笔都是写——InitializeAsync 那句
+            // `PRAGMA journal_mode=WAL` 改的是库头并跑迁移清单，紧接着的遗留计划清扫会取消 open 计划
+            // 与它们名下 pending 的消息。缺陷形状是这两笔都跑在租约之前（租约晚到 app.RunAsync 里的
+            // StartAsync），于是第二个进程在被拒之前已经改过第一个实例的库：她排好、还没发出去的那条
+            // 消息被后开的取消掉，而第一个进程收不到任何通知。被拒路径 fail-closed：句柄没到手就一个
+            // 字节都不写，异常原样经 App 的既有呈现链冒给人看。
+            var writeLease = app.Services.GetRequiredService<DataDirectoryWriteLease>();
+            var (descriptorPresent, descriptorProcessAlive) = RuntimeDescriptorService.ObserveDescriptorFacts(dataDirectory);
+            try
+            {
+                writeLease.Acquire(descriptorPresent, descriptorProcessAlive);
+                await app.Services.GetRequiredService<MemoryDatabase>().InitializeAsync(token);
+                // 上个进程遗留的未投递计划只清账、绝不重放：重启后不会重复发出旧消息。
+                var swept = await Pry.Core.Runtime.ConversationRuntime.RecoverStalePlansAsync(
+                    new Pry.Api.Runtime.DatabaseRuntimeStore(app.Services.GetRequiredService<MemoryDatabase>()), token);
+                if (swept.Count > 0) app.Services.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()
+                    .CreateLogger("Pry.Api.Runtime").LogInformation("已作废 {Count} 个上次进程遗留的投递计划", swept.Count);
+            }
+            catch
+            {
+                // builder.Build() 之后 app 和它的服务提供者已经建好：这条路径上再没有别人持有它，
+                // 容器不拆就会把已经签发的独占句柄留在同一个进程里，后继实例撞上自己留下的那把锁。
+                // 无论失败在取锁、建库还是清扫哪一步，都先拆容器，再把原异常原样抛上去。
+                await app.DisposeAsync();
+                throw;
+            }
             return app;
         }
     }
