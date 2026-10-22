@@ -22,6 +22,19 @@
 
 ---
 
+## 出闸前预检（守门人 2026-10-22，零构建，全部当场读码所得）
+
+跑那一轮之前把四片的前提逐条核过，核得到的写在这里，核不到的一律改判措辞——**这一节的唯一用途是不让当日唯一那轮构建花在追一个红不了的突变上**。
+
+- F1 前提成立：`d7276aa` 的改动面＝两枚测试文件 25/0 与 19/0，零删除；钉住的三条路由在当前产品码里逐行对得上（`src/Pry.Api/Controllers/MemoriesController.cs:21` 的 `[HttpPost("{id:long}/confirm-keep")]`、`src/Pry.Client/PryBackendClient.cs:188` 拼的 `?characterId=`、`src/Pry.Api/Controllers/ConversationsController.cs:19` 的 `Delete(string id, [FromQuery] bool forgetExclusiveMemories = false…)`）。
+- F3 前提成立，而且**不需要任何新产品接缝**：比较语义的原文在 `src/Pry.Api/Services/ModelPerformancePolicy.cs:71-72`＝`profile.ContextSize > 4096 && metrics.TokensPerSecond is > 0 and < MinimumUsableTokensPerSecond`。边界样本据此定死：12.0 判不慢、11.9 判慢、0 判不慢（那是 `> 0` 那一半，别漏）、`ContextSize` 恰为 4096 时配 4.5 token/s 必须判不慢（地板）。同一族还有第二把闸在 `src/Pry.Api/Services/ModelProcessRegistry.cs:63`，它自己又拿 `attemptedProfile.ContextSize > 4096` 判一次，`MayTryLowerContext`（`:74-75`）的错误码白名单也已存在——**两处闸各钉一格**，只钉 policy 那一处等于第二把闸没人守。
+- F4.1 有实活可做，不是走过场：`docs/narrative-open-items-memo.md` 第 167 行那句"今天没有任何地方取目录锁"已被第三波片 A 证伪（`FileShare.None` 的 `runtime-write.lock`，`src/Pry.Api/Services/DataDirectoryWriteLease.cs:52` 取句柄，`RuntimeDescriptorService.cs:43` 在启动第一步就取）。同页另外两处受它牵连：第 29 行的计数口径（"落地面（表、锁、真进程）一条都还没进主线"——锁那一格已进）、第 49 行的"② 锁句柄形态自选（命名 `Mutex` 或 `FileShare.None` 都不改变 Core 判定）"（形态已选定，不再是自选）。改口径时**只改"已被既有代码回答到什么程度"**；U-3 的代次持久化照旧未决（`DataDirectoryWriteGate.cs:103` 仍是进程内 `Math.Max`，重启即归零），别把它顺手写成已答。
+- F4.2 守门人已跑完一遍，**结论＝零对不上**：37 条"有判据"的行里点名的用例名全部住在该行所指的测试文件内；三处行号钉当场读回的内容与表中语义一致（`tests/Pry.Core.Tests/ModelProviderErrorTests.cs:129-135` 读回 `CreateModelClient(localLoopback: true)` 那一族、`tests/Pry.Api.Tests/DesktopCapabilityGuardTests.cs:176` 是 `Assert.Equal(CapabilityIds.TimeoutMs, x.TimeoutMs)`、`src/Pry.Core/Inference/OpenAiCompatibleChatModel.cs:17` 是 `streamIdleWindow ?? ProviderTimeouts.ResponseStreamIdle`）。载体这一格只做两件事：随 F3 把 `MinimumUsableTokensPerSecond` 那一行的判据栏补成新用例，以及复核上面两条行号钉没被 F1～F3 的移动冲掉。仪器留在 `.local-notes/ledger-crosscheck2-1022.js`（gitignored，一律不删）。
+- F2 的第②③条前提成立：`tests/Pry.Api.Tests/UpstreamProvenanceAndDependencyShapeTests.cs:187`＝`No_package_reference_floats`、`:213`＝`The_third_party_table_names_every_restored_package`；`licenses/THIRD-PARTY-NOTICES.md:9` 就是 `| Avalonia | 11.3.20 | MIT | https://github.com/AvaloniaUI/Avalonia |` 那一行。
+- F2 的第①条**已被本预检改判**，改判后的写法见下。
+
+---
+
 ## 片 F1｜客户端边缘两条路由判据接回来（**已有实现，只差归位**）
 
 现状（守门人 2026-10-22 当场核过）：QA-TIP1019-03 那两条判据在分支 `codex/tip1019-03-client-route` 的 `2954dbc`，起点落后线尾 **46 格**，一直没归位（因为当时共享索引里有他人暂存）。守门人已把它 **rebase 到本单基线**并验过两处事实：
@@ -38,7 +51,7 @@
 
 这三处的共同形状是：**门是好的，反证今天只做到了一半**——上一波要么红在了邻近的另一向，要么只能用测试内嵌样张证明"扫描器看得见那种写法"。本波把它们补齐。
 
-1. **第三波片 A（`DataDirectoryWriteLease`）的"降级继续写"一向**。上一轮突变摘掉 `StartAsync` 里的取锁，红确实红了，但红在 fail-closed 的写路径（`runtime.json 未在后端启动后写出`），**不是原缺陷那一向**。本波要做的突变＝把 `src/Pry.Api/Services/RuntimeDescriptorService.cs` 写路径里的 `_writeLease.AssertWriteAllowed();` 改成"记一条警告然后照写"（即原缺陷语义），定向跑 `tests/Pry.Api.Tests/RuntimeDescriptorWriteGateTests.cs`，必须红在**第二个实例仍然把描述文件覆盖了**那一格（用例名照实采），随后逐字节还原。
+1. **第三波片 A（`DataDirectoryWriteLease`）的"降级继续写"一向——本条按出闸前预检改判，目标从"补到红"换成"把够不着写清楚并留下证据"**。上一轮突变摘掉 `StartAsync` 里的取锁，红确实红了，但红在 fail-closed 的写路径（`runtime.json 未在后端启动后写出`），不是原缺陷那一向。本轮起笔前把这一行的可达性读实了，结论是：**单点改坏 `RuntimeDescriptorService.cs:78` 的 `_writeLease.AssertWriteAllowed();` 不会让任何在册用例变红**。事实链三条，交付说明里要各自复现一次——① 该行的调用方只有 `Write()`，而 `Write()` 只挂在 `ApplicationStarted`（`RuntimeDescriptorService.cs:47`），一次宿主生命周期只跑一回，紧跟在 `StartAsync` 的 `_writeLease.Acquire`（`:43`，前面只有一句 `ObserveDescriptorFacts()`）成功之后；② `DataDirectoryWriteGate` 的 `_held`／`_fencingEpoch` 是实例字段（`src/Pry.Core/Narrative/DataDirectoryWriteGate.cs:54-55`，全类无静态可变面），仓库里 `DataDirectoryWriteLease` 只有一个构造点（`RuntimeDescriptorService.cs:24` 的字段初始化），同进程内没有第二个持锁者能把第一个的租约 fence 掉；③ 因此走到那一行时 `_lease` 必然刚签发、`CheckConditionalWriteAllowed` 必然回 `None`（`DataDirectoryWriteLease.cs:84-95`），把守卫换成"记一条警告然后照写"在测试里等价于没改。**本条要做的是两件，都不许省**：先把这一处单点突变真做一次（只在载体自己的 worktree 内），定向跑 `tests/Pry.Api.Tests/RuntimeDescriptorWriteGateTests.cs` 全四格，**把"仍然全绿"这件事当证据采下来**（四格用例名＋各自结论原文），随后逐字节还原；再补一次对照突变＝把 `DataDirectoryWriteLease.Acquire` 的 `catch (IOException failure)`（`:60`）改成"记警告后返回、不抛"，那次必须红，红点预期在 `Second_host_on_the_same_directory_refuses_startup_without_touching_the_first_descriptor` 的 `Assert.ThrowsAsync` 那一行（第二实例不再抛），**不是**红在"字节不变"那一格——后者被前者挡在前面，这个"想看的红永远隔在另一格后面"的形状就是够不着的证明。两次读数齐了就在 `docs/plans/PROJECT_PLAN.md` §9 如实登记一句：契约 §10.2 第 3 条那次条件写复查在 Api 侧今天没有行为判据，要判它必须先在产品里造第二条写路径或注进门控／时钟接缝，那是新功能、不在本单。**不许**为了留下一个红例去放宽任何既有断言，也不许把这一条写成"已补"。
 2. **片 E1 第 3 条（依赖版本不许浮动）**：上一轮只有内嵌样张红。本波在载体自己的 csproj 上做一次真突变＝临时把某个 `PackageReference` 的 `Version` 改成 `10.0.*`（挑一个不影响还原结果读的写法，改完立刻还原），定向跑 `UpstreamProvenanceAndDependencyShapeTests.No_package_reference_floats` 必须红且指名那一行；**该突变不得进任何提交**，还原后 `git diff --exit-code` 必须干净。
 3. **片 E1 第 4 条（第三方表覆盖还原面）**：同样做一次真突变＝临时从 `licenses/THIRD-PARTY-NOTICES.md` 的直接依赖表里删掉一行（挑 `Avalonia` 那一行，它牵住三个包），定向跑 `The_third_party_table_names_every_restored_package` 必须红，且**红得点出那一族的每一个包名**；还原并逐字节核对。
 
