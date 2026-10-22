@@ -41,12 +41,12 @@
 
 ## 2. U-2　目录锁的真实形态与跨重启代次落点
 
-1. **现状：仍需实现波决定**。Core 只给了判定形状，真实锁句柄一行都没有；代次持久化位置也没有。凭据：`src/Pry.Core/Narrative/DataDirectoryWriteGate.cs:52-57`（`_held`、`_fencingEpoch` 都是进程内字段，没有读写盘的代码路径）；全仓 `src/` 搜 `Mutex`／`FileShare` 只命中一处与本话题无关的临时文件写（`src/Pry.Api/Services/MediaAssetStore.cs:33`）；`DataDirectoryWriteGate` 这个名字在 `src/` 内除了自身文件零引用。
+1. **现状：已被既有代码部分回答**（2026-10-22 更正，旧口径"真实锁句柄一行都没有"已过期）。锁的**形态已定并已进主线**：`src/Pry.Api/Services/DataDirectoryWriteLease.cs:20` 的 `LockFileName = "runtime-write.lock"`、`:52` 以 `FileShare.None` 开独占句柄、`src/Pry.Api/Services/RuntimeDescriptorService.cs:43` 在宿主启动里取锁，取不到就抛 `DataDirectoryWriteLockedException`；`DataDirectoryWriteLease` 全仓只有一个构造点（`RuntimeDescriptorService.cs:24` 字段初始化）。仍然没落的是两格——① **跨重启的代次落点**：`_held`／`_fencingEpoch` 依旧只是进程内字段（`src/Pry.Core/Narrative/DataDirectoryWriteGate.cs:54-55`），`:103` 的 `Math.Max` 重启即归零；② **取锁的时机**，见 §12 与那里的 `DEF-WRILEASE-ORDER-01`。
 2. **既有代码说了什么**：
    - 判定侧已经能测：描述文件类凭据一律 `DescriptorIsNotALock`(601)，观察事实先判、凭据类型后判（`DataDirectoryWriteGate.cs:65-106`，条件写第一问 `CheckConditionalWriteAllowed` 只可能返回 None 或拒绝码，`:112-133`；接管 `FenceAndReacquire` 在别的进程仍持锁时拒绝自封新代次，`:137-150`；无凭据时 fail-closed 返回 603，`:152-168`）。对应测试用的是内存假路径字符串、不建目录（`tests/Pry.Core.Tests/NarrativeStorageContractTests.cs:452`、`:473`、`:491`、`:512`）。
-   - 生产路径今天做的事恰恰是契约要禁的：`src/Pry.Api/Services/RuntimeDescriptorService.cs:71-90` 读到遗留描述文件只 `LogWarning`，随后 `:63` 覆盖写；`src/Pry.Api/Program.cs:143` 在应用构建完成后直接跑 `InitializeAsync`，第一个写盘动作是 `PRAGMA journal_mode=WAL`（`src/Pry.Core/Memory/MemoryDatabase.cs:30-34`）。
+   - 生产路径的旧形状确实违反过契约（读到遗留描述文件只 `LogWarning`，随后覆盖写），**这一向在 2026-10-22 第三波片 A 之后已经关掉**：`RuntimeDescriptorService.cs:78` 在每次碰 `runtime.json` 之前问一次 `_writeLease.AssertWriteAllowed();`，写权被 fence 或已释放就抛可呈现拒绝，接口上不存在"记一条警告然后照写"的出口；遗留文件仍然只 `LogWarning`（`:82` 起的 `ReportLeftover`），但那只是给人看的读数，不再等于覆盖权。**这一向剩下的真问题不是覆盖描述文件，而是覆盖发生在另一处**——取锁晚于第一次写盘，见 §12 的 `DEF-WRILEASE-ORDER-01`。
    - "代次持久化"并非无处可去——库里已经有两把可参照的先例：`conversation_runtime.epoch` 单行原子递增＋条件投递比对（`src/Pry.Core/Memory/MemoryDatabase.Runtime.cs:23`、`:58-66`、`:200-206`），以及 `memory_scopes.epoch` 由触发器随删除/手改递增（`src/Pry.Core/Memory/SqliteMemoryRepository.cs:117-128`、`:265`、`:299`）。缺的是"目录级"那一份。
-3. **还差什么**：给下一个动手的人三个最小事实——① 取锁点在 `Program.cs:143` 之前而不是之后（见 U-12）；② 锁句柄形态自选（命名 `Mutex` 或 `FileShare.None` 锁文件都不改变 Core 判定，Core 侧 `DataDirectoryObservation` 已把"别的进程是否持锁"当输入事实，`DataDirectoryWriteGate.cs:14-19`）；③ 代次要落 SQL 单行，落点新表或复用治理表由持久层定，且必须让第二个进程读到它而不是本地自增（`:103-105` 是本地 `Math.Max`，进程重启即归零）。
+3. **还差什么**：给下一个动手的人三个最小事实——① 取锁点**仍然没有**坐在 `Program.cs:143` 之前：今天的取锁在 `AddHostedService<RuntimeDescriptorService>()`（`src/Pry.Api/Program.cs:118`）所注册实例的 `StartAsync` 里，而那要等 `app.RunAsync()`（`:5`）才跑；`BuildAsync` 里的 `MemoryDatabase.InitializeAsync`（`:143`）与遗留计划清扫（`:145`）都排在它前面，这一格现在带用户可见后果（§12 第 3 条）。② 锁句柄形态**已选定**，不再是"自选"：`FileShare.None` 的 `runtime-write.lock`；Core 判定侧照旧不依赖进程类型（`DataDirectoryObservation` 把"别的进程是否持锁"当输入事实，`DataDirectoryWriteGate.cs:14-19`）。③ 代次要落 SQL 单行仍未做，落点新表或复用治理表由持久层定，且必须让第二个进程读到它而不是本地自增（`DataDirectoryWriteGate.cs:103` 进程重启即归零）。
 4. **推荐**：机制选型本身写"接走方式＝HDS-001 后续波在 `Pry.Api` 启动路径实现真实锁＋一个单行代次账，Core 判定形状不动"。但**这一条里有一格是产品可见的**，需要作者拍，按 `docs/decision-request-protocol.md` 四段式：
 
 【待你裁决】第二个 Pry 进程指向同一份数据目录时，用户该看到什么（附注：U-2 的可见行为格，Owner＝Architecture 代派，实现落点建议 HDS-001 后续波）
@@ -164,7 +164,7 @@ C. 全局直接切到新链：立刻得到统一的行为与新数据，代价�
 
 1. **现状：仍需实现波决定**（形状要求已由契约写清，代码里两个字段都不存在）。
 2. **既有代码说了什么**：`MemorySchemaMigrator.cs:45-54` 的五参数记录定义里没有这两项，`UsesAmbientTransaction`（`:53`）只区分"迁移器是否包事务"；清单不变量校验 `:105-126` 查空表、重号、目标版本非法、冒领未来版本、必须且只能以 `VersionAlign` 收尾，**不查持锁**；执行循环 `:72-101` 每步一个事务边界、失败整步回滚并以 `MemoryMigrationException` 停下。另有一格必须提醒动手的人：`IdempotentRepairOwnsConnection` 档的步骤自带连接（`:20-22` 注释写明外层包了会自锁），现网正是这么用的（`MemoryDatabase.cs:173-175` 的 `repair.long-term-memory` 调 `LongTerm.InitializeAsync`，内部自开连接与事务，`SqliteMemoryRepository.cs:50-52`）——给这类步骤加"必须在外层事务里持锁"的判定会自相矛盾。
-3. **还差什么**：一句给 HDS-001/005 的最小事实——`FenceRequirement` 的硬前置是 U-2：今天没有任何地方取目录锁（见上面 §2），如果直接把"结构变更必须持锁"写进 `ValidateRegistry`，`Program.cs:143` 这条真实初始化路径会当场全红；因此该字段必须先以默认 false 引入、由新步骤显式置 true。
+3. **还差什么**：一句给 HDS-001/005 的最小事实——`FenceRequirement` 的硬前置是 U-2 的**落点那一格**：目录锁今天已经存在（见 §2），但取锁仍然晚于 `Program.cs:143` 的那次初始化，所以"结构变更必须持锁"这条判定按现行启动序仍会把真实初始化路径当场判红；因此该字段必须先以默认 false 引入、由新步骤显式置 true，等片 F5 把取锁提前之后再翻。
 4. **推荐**：接走方式＝与 U-6 同一把刀：`FenceRequirement`（默认 false，保持既有步骤行为）＋`BackfillEvidence`（可选委托）一起加，并在 HDS-001 后续波取到真实锁之后把结构变更类步骤翻成 true。归属＝HDS-001＋HDS-005；文件归属在他人名下，动前先按 `docs/plans/README.md` 第 3 条排撞位。
 
 ---
@@ -172,8 +172,8 @@ C. 全局直接切到新链：立刻得到统一的行为与新数据，代价�
 ## 12. U-12　目录写锁与 `SchemaVersionGuard` 的先后
 
 1. **现状：已被既有代码部分回答**——**顺序其实已经被定死了**，只剩落点没实现，这一格不该再当"未决"消费。
-2. **既有代码说了什么**：现行初始化顺序是"开连接 → 读版本 → 拒写门 → WAL → 迁移清单"（`MemoryDatabase.cs:26-37`），门在任何写之前（`:30-31` 注释逐字写明第一批语句里的 `PRAGMA journal_mode=WAL` 本身就是写；判定体 `:195-199`；测试专门守这一格：`tests/Pry.Core.Tests/SchemaVersionGuardTests.cs:83`「拒写门坐落在那个写之前」）。**没有任何一步取锁**——`Program.cs:143` 直接跑初始化，`RuntimeDescriptorService` 要等到 `ApplicationStarted` 才写描述文件（`RuntimeDescriptorService.cs:34-41`＋`Program.cs:118`），所以真实顺序是"先迁移完、后发布发现入口"。方向侧权威文本已经给答：v4 §8 明写"数据目录在任何初始化/迁移前必须取得可检测的进程级独占写入锁；`runtime.json` 只负责发现"（`docs/plans/Pry_HDS_Rewrite_Architecture_Plan_v4.md:220`）。
-3. **还差什么**：一句给 HDS-001 后续波的最小事实——取锁点只能坐在 `MemoryDatabase.cs:26` 开连接之前（更准确地说坐在 `Program.cs:143` 之前，否则 Core 会依赖进程类型，破 AGENTS 第 5 条的"Core 不依赖 HTTP/进程"边界）；`SchemaVersionGuard` 的判定位置不动，它已经在锁该在的位置之后紧邻的第一步。
+2. **既有代码说了什么**：现行初始化顺序是"开连接 → 读版本 → 拒写门 → WAL → 迁移清单"（`MemoryDatabase.cs:26-37`），门在任何写之前（`:30-31` 注释逐字写明第一批语句里的 `PRAGMA journal_mode=WAL` 本身就是写；判定体 `:195-199`；测试专门守这一格：`tests/Pry.Core.Tests/SchemaVersionGuardTests.cs:83`「拒写门坐落在那个写之前」）。**取锁这一步 2026-10-22 已经有了，但坐错了位置**：租约在 `RuntimeDescriptorService.cs:43` 的 `StartAsync` 里取，而那个实例由 `Program.cs:118` 的 `AddHostedService` 注册，要等 `app.RunAsync()`（`:5`）才开始跑——`BuildAsync` 里的 `InitializeAsync`（`:143`）与 `RecoverStalePlansAsync`（`:145`）都排在它前面。真实顺序因此仍是"先迁移完、先扫遗留计划，后取锁、后发布发现入口"。方向侧权威文本照旧：v4 §8 明写"数据目录在任何初始化/迁移前必须取得可检测的进程级独占写入锁；`runtime.json` 只负责发现"（`docs/plans/Pry_HDS_Rewrite_Architecture_Plan_v4.md:220`）。
+3. **还差什么**：一句给 HDS-001 后续波的最小事实——取锁点只能坐在 `MemoryDatabase.cs:26` 开连接之前（更准确地说坐在 `Program.cs:143` 之前，否则 Core 会依赖进程类型，破 AGENTS 第 5 条的"Core 不依赖 HTTP/进程"边界）；`SchemaVersionGuard` 的判定位置不动，它已经在锁该在的位置之后紧邻的第一步。**这一格今天已经从"文档不同步"升级成有用户可见后果的缺陷（`DEF-WRILEASE-ORDER-01`，2026-10-22 守门人当场读码登记）**：第二个进程在被写锁拒掉之前已经跑完 `InitializeAsync`（`MemoryDatabase.cs:33-34` 的 `PRAGMA journal_mode=WAL` 改的是库头、`:37` 迁移清单）与 `RecoverStalePlansAsync`，而后者那条 SQL（`src/Pry.Core/Memory/MemoryDatabase.Runtime.cs:281-285`，而 `:279` 那句早退意味着它只在库里确有 `open` 计划时才动笔——而那恰好是第一个实例排着队的那一刻）把 `reply_plans` 里所有 `status='open'` 与 `planned_messages` 里所有 `state='pending'` 一律改成 cancelled，**没有任何归属、pid 或代次过滤**。于是双开的可见后果不是"两个都去写 `runtime.json`"，而是**后开的那个在吃闭门羹之前先把先开的那个排好的队取消了**——她答应发而还没发出去的那条消息不会发，第一个进程也收不到任何通知。同一形状还让 `DataDirectoryWriteLockedException.Body` 那句"本次启动已经拒绝，没有写入或改动任何文件"只在"没碰 `runtime.json`"这一格成立。修法＝把取锁提前到第一次写盘之前，让那句话变成真话，**而不是把文案改软**。
 4. **推荐**：接走方式＝HDS-001 后续波在宿主侧加"取锁→再初始化"的启动序，Core 判定与门位置都不改；并把契约 §12 这条从"未决"降级为"待实现"（**这条更正要由守门人或本 lane 的下一把在契约文档里做，本刀不碰他人名下文档**）。
 
 ---
@@ -189,11 +189,11 @@ C. 全局直接切到新链：立刻得到统一的行为与新数据，代价�
 - U-7：算法选型是实现侧自决，Core 判定面已就位（空白即拒、散列等值即幂等）。
 - U-8：属 HDS-003；HDS-004/005 不依赖它的解析层，只依赖 `NarrativeDraft` 字段面（已齐）。
 - U-10：改传参本身清楚，唯一依赖是映射账落表（HDS-005 自己的活）。
-- U-12：顺序已由 v4 §8 定死，实现照做即可。
+- U-12：顺序本身已由 v4 §8 定死，不必再当未决消费；**但取锁的落点今天仍不达标，并且带用户可见后果**（`DEF-WRILEASE-ORDER-01`，见 §12 第 3 条）。那一格已经不是"文档口径"而是"要修的缺陷"，2026-10-22 随第五波片 F5 派出。
 
 **HDS-005 的真前置**（动手前要先解决）：
 
-1. U-2/U-3：目录锁与代次持久化落点——它的"崩溃恢复／接管后旧票必须失效"两组判据没有真锁就没有可信测试，目前只能停在内存形状。
+1. U-2/U-3：目录锁与代次持久化落点——2026-10-22 更正：**真锁已经有了**（`FileShare.None` 的 `runtime-write.lock`），但它坐在第一次写盘之后（`DEF-WRILEASE-ORDER-01`），所以"崩溃恢复／接管后旧票必须失效"那两组判据仍然没有可信载体；代次持久化那一格照旧未落（`DataDirectoryWriteGate.cs:103` 本地自增，重启归零）。
 2. U-11：叙事侧新步骤要登记进 `SchemaMigrationStep` 清单，且必须避开 `ValidateRegistry` 的"不得冒领未来版本"（`MemorySchemaMigrator.cs:117-120`）——版本号分配权在持久层，本备忘不自封任何 `TargetVersion`。
 3. U-5 的实例维：`reply_plans` 无实例列，per-instance pending 计数要么 JOIN 要么降粒度。
 
@@ -210,7 +210,7 @@ C. 全局直接切到新链：立刻得到统一的行为与新数据，代价�
 1. **同一份库里存在两套结构版本账**。契约 §11.2 第 1 点写"版本来源仍是 `schema_info` 这一张登记账……一个库只能有一个『当前结构版本』的问法"，并称 HDS-001 已按此实现；但 `src/Pry.Core/Memory/SqliteMemoryRepository.cs:65-66` 另建了 `memory_schema(version)` 表并插 1，`:99` 读它、`:134` 把它从 1 推到 2，`tests/Pry.Core.Tests/MemoryDeletionSeparationTests.cs:276-286` 直接断言并改写它的值。契约 §11.1 的"现在"一节没有提这第二张表。
 2. **两类 fail-closed 并不一致**（契约 §11.2 第 8 点要求一致）：`schema_info` 侧的高版未知走 `SchemaVersionTooNewException`，实现 `IUserPresentableError` 且 `RetryAllowed=false`（`src/Pry.Core/Memory/SchemaVersionGuard.cs:15-43`，判定体在 `MemoryDatabase.cs:195-199`）；`memory_schema` 侧的未知版本只抛裸 `InvalidOperationException`（`SqliteMemoryRepository.cs:100`），用户面拿不到病因。
 3. **未知高版拒写门没覆盖第二张账**：门只比 `schema_info` 读数与 `MemoryDatabase.SchemaVersion`（`MemoryDatabase.cs:27-30`），`memory_schema.version` 高于当前二进制时不会被它拦下。
-4. **§12 把 U-12 当未决，v4 §8 已经定了它**（`docs/plans/Pry_HDS_Rewrite_Architecture_Plan_v4.md:220`）；而代码里真实顺序还多了一格文档没写：描述文件在 `ApplicationStarted` 才写，晚于整条迁移路径（`RuntimeDescriptorService.cs:34-41`＋`Program.cs:143`）。
+4. **§12 把 U-12 当未决，v4 §8 已经定了它**（`docs/plans/Pry_HDS_Rewrite_Architecture_Plan_v4.md:220`）；而代码里真实顺序还多了一格文档没写：描述文件在 `ApplicationStarted` 才写，晚于整条迁移路径（`RuntimeDescriptorService.cs:37-48`，写入回调注册在 `:47`；`Program.cs:143`）。**2026-10-22 更正**：句柄那一格落了（`RuntimeDescriptorService.cs:43` 取租约，`tests/Pry.Api.Tests/RuntimeDescriptorWriteGateTests.cs` 四格守着），但"晚于整条迁移路径"这半句**仍然成立，而且变得更贵**——同一个 `BuildAsync` 里还排在它前面的那次遗留计划清扫，会取消另一个仍活着的实例排好的队，见 §12 第 3 条登记的 `DEF-WRILEASE-ORDER-01`。
 5. **文件名与内容对不上**：契约 §11.1 说"另有 `src/Pry.Core/Memory/SchemaVersionGuard.cs`"承担拒写门，实际该文件只有两个异常类型（`:15`、`:50`），门的判定在 `MemoryDatabase.cs:195-199`。动手的人若照文档去改"闸门"会改错文件。
 6. **行号漂移（无害但会误导）**：契约 §10.1 记 `ReportLeftover()` 为 71–89 行，实际 71–90（`RuntimeDescriptorService.cs:71-90`）；§2.1 记网关缺口注释为 26–31 行，实际 27–31。
 7. **一条代码内部错配（顺带登记）**：空白 `CommitId` 报出的理由码是 213 `ContentHashMissing`（`NarrativeDraftValidator.cs:387`），与契约 §9.2 判定表里 213 对应"没有内容散列"的语义不符；HDS-005 若要把它映射成 HTTP 语义会先撞上这个错配。

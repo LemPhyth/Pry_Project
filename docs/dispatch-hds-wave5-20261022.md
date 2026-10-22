@@ -1,7 +1,7 @@
-# HDS 第五波派单（2026-10-22）｜客户端边缘路由判据归位 ＋ 三处反证缺口补证 ＋ 限额表最后一格边界 ＋ 一把零构建文档刀
+# HDS 第五波派单（2026-10-22）｜客户端边缘路由判据归位 ＋ 三处反证缺口补证 ＋ 限额表最后一格边界 ＋ 一把零构建文档刀 ＋ 双开写锁的取锁顺序缺陷
 
 派单人：守门人（Architecture / Integration / Release）。执行方式＝**守门人自起子 Agent**（作者 2026-10-22 逐字「你，还是自己起Agent吧，你这派单跟我组织Agent的方式完全不一样」），工单是给冷启动执行用的，不交作者转派。
-坐标系＝`docs/plans/PROJECT_PLAN.md` §4.2；本波不新开功能面，只做**四件已经暴露、且不依赖作者裁决**的事：把一把落后 46 格的判据接回来、把三处"只由内嵌样张反证过"的门补上真突变、把总盘最后一格能判的边界判掉、更正备忘里已过期的措辞。
+坐标系＝`docs/plans/PROJECT_PLAN.md` §4.2；本波不新开功能面，只做**五件已经暴露、且不依赖作者裁决**的事：把一把落后 46 格的判据接回来、把三处"只由内嵌样张反证过"的门补上真突变、把总盘最后一格能判的边界判掉、更正备忘里已过期的措辞、把出闸前预检新查出来的那条缺陷（`DEF-WRILEASE-ORDER-01`：第二个进程在被写锁拒掉之前已经改了共享库）修在它自己的那一刀里。
 
 基线起点＝**派单时的线尾**（本单出闸时线尾＝第四波归位后的 `5593e1a`，其上另有守门人的登记提交；起笔前 `git log --oneline -1` 当场取线尾，别抄这里的号）。
 **出口顶账起点当场写死＝Core 527／Api 274／App 233／Client 106＝总 1140，失败 0、通过 1138、两条环境跳过照旧同名**（守门人 2026-10-22 逐份读四份 `.trx` 采的）。**不要为了"确认起点"先跑一轮全量。**
@@ -69,14 +69,31 @@
 
 ## 片 F4｜零构建文档刀（不起一次 `dotnet`）
 
-1. 更正 `docs/narrative-open-items-memo.md` 里已过期的措辞：**U-2／U-3／U-12**（目录锁真实形态、目录代次与实例写权代次的联动、目录锁与未知高版拒写门的先后）三格要按已落地事实改口径——第三波片 A 已经落了**进程级独占写锁**（`runtime-write.lock`，`DataDirectoryWriteLease.Acquire` 在 `StartAsync` 第一步，`AssertWriteAllowed` 在每次写前复查；契约 §10.1 已改写为落地后事实），第四波片 B 把高版拒写走可呈现异常。**只改"已被既有代码回答到什么程度"和指认的行号**，不许新增未实现的承诺，不许动其余九格的口径。
-2. 交叉核对 `docs/resource-limit-ledger.md` 判据栏里点名的**用例名与文件是否真的存在**（这张表的守卫门只钉限额常量的 `文件:行号`，不钉"判据那一列写的用例名"）。把对不上的逐条列进交付说明；若确有对不上，**只改表里那一格为真实形状**（写"无"也行），不许新增断言。
+> **状态（守门人 2026-10-22 当场做完，随本单的文档刀入库）：两半都已执行完，carrier 不再重做，也不许再碰 `docs/narrative-open-items-memo.md` 与 `docs/resource-limit-ledger.md` 这两枚文件。** 下面是执行结果与仍然成立的要求。
 
-交付形态：F1～F3 各一刀（`test:`／`test:`／`test:`，提交信息点名 HDS-011d-F1…F3 或沿用 HDS-011c 编号由你定，但要能对上本单），F4 单独一刀（`docs:`）。F2 的突变**一律不进提交**。
+1. 更正 `docs/narrative-open-items-memo.md` 里已过期的措辞：**U-2／U-3／U-12**（目录锁真实形态、目录代次与实例写权代次的联动、目录锁与未知高版拒写门的先后）三格要按已落地事实改口径——第三波片 A 已经落了**进程级独占写锁**（`runtime-write.lock`，`DataDirectoryWriteLease.Acquire` 在 `StartAsync` 第一步，`AssertWriteAllowed` 在每次写前复查；契约 §10.1 已改写为落地后事实），第四波片 B 把高版拒写走可呈现异常。**只改"已被既有代码回答到什么程度"和指认的行号**，不许新增未实现的承诺，不许动其余九格的口径。
+   → 实际改出口径（守门人）：锁的**形态**确实已落地（`src/Pry.Api/Services/DataDirectoryWriteLease.cs:20/:52`、`RuntimeDescriptorService.cs:43` 取锁、`:78` 每次写前复查），但"在 `StartAsync` 第一步"这句作为**唯一缺口**已经不成立——它在 `Program.cs:5` 的 `RunAsync` 里，而第一次写盘在 `:143/:145` 的 `BuildAsync` 里，所以 U-2／U-12 改成"形态已定、取锁时机坐错位置"，并把那条缺陷登记为 `DEF-WRILEASE-ORDER-01` 交给片 F5。
+2. 交叉核对 `docs/resource-limit-ledger.md` 判据栏里点名的**用例名与文件是否真的存在**（这张表的守卫门只钉限额常量的 `文件:行号`，不钉"判据那一列写的用例名"）。把对不上的逐条列进交付说明；若确有对不上，**只改表里那一格为真实形状**（写"无"也行），不许新增断言。
+   → 实际核对结果（守门人，仪器＝`.local-notes/ledger-crosscheck2-1022.js`）：**37 行有判据的登记全部对得上，0 处不一致**（含 `src/` 侧的行号引用），因此这一格**不改表**；carrier 若重跑发现新的不一致，仍按上面那句只改那一格。
+
+交付形态：F1～F3 各一刀（`test:`／`test:`／`test:`，提交信息点名 HDS-011d-F1…F3 或沿用 HDS-011c 编号由你定，但要能对上本单），F4 单独一刀（`docs:`），F5 单独一刀（`fix:`，产品码改动与它自己的新判据同刀）。F2 的突变**一律不进提交**。
+
+## 片 F5｜把取锁提前到第一次写盘之前（`DEF-WRILEASE-ORDER-01`，本波唯一动产品码的一片）
+
+缺陷事实（守门人 2026-10-22 当场读码所得，零构建）：**第二个进程在被写锁拒掉之前，已经改过那份共享库**。真实顺序＝`src/Pry.Api/Program.cs:4` 走 `BackendApplication.BuildAsync` → `:143` `MemoryDatabase.InitializeAsync`（`src/Pry.Core/Memory/MemoryDatabase.cs:33-34` 那句 `PRAGMA journal_mode=WAL` 改的是库头、`:37` 跑迁移清单）→ `:145` `ConversationRuntime.RecoverStalePlansAsync` → `src/Pry.Core/Memory/MemoryDatabase.Runtime.cs:281-285` 那两条 `UPDATE`（把全部 `status='open'` 的 `reply_plans` 与全部 `state='pending'` 的 `planned_messages` 改成 `cancelled`，**没有归属、没有 pid、没有代次过滤**；`:279` 那句早退只保证"库里没有 open 计划时不动笔"）→ 到 `Program.cs:5` 的 `app.RunAsync()` 才轮到 `RuntimeDescriptorService.StartAsync` 取租约并抛 `DataDirectoryWriteLockedException`。用户可见后果＝双开时**先开那个实例排好、还没发出去的那条消息被后开的取消掉**，而第一个进程收不到任何通知；同一形状让拒绝文案 `DataDirectoryWriteLease.cs:142-143` 那句"本次启动已经拒绝，没有写入或改动任何文件"只在"没碰 `runtime.json`"这一格成立。
+
+要做什么（范围就这三件，一件都不许多）：
+
+1. 把取锁动作提前到第一次写盘之前，落点在 `BackendApplication.BuildAsync` 里、`InitializeAsync`（`Program.cs:143`）之前。Core 的判定形状与 `SchemaVersionGuard` 的闸门位置一个字不动（AGENTS 第 5 条：Core 不依赖进程类型；`MemoryDatabase.cs:30-31` 那条"拒写门在任何写之前"的既有判据必须继续成立，`tests/Pry.Core.Tests/SchemaVersionGuardTests.cs:83` 守着它）。两处实现注意：`AddHostedService<RuntimeDescriptorService>()`（`Program.cs:118`）注册的实例今天要到 `RunAsync` 才被解析，提前取锁就要保证**同一个租约实例**被取锁方、宿主服务与呈现链共用（不要把锁再 `new` 一遍，也不要让第二次 `Acquire` 变成另一个持有者）；租约的归还路径（`StopAsync` 与 `Dispose` 双路径，`RuntimeDescriptorService.cs:52-65`）要照样幂等，否则取锁提前会把句柄留成泄漏。
+2. 给被拒路径补一条**行为判据**：真造一条 `open` 的 `reply_plans` 与一条 `pending` 的 `planned_messages` 写进第一个实例的库，然后让第二个进程走真 `BuildAsync` 起步，断言"第二个被拒"与"那两行的状态一个字没变"两半。**这条判据在修复之前必须是红的**（红在计划已变 `cancelled`），修复之后才转绿——这就是本片自己的先红后绿。**不许**用 grep 那条 SQL 代替，也不许把断言写成"抛出异常就算过"（只判抛异常的话，把清扫留在原位也一样绿）。
+3. 随取锁提前把 `tests/Pry.Api.Tests/RuntimeDescriptorWriteGateTests.cs` 那四格的**拒绝点形状**改过来（今天它们把 `Assert.ThrowsAsync` 挂在 `StartAsync` 上，提前之后异常来自 `BuildAsync`）。四格用例名一个字不改，只改调用形状。文案那句"没有写入或改动任何文件"**在提前之后才成为真话**——不许为了让旧断言通过而把它改软；另外要知道：今天没有任何一条在册判据钉住那句话（在册四格钉的是 Headline、`RetryAllowed` 和 Body 里"另一个 Pry"／"不会改变结果"两处子串），所以第 2 条那条行为判据就是它唯一的凭据，**不要**再为文案补一条 grep 文本门当作判据。
+
+预期顶账＝**Api 274→275**（＋1 格新判据；改形状那四格不改变条数。逐文件 `grep -c '[Fact]'` 数出来再顶，别先写数）。
+不许走的捷径：不许只在 `SweepStaleRuntimePlansAsync` 上加一层"归属过滤"就宣布修好（那仍然是第二个进程在先开实例的库上动笔）；不许把那次清扫整段删掉（它是崩溃恢复的既有行为，`Program.cs:144` 的注释与既有判据在册）；不许把锁挪进 `MemoryDatabase`（Core 边界）；本片**不改任何限额数值**，也不新增 NuGet 依赖。
 
 ## 出口证据（一次跑齐）
 
-1. 四份 `.trx` 的 `<Counters>`：总／四分项／失败／点名跳过；起点＝527／274／233／106＝1140，顶账写法＝"某分项 X→X＋N，N＝本刀新增几例（逐文件 `grep -c '[Fact]'`，再数 `[Theory]`/`[InlineData]`）"。
+1. 四份 `.trx` 的 `<Counters>`：总／四分项／失败／点名跳过；起点＝527／274／233／106＝1140，顶账写法＝"某分项 X→X＋N，N＝本刀新增几例（逐文件 `grep -c '[Fact]'`，再数 `[Theory]`/`[InlineData]`）"。**五片全落时的期望等式**＝Client 106→108（F1 的＋2）、Api 274→275（F5 的＋1）、Core 527→529 或 Api 再＋2（F3 的边界与地板落在哪一分项由 `IsTooSlow` 的归属决定）⇒ 出口总量期望 **1145～1147、失败 0、点名跳过仍只有那两格同名环境跳过**。对不上就是数错了，或有人悄悄删了用例——先算清再写报告。
 2. 完整 `dotnet build Pry.slnx -c Release` 那轮的 0 警告 0 错误。
 3. F1／F3 每条新判据的红例全名＋原文；F2 三条真突变的红例全名＋原文＋还原证据。
 4. `scripts/verify-repository.ps1`、`scripts/measure-fixed-eval.ps1 -ResultsDirectory <本轮专属目录>`（catalog 应仍 **76**；它会往该目录写 `fixed-eval-coverage.json`，别复用别人的 run 目录）、`git diff --check` 的当场输出。
