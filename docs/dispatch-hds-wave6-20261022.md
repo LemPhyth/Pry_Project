@@ -71,3 +71,13 @@ Core 527（executed 525／passed 525）／Api 278／App 233／Client 108＝**总
 - 报告里每一格都要有：载体提交号、被改文件:行、突变原文（before→after）、`git diff --stat` 数字、跑法整行命令、TRX 文件名、红格用例全名＋消息要点、还原方式与 SHA-256、还原后 `git status --short` 行数。
 - 明写"哪些向够不着、为什么"（引用读码结论，不要引用感觉）；不许把"没拆"写成"不需要拆"。
 - 交付说明附：逐次预检整段输出、三组红批与绿批的读回、收尾那一轮的四个分项与顶账。
+
+---
+
+## ⑧ 执行结果（守门人登记，2026-10-22 深夜）
+
+- **执行方在 150 轮上限被系统截断，§⑦ 那份报告从未写出**（`docs/eval/reports/2026-10-22-qa-wave6-rolling-resample-of-waves1-4.md` 不存在）。它最后一句自述停在"Core group complete (3 dotnet runs)"，而盘上九份 TRX 证明 Api／Client 两组与收尾全量都跑完了 ⇒ **自述过时，不是没干活**。
+- **预算实测**＝`dotnet` 调用 10 次（`%TEMP%` 里 16:37～17:08 的十份 MSBuild 工作负荷日志与九个批次一一对上）＝定向 8＋构建 1＋全量 1，**正好等于 §⑤ 上限，未超支**。§⑤ 要求的"逐次预检整段输出留档"**没有**（`.local-notes/` 该时段只有守门人自己的文件）⇒ 该条证实不了也证伪不了，登记为欠账。
+- **§③ 九把的对账结果**＝去重 46 格红，**每一份点名判据文件至少红过一格、无一全绿**；`RuntimeDescriptorWriteGateTests` 四格全红（第 4 格靠第二批过滤跑才拿到）、`MemorySchemaMigrationRegistryTests` 那 1 格同样靠第二批；`2eba867` 的转义红由非实现方重新拿到 ⇒ 上一轮的"守门人自证"这一格解除。`client-red` 多出的 `RuntimeDiscoveryTests`（端口超出范围）不追认为覆盖。
+- **收尾复证**＝总 1146／1144 绿／0 红／2 条同名跳过，与 §② 起点读数逐位相同 ⇒ **在册基线不因本波改写**。载体 `git status --short`＝0 行，三组还原后各自复绿。
+- **本波因此只算弱化版独立复采**：§⑦ 要求的 before→after、`git diff --stat`、跑法整行、还原 SHA-256、还原后状态行数**五项全缺**。连带 `e554483` 解禁那两向与 `c148fbf` 那格单独核**仍挂未补**。逐格证据、效力边界与下一轮的补法＝`docs/eval/reports/2026-10-22-gatekeeper-reread-of-wave6-carrier-trx.md`（`eval-GK-WAVE6-REREAD-1022`）。
