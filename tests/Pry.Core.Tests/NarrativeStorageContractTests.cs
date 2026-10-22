@@ -310,7 +310,25 @@ public sealed class NarrativeStorageContractTests
         Assert.Equal(stateAfterFirst.LastCommitId, late.State!.LastCommitId);
         Assert.Equal(1, late.State.StoryVersion);
         Assert.Equal(102, late.State.ProcessedThrough.Seq);
-        Assert.DoesNotContain(_writer.Ledger.Snapshot(), s => s.CommitId is "commit-late" or "commit-late-2");
+        // DEF-GREENGATE-01 改判（选项 A，2026-10-22 eval-QA-WAVE7-1022）：这一行原本是
+        //   Assert.DoesNotContain(_writer.Ledger.Snapshot(), s => s.CommitId is "commit-late" or "commit-late-2");
+        // 而 Snapshot() 返回的是投递段集合 _segments（src/Pry.Core/Narrative/DeliveryLedger.cs:46），
+        // 已登记提交在另一个私有字典 _commits（同文件 :36）里；TryCommit 全程只登记提交（:196 调
+        // RegisterAppliedCommit），从不追加投递段，而本方法在此之前没有一次 TryAppend ⇒ 到那一行时集合恒空，
+        // "不含某元素"结构上红不了。换成两条可失败的断言：
+        // ① 用现有公开面把"迟到提交没进 _commits"判出来——拿当前代次 host-b 的票先过所有权门（:71），
+        //    对两个迟到 CommitId 各走一次 TryAppend，断言被拒且拒绝原因指向"提交未登记"（:79-83）；
+        // ② 投递段账本此刻一段没有：把"空"从恒真的前提变成被断言的事实。
+        // 本格的承重断言仍在 :300、:301、:306-307、:310-312；账本侧同形守卫见 :273 与 :441-443。
+        foreach (var lateCommitId in new[] { "commit-late", "commit-late-2" })
+        {
+            var unregistered = _writer.Ledger.TryAppend(
+                Segment(0, BoundQuote) with { CommitId = lateCommitId, OwnershipEpoch = 2 }, "host-b");
+            Assert.False(unregistered.Accepted);
+            Assert.Equal(NarrativeContractReason.SegmentCommitUnknown, unregistered.Reason);
+        }
+
+        Assert.Empty(_writer.Ledger.Snapshot());
 
         var fresh = _writer.TryCommit(secondBatch, Commit(commitId: "commit-2", writer: "host-b", epoch: 2,
             expectedStory: 1, watermark: 103, consumed: [103], batchId: "batch-2", perceived: [Input103]));
