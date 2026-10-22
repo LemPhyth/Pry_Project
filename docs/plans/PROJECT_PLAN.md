@@ -181,6 +181,15 @@ git diff --cached --check
 
 ## 9. 最近交接
 
+### 2026-10-22｜守门人｜作者把"不许弹窗"改成"先查再弹"⇒ 游戏在场预检仪器双向校准完成，第五波全局约束加第 3a 条
+
+- **作者的现令原文（逐字）**：「你弹窗之前看看我有没有在运行游戏不就好了」。这条把 10-22 早先那条「你 下一次 不要 再 反复构建 触发那个防火墙 烦我打游戏」从**绝对禁令**改成了**可执行判据**——禁令的代价是第五波整波押着不动，而他要的其实只是"别在他打游戏时弹"。因此本轮起 `dotnet` 的许可来源不再是"作者再点头"，而是预检读数。
+- **仪器**＝`.local-notes/game-preflight3-1022.ps1`（ASCII＋CRLF，PS 5.1；gitignored 不入库）。四条判据取或：① 进程可执行路径落在游戏安装目录（`steamapps\common`、`Battle.net\Games`、`EAGames`、`miHoYo`/`HoYoverse`、`Riot Games\…` 等）；② 进程名在已知游戏名单（`dota2`/`csgo`/`cs2`/`Wow`/`ValorantWin64ShippingExe`/`LeagueClientUxRender`/`Unreal-Win64-Shipping`…）；③ 可见＋**无 owner**＋面积 ≥ 主屏 95%＋**没有 `WS_CAPTION` 也没有 `WS_THICKFRAME`** 的窗，且持有进程不在工作名单里；④ `nvidia-smi` 的 GPU 占用 ≥ 60%。输出 `VERDICT=BUILD_OK`／`HOLD`，另有一条不阻止构建的 `WARN`（可用物理内存 < 6 GB ⇒ 那轮全量读数按第五波全局约束第 9 条记作废）。
+- **双向校准（同一轮里都当场采到，不是只跑绿）**：绿半＝作者实机桌面，`VERDICT=BUILD_OK`，`primary_screen=2560x1440 windows_scanned=525`、`gpu_util=24%`、`free_memory_gb=6.4`，三枚全屏窗（TextInputHost／NVIDIA Overlay／explorer 的 Program Manager）全判 `work=True`；红半＝自起 `.local-notes/gpprobe.exe`（不可见 `Opacity=0.0`、点击穿透 `WS_EX_TRANSPARENT`、不抢焦点 `WS_EX_NOACTIVATE`、`ShowInTaskbar=true`、占满主屏、20 秒自关），同一次扫描立刻 `VERDICT=HOLD` 并点名 `gpprobe pid=15140 area=3686400 title=GP-PREFLIGHT-PROBE work=False`，收尾只 `Stop-Process` 自己起的那一个 pid，**他任何进程都没碰**。
+- **红半两次压不红，两次都是判据选错而非仪器坏**：`Process.MainWindowHandle` 看不见 popup 窗 ⇒ 换 `EnumWindows`；换完仍绿，dump 到探针 `style=0x16010000` 里**根本没有 `WS_POPUP` 位** ⇒ 判据改成"缺 `WS_CAPTION`／缺 `WS_THICKFRAME`"。同族第二个事实：`ShowInTaskbar=false` 的窗挂在隐藏 owner 下面，`EnumWindows` 只遍历无 owner 顶层窗，所以探针必须先改成 `true` 才谈得上"被检出"。这是记忆里"正向探针≠门在守"那一族的又一例，也是 v1 恒 HOLD（把 Steam 客户端、Unity、QQ、GPU 26%、7.4 GB 全当成在打游戏）的反面教训：**只会恒绿和只会恒 HOLD 的仪器都不能用**，所以两侧各采一次才采信。
+- **落进工单**＝`docs/dispatch-hds-wave5-20261022.md` 全局约束新增**第 3a 条**（任何会弹防火墙的构建，含单工程 `dotnet build`，之前必须先跑预检并把整段输出原样贴进交付说明；`HOLD` ⇒ 就地停、不许"等三分钟再试"、不许换更省事的跑法绕开、要报给守门人），并在「出闸前预检」一节补了上面那两条读数与判据换法。
+- **边界**：仪器只读窗与 GPU，不写任何文件、不起任何构建；`.local-notes/**` 一律不入库，所以载体只能按绝对路径调用它，这条也写进了 3a 条。**不解除**第五波那一轮构建仍只有一轮的 ceiling（第 3 条照旧），预检管的是"能不能弹"，不是"能弹几次"。
+
 ### 2026-10-22｜守门人｜预检查出带用户可见后果的双开缺陷 ⇒ 第五波加派片 F5（`DEF-WRILEASE-ORDER-01`）＋片 F4 两半当场做完
 
 - **查到的事实（零构建，全部当场读码，非转述）**：第二个 Pry 进程在**被写锁拒掉之前**已经改过那份共享库。真实顺序＝`src/Pry.Api/Program.cs:4` 的 `BackendApplication.BuildAsync` → `:143` `MemoryDatabase.InitializeAsync`（`src/Pry.Core/Memory/MemoryDatabase.cs:33-34` 那句 `PRAGMA journal_mode=WAL` 改的是库头、`:37` 跑迁移清单）→ `:145` `ConversationRuntime.RecoverStalePlansAsync`（`src/Pry.Core/Memory/MemoryDatabase.Runtime.cs:281-285` 那两条 `UPDATE`：`:282` 先把 `state='pending'` 且 `reply_plan_id` 落在 open 计划里的 `planned_messages` 改成 cancelled，`:284` 再把全部 `status='open'` 的 `reply_plans` 改成 cancelled，**没有归属、没有 pid、没有代次过滤**；`:279` 那句早退只保证"库里没有 open 计划时不动笔"，而双开时那一刻恰好有）→ 到 `Program.cs:5` 的 `app.RunAsync()` 才轮到 `RuntimeDescriptorService.StartAsync` 取租约（`src/Pry.Api/Services/RuntimeDescriptorService.cs:43`）并抛 `DataDirectoryWriteLockedException`。

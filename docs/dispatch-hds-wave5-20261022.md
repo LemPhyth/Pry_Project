@@ -13,6 +13,9 @@
 1. 开工前 `git status --short --branch`；主工作区索引里他人**已暂存**的两枚文件不属于你（本轮实测＝`docs/dispatch-tip1020-02-memory-group-judgment.md` 1/1、`tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs` 63/0）——不 stage、不提交、不回退、不碰。
 2. 独立 worktree 开工（守门人已备好就用，没备好就 `git worktree add .local-notes/<单名> -b codex/<单名> <线尾>`），先 `git rev-list --count <线尾>..HEAD` 数基线。
 3. **整个载体只允许一轮解决方案级完整构建＋一次全量测试。** 迭代只用单工程 `dotnet build`；反证一律定向 `--filter` 跑。**不要**把 `-t:Rebuild` 传给解决方案／多项目（本机 SDK 10.0.200 误解析报 MSB1008）；等效写法＝单 csproj 构建＋同 csproj `--no-build --filter`。**这一条是本波存在的主要理由**：作者机器 10-22 已经弹过两轮，任何"再多跑一轮看看"都不许出现。
+3a. **弹窗口径改了（作者 2026-10-22 逐字「你弹窗之前看看我有没有在运行游戏不就好了」）**：从"当日一律不许弹"变成"**先查再弹**"。任何一次可能弹防火墙的构建（包括单工程 `dotnet build`）之前，必须先跑
+   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Users\24782\Desktop\Pry_Project\.local-notes\game-preflight3-1022.ps1`
+   并把整段输出原样贴进交付说明。`VERDICT=BUILD_OK` ⇒ 可以构建；`VERDICT=HOLD` ⇒ **就地停下并把 HOLD 那几行报给守门人**，不许"等三分钟再试"、不许换更省事的跑法绕过、更不许因为"我这一格还没验"就自行构建；`WARN: free_physical_memory<6 GB` 不阻止构建，但那轮全量读数按第 9 条记作废。
 4. 出口唯一写法＝`dotnet test Pry.slnx -c Release --no-build --results-directory "<绝对路径>" --logger trx`，跑完先数到四份 `.trx` 再逐份读 `<Counters>`；跳过只按 `<UnitTestResult outcome="NotExecuted">` 点名（`notExecuted` 恒 0）。最后一轮必须紧跟一次完整 `dotnet build Pry.slnx -c Release`（0 警告 0 错误），**不许拿旧 dll 充证据**。
 5. 新判据先红后绿；**本波的特殊要求是"真突变"**：凡 F2 那三条，必须在载体自己的 worktree 里把被保护的**真实代码／真实真相源**临时改坏一次，采到红例全名＋报错原文后**逐字节还原**，并在交付说明里给出还原证据（`git diff --exit-code` 干净＋该文件 `git status` 不出现）。**载体专属 worktree 之内允许这种临时改坏；仓库里任何其他树不允许。**
 6. 不许 `git tag`、不许 push、不许打包；不新增 NuGet 包、不升级任何包版本；**不改任何限额数值**；Core 不依赖 Avalonia／HTTP；`%LOCALAPPDATA%/PryCompanion` 是禁区（连只读都不许当测试载体）；模型／运行库／数据库／密钥／日志不得提交。
@@ -33,6 +36,10 @@
 - F2 的第②③条前提成立：`tests/Pry.Api.Tests/UpstreamProvenanceAndDependencyShapeTests.cs:187`＝`No_package_reference_floats`、`:213`＝`The_third_party_table_names_every_restored_package`；`licenses/THIRD-PARTY-NOTICES.md:9` 就是 `| Avalonia | 11.3.20 | MIT | https://github.com/AvaloniaUI/Avalonia |` 那一行。
 - 那两条突变的**生效面在盘上的文本**（已读码确认，不是推测）：`UpstreamProvenanceAndDependencyShapeTests.cs:459-464` 的 `PackageReferences()` 用 `File.ReadAllLines(project)` 直接读 csproj，`:452-454` 的 `NoticeComponents()` 直接读 `licenses/THIRD-PARTY-NOTICES.md`——两边都不读 `project.assets.json`、也不看已编译产物。所以改坏 csproj 的版本串或删掉表里一行之后，**定向 `--no-build --filter` 一次就能生效，不必再 restore、不碰网络**＝这两条突变不会再额外弹一次防火墙。还原同理只需逐字节写回。
 - F2 的第①条**已被本预检改判**，改判后的写法见下。
+- 第 3a 条那把预检仪器**已双向校准**（守门人 2026-10-22，两只方向都当场采到）：
+  - **绿半＝作者实机桌面**：`VERDICT=BUILD_OK`，`primary_screen=2560x1440 windows_scanned=525`、`gpu_util=24%`、`free_memory_gb=6.4`；三枚全屏窗（TextInputHost／NVIDIA Overlay／explorer 的 Program Manager）全部判为 `work=True`，所以它们只列证据不算 HOLD。**一把只会恒绿的仪器没用，一把只会恒 HOLD 的仪器也没人会用**——v1 就是后者（Steam 客户端、Unity、QQ、GPU 26%、7.4 GB 全算成"在打游戏"），所以判据改成"装游戏的路径 ∨ 已知游戏进程名 ∨ 无 owner 的可见全屏无边框窗（非工作进程） ∨ GPU≥60%"四条，工作进程名单单独豁免。
+  - **红半＝自己起的探针窗**：`.local-notes/compile-gpprobe-1022.ps1` 编出 `.local-notes/gpprobe.exe`——不可见（`Opacity=0.0`＋`WS_EX_LAYERED`）、点击穿透（`WS_EX_TRANSPARENT`）、不抢焦点（`WS_EX_NOACTIVATE`）、`ShowInTaskbar=true`（否则窗被挂在隐藏 owner 下面、`EnumWindows` 根本看不见它）、占满主屏、20 秒自关。同一台机器上同一次扫描立刻变成 `VERDICT=HOLD`，并点名 `gpprobe pid=15140 area=3686400 title=GP-PREFLIGHT-PROBE work=False`；测完只 `Stop-Process` 自己起的那一个 pid，不碰他任何进程。
+  - **红半两次没压红，学到的是判据选错了而不是仪器坏了**：① `Process.MainWindowHandle` 看不见 popup 窗（它只认"主窗"概念）⇒ 换 `EnumWindows`；② 换完后仍绿，dump 出 `style=0x16010000`——**里面没有 WS_POPUP 位**，因为最大化后的无边框窗通常靠"没有 `WS_CAPTION`(0x00C00000) 也没有 `WS_THICKFRAME`(0x00040000)"表达自己，而不是靠 `WS_POPUP` ⇒ 判据换成那两位的**缺失**。这同属记忆里"正向探针≠门在守"那一族：一个只被样张反证过的检测器，跟只被内嵌样张反证过的门禁测试是同一件事。
 
 ---
 
