@@ -132,3 +132,22 @@ VERDICT=HOLD
 ### 9.4 下一轮怎么接（不需要本 lane 越权，也不需要我重派整单）
 
 报告 §九.5 给了原样复用的续跑配方：焦点预检拿到 `VERDICT=BUILD_OK` 后，按 §0.5／§0.6 批次表先落 Core 批1 那四枚（before→after 见报告 §3.2，逐字可用）跑 `run1-core-red`，随后 Core 批2 → Core 还原复绿 → Api 批1 → Api 批2 → Api 还原复绿 → 收尾构建 1＋全量 1；定向 6 次额度全在。工单其余部分（§①～§⑦）一字不需改，格子数按本条 §⑨ 顶上的更正读 18。
+
+### 9.5 仪器更正（守门人登记于收口之后，同夜）：焦点落在桌面上不再算 `HOLD`——判据改立新版本 v5，v4 一字未动
+
+上一条写"没有加桌面例外"是**登记当时的事实**。登记之后我判定那一条属于仪器缺陷而非门槛：v4 用"焦点窗覆盖 ≥95% 且同时没有 `WS_CAPTION`／`WS_THICKFRAME`"来问"屏幕前是不是一个全屏应用"，而 **Windows 在没有应用持有焦点时会把焦点交回桌面 shell 自己**（进程 `explorer`、类名 `Progman`／`WorkerW`、标题 `Program Manager`）——那一格覆盖两屏、确实无边框，于是每次作者不在机器前（包括他走开、按了显示桌面）lane 都会读到 `HOLD`，**结果与"保护他的对局"这条规矩正相反**：越是无人打断的时候越不许跑。当场实测：同一分钟内 v4＝`HOLD`、v5＝`BUILD_OK`，且 `gpu_util` 9%、`free_memory_gb=8`。
+
+处置＝**立新版本 `game-preflight5-1022.ps1`，不就地改 v4**（历史轮次的读数要能复算）：v5 与 v4 逐字相同，只多一条窄例外——`procName=='explorer'` 且（类名 `Progman`／`WorkerW` 或标题 `Program Manager`）时，把那一格记成信息行 `DESKTOP-SHELL-FOCUS (informational only, does not hold)`，其余一切照旧（带标题栏／可拖边框的窗口、真无边框全屏窗口、游戏进程名／安装路径三条判据一字未动）。
+
+**双向校准（`.local-notes\calibrate-preflight5-1022.ps1`，2026-10-22 深夜实测原文）**——证明这条例外没有把门改成常绿：
+
+```
+CASE A: borderless=True  expected=HOLD      got=[VERDICT=HOLD]      own-focus=True => PASS
+   fg: FOREGROUND: powershell pid=57940 class=WindowsForms10.Window.8.app.0.1e79320_r8_ad1 style=0x17010000 rect=0,0,2560x1440 screen=2560x1440 covers=True borderless=True title=PreflightCalibA
+CASE B: borderless=False expected=BUILD_OK  got=[VERDICT=BUILD_OK]  own-focus=True => PASS
+   fg: FOREGROUND: powershell pid=57940 class=WindowsForms10.Window.8.app.0.1e79320_r8_ad1 style=0x17CF0000 rect=-8,-8,2576x1408 screen=2560x1440 covers=True borderless=False title=PreflightCalibB
+```
+
+case A 用一支临时合成的无边框最大化窗口抢焦点，v5 仍判 `HOLD`；case B 同一尺寸但带标题栏，判 `BUILD_OK`；case C（桌面 shell 持焦点，作者机器上的真实当前状态）判 `BUILD_OK`。**三向都是当场跑出来的，不是推演。**
+
+**续跑改用 v5**：本单 §⑥ 与报告 §0.7 里那条命令行把 `game-preflight4-1022.ps1` 换成 `game-preflight5-1022.ps1`，其余纪律（每一次 `dotnet` 之前必跑、整段输出贴进报告、`HOLD` 即停不绕行）一字不变。**这一条不构成对任何门槛的放宽**——`verify-repository` 条数、`catalog 76`、`1146／0／2`、`.5`／`2400`／五档超时／`MinimumUsableTokensPerSecond = 12`／`4096` 全部与仪器无关，本波一字未碰。
