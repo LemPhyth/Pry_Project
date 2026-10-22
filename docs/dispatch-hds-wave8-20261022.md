@@ -163,3 +163,13 @@ case A 用一支临时合成的无边框最大化窗口抢焦点，v5 仍判 `HO
 - **载体收尾**：五份被改文件 work 侧 sha 与 `git show HEAD:` 逐字节相同，`git status --short`＝**0 行**，HEAD 仍 `6b6f549`；守门人自证那一轮改的同一文件也已还原（还原后 sha `3f18ee19…71274c` 与 HEAD 同值）。没有把任何改坏留给下一位。
 - **当日预算并账（不按刀数掩盖）**：解决方案级构建 1／1、全量 1／1、定向 **7**（lane 6 用满＋守门人自证 1）、焦点预检 **11** 次（lane 9＋守门人 2）全部 `BUILD_OK`、无一次 `HOLD`、无绕行、预检脚本一字未改。**零提交／零 tag／零 push／零打包**由执行方守住；本报告与工单的落地由守门人以文档刀完成。
 - **仍未闭合的（照 §⑦ 由守门人处置，执行方无权）**：`docs/` 三份登记（工单本节＋`PROJECT_PLAN.md` §9＋`docs/full-scope-sprint.md` §0／§3）与报告的归位提交；格子账＝43 − 17 ＝ **26 格继续挂账**（含本波够不着的那一格 W2，以及 `faf8ecf`／`1edf69e` 之外各把的零头 25 格）；`QA-TIP1020-02`（他人暂存项挡着的那条）照旧。
+
+### 9.7 上面那条"26 格"在同夜被逐格对账推翻（更正，守门人自纠，非执行方）
+
+原文按 §9.6 保留不改，因为那是当夜我实际的算法与登记口径。更正如下，逐格凭证＝`%TEMP%\qa-wave6-1022\{core-red,core-red2,api-red,api-red2,client-red}` 五份 TRX 的去重红集合（复数脚本＝`.local-notes/wave9-ledger-check-1022.js`，输出实测：分母 **46**、已付 **24**、未付 **22**，且"已付名单里没有一格不在盘上、没有一格被数两次"）：
+
+- **分母从来就是 46**（第六波 §② 那行的"去重后共 46 格红"，`RuntimeDiscoveryTests` 那一格按第六波 §⑤ 明登过"不追认为覆盖"，不计账）。
+- **第七波实际付掉 7 格，不是 3 格**：除当时点名的 `MemoryDualSchemaLedgerTests.The_two_schema_ledgers_coexist…`（M5）与 `MemoryManagementClientTests.Confirm_keep…escapes…`（M6）之外，件 2 的三格 `UpstreamProvenanceAndDependencyShapeTests`（M2 打红 `No_package_reference_floats` 与自探针格 `The_scanners_see_the_shapes_they_claim_to_ban`、M3 打红 `Only_the_authorised_upstreams…`）与 M5 的两处同因多响 `MemoryDualSchemaLedgerTests.Both_refusals_travel…`、`MemoryDeletionSeparationTests.N12_…` 都是十一项字段齐全、可按消息形状＋读码判唯一因的红。第七波报告 §九那句"其余 43 格继续挂账"只减了 3 格：件 2 的三格被它当成"另一把刀（`e554483`）的欠账闭合"来登记、M5 的两处同因多响被它按 §① 第 4 条"另记不合并"甩在了账外，而它扣掉的那三格其实只有两格在这本 46 的账上（M4＝`ContextBudgetTests.The_raw_equal_output…` 只红在第七波自己的批次，第六波那批从未响过它）。⇒ **少扣 5 格、多扣 1 格，净差 4 格：43 应为 39**。
+- **第八波付 17 格**（`ContextBudgetTests` 8＋`AttachmentLimitTests` 4＋`ContextWindowLoadTests` 2＋`StickerContentLengthGuardTests` 3），与我这边一致。
+- **⇒ 真账＝46 − 24 ＝ 22 格未付，其中 W2 一格属"已证够不着、不能再靠重跑还"，所以第九波要动手的是 21 格**（分三组：Core 10／Api 8／Client 3）。更正后的账与逐格名单＝`docs/dispatch-hds-wave9-20261022.md` §③。
+- **这条更正的效力边界**：它把**报告的欠账数字改小**，但没有把任何一格的证据改大——每一格的归属仍按 §9.6 与 §十二 的原文引用；"同因多响算不算已付"用的是第八波 §十二.4 自己立的那条口径（可按消息＋读码判唯一因即算付），不是我为了少派活新造的口径。**没有因此免除任何一格，也没有因此改动任何门槛或基线**（在册仍＝总 1146／passed 1144／0 红／2 条同名跳过）。
