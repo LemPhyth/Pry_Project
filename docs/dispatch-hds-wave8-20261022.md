@@ -1,4 +1,6 @@
-# HDS 第八波派单（2026-10-22 深夜）｜第六波那 43 格里最大的两把：`faf8ecf` 剩下的 14 格（Core 11＋Api 3）＋`1edf69e` 的 3 格＝本波 17 格，只补"拆法原文"
+# HDS 第八波派单（2026-10-22 深夜）｜第六波那 43 格里最大的两把：`faf8ecf` 剩下的 15 格（Core 12＋Api 3）＋`1edf69e` 的 3 格＝本波 18 格，只补"拆法原文"
+
+> **格子数更正（2026-10-22 深夜，守门人）**：本单出闸时写的是"剩下的 14 格＝Core 11、本波 17 格"，来源是我把第七波已做过的那一格误算进了第六波盘上的 8 格红里。`eval-QA-WAVE8-1022` §0.4 当场从盘上 `%TEMP%\qa-wave6-1022\core-red\…16_37_49.trx` 重数了点名：那 8 格**不含** `ContextBuilder.cs:24` 夹零打红的 `The_raw_equal_output_and_context_window_yields_a_negative_input_budget`（那一格是第七波自己那枚 M4 才响的）。所以 Core 组＝`ContextBudgetTests` 8 ＋ `AttachmentLimitTests` 4 ＝ **12 格**，本波合计 **18 格**。§③／§⑤ 的原文保留在下面，按这段更正读；被点名的那一格本波仍一字不碰（`ContextBuilder.cs:24`）。
 
 派单人＝守门人（Architecture / Integration / Release）。执行方式＝守门人自起冷启动子 Agent；本工单是给执行方直接消费的，不交作者转派。
 坐标系＝`docs/plans/PROJECT_PLAN.md` §4.2。**开工前必读 `docs/agent-engineering-standards.md`（作者 2026-10-22 全文给定的《Agent 工程协作规范》）与根目录 `AGENTS.md`／`docs/plans/README.md` 第 14 条**——本单与规范冲突时以规范为准，派单不得自行放宽。
@@ -75,3 +77,58 @@ Core 527（executed 525／passed 525）／Api 278／App 233／Client 108＝**总
 - 唯一允许你写进主工作树的东西＝新文件 `docs/eval/reports/2026-10-22-qa-wave8-waves1-remaining-two-knives.md`（报告 id＝`eval-QA-WAVE8-1022`）。写完即停，不许 `git add`、不许提交。
 - 报告章节建议：§〇 载体与预算声明 → §一 A 组预检三问 → §二 B 组预检三问 → §三 A 组红批逐格十一项 → §四 A 组还原与复绿 → §五 B 组红批 → §六 B 组还原与复绿 → §七 收尾那一轮与顶账 → §八 预算终账 → §九 够不着的向与读码理由 → §十 结论（不写状态词）。
 - 明写"哪些向够不着、为什么"（引用读码结论，不引用感觉）；**不许把"没拆"写成"不需要拆"**。
+
+---
+
+## ⑨ 执行结果（守门人登记，2026-10-22 深夜；事实与读数，不写状态词）
+
+执行方＝守门人自起的冷启动 lane（代号 `wave8-lane`），报告＝`docs/eval/reports/2026-10-22-qa-wave8-waves1-remaining-two-knives.md`（id＝`eval-QA-WAVE8-1022`，279 行）。§⑧ 那条"写完即停、不许提交"约束的是执行方，落地权在守门人，本波由我把这份报告作为文档刀归位。
+
+### 9.1 停刀事实：第一次焦点预检即 `VERDICT=HOLD`，lane 一次 `dotnet` 都没起
+
+lane 原样贴进报告的 PF-1（我当场复核过脚本一字未改）：
+
+```
+=== GAME PREFLIGHT v4 (foreground rule) ===
+  FOREGROUND: explorer pid=13364 style=0x96000000 rect=-1920,0,4480x1440 screen=2560x1440 covers=True borderless=True title=Program Manager
+  UNFOCUSED-BORDERLESS-FULLSCREEN (informational only): TextInputHost pid=21228, NVIDIA Overlay pid=15532
+gpu_util=5% used=1658MB
+free_memory_gb=8.6
+VERDICT=HOLD
+  reason: focused window is a borderless full-screen app (explorer)
+```
+
+按 §⑥"就地停刀并回报，不许等三分钟再试、不许绕行、不许改预检判据"执行。停刀原因不是 `free_memory_gb`（8.6／8.0 都高于 6），也不是 SQLite `disk I/O`／`out of memory` 形状，唯一触发项是 `VERDICT=HOLD`。
+
+**我登记时（lane 回来之后）自己重跑了一次同一支脚本，读数同上仍为 `VERDICT=HOLD`，焦点窗仍是 `explorer`／`Program Manager`** ⇒ 这一把不是"赶上了 momentarily 的瞬时状态"，而是当前焦点确实落在那个被 v4 判成"无边框全屏"的窗口上。我没有动 `game-preflight4-1022.ps1` 的任何判据，也没有为了让下一轮能起跑而给它加"桌面例外"（那属于放宽门槛，§⑦ 明令禁止）。**要起下一轮，等的条件是"焦点窗变成一个带标题栏／可拖边框的普通窗口"，不是等某个时刻。**
+
+### 9.2 盘上核账（我不采信自述，逐项自己数过）
+
+| 项 | lane 自述 | 守门人实测 |
+|---|---|---|
+| 载体 HEAD | detached `6b6f549` | `git -C .local-notes/qa-tip-1022 rev-parse --short HEAD` ＝ `6b6f549` ✓ |
+| 载体工作树 | 还原后 0 行 | `git status --short` ＝**空输出（0 行）** ✓ |
+| `src/Pry.Core/Prompting/ContextBuilder.cs` | 逐字节还原 | 载体侧 sha `c5da1e3e32775d1da5c1844e9d9227d39657aa2796f1301fd65349c9d5bae3ef` ＝ `git show HEAD:` 侧同一值 ✓（也与第七波 §4.2 那条基线哈希同值） |
+| 八波证据目录 | 一个都没建 | `.local-notes/` 下不存在 `qa-wave8-1022/`（mtime 最新仍是 `qa-wave7-1022/`）✓ |
+| TRX | 零份 | 全盘 `find` 无任何 wave8 相关 `.trx` ✓ |
+| `dotnet` | 零次 | 登记时 `Get-Process dotnet,MSBuild,VSTest,testhost` 无输出（当前也没有在跑的门禁轮）✓ |
+| 交付物 | 一份未跟踪报告 | `docs/eval/reports/2026-10-22-qa-wave8-waves1-remaining-two-knives.md`＝279 行、入场时 `??` 未跟踪 ✓ |
+
+⇒ **这一把没有留下任何未还原的改坏，也没有把谁的读数弄脏。**
+
+### 9.3 交付了多少、缺多少（按 §①.4 的十一项逐格算，不用"已拆过"概括）
+
+| 面 | 格 | 状态 |
+|---|---|---|
+| 十项读码预检（三问＋批内互斥性证明） | A 把 15 格、B 把 3 格＝**18 格全覆盖** | **已到付**（报告 §一／§二，含每格的调用方、每生命周期次数、能走到拒绝支的具体输入，以及 M-CB6 与 W2 的"纵深／合力格"声明） |
+| 十一项字段 ①②③④⑧⑨⑩ | Core 批1 四枚（M-CB1 `:34`／M-CB2 `:115`／M-CB4 `:125`／M-CB3 `:142`），覆盖 C1／C2／C3／C5／C6／C7／C8 共 **7 格** | **已到付**：`git diff --stat`＝`1 file changed, 4 insertions(+), 4 deletions(-)`、before→after 逐字原文、突变态 sha `81eb3aaa…b89fa7`、还原后 sha 与 HEAD 逐字节一致、还原后 0 行 |
+| 十一项字段 ⑤⑥⑦（跑法整行／TRX 文件名／红格全名＋消息要点） | **18 格全部** | **未到付**——从未起跑 ⇒ 没有任何一格拿到实测红 |
+| 连写盘都没做到的 | C4、A1～A4、W1、W2、W3、S1～S3 共 **11 格**（对应 M-CB5、M-AT1～4、M-CB6、M-W3、M-S1、M-S2 及 M-CB1 的 Api 侧） | **未到付** |
+| 收尾那一轮（解决方案级构建 1＋全量 1＋顶账） | — | **未做** |
+| 预算 | 构建 0/1、全量 0/1、定向 0/6、焦点预检 1 次（HOLD） | 额度一次没花 |
+
+**结论口径（照 §⑦ 不写状态词）**：本波 18 格中 **0 格拿到实测红**；报告 §1.1／§1.2 那张"预期红集"表是**读码推演，未验证**，任何地方都不许把它当红证引用。第六波那 43 格的欠账数量不变，只是其中 18 格现在**有了可直接复用的拆法原文与已实测的写盘／还原凭据**。
+
+### 9.4 下一轮怎么接（不需要本 lane 越权，也不需要我重派整单）
+
+报告 §九.5 给了原样复用的续跑配方：焦点预检拿到 `VERDICT=BUILD_OK` 后，按 §0.5／§0.6 批次表先落 Core 批1 那四枚（before→after 见报告 §3.2，逐字可用）跑 `run1-core-red`，随后 Core 批2 → Core 还原复绿 → Api 批1 → Api 批2 → Api 还原复绿 → 收尾构建 1＋全量 1；定向 6 次额度全在。工单其余部分（§①～§⑦）一字不需改，格子数按本条 §⑨ 顶上的更正读 18。
