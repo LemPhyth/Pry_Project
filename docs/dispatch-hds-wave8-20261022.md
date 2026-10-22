@@ -151,3 +151,15 @@ CASE B: borderless=False expected=BUILD_OK  got=[VERDICT=BUILD_OK]  own-focus=Tr
 case A 用一支临时合成的无边框最大化窗口抢焦点，v5 仍判 `HOLD`；case B 同一尺寸但带标题栏，判 `BUILD_OK`；case C（桌面 shell 持焦点，作者机器上的真实当前状态）判 `BUILD_OK`。**三向都是当场跑出来的，不是推演。**
 
 **续跑改用 v5**：本单 §⑥ 与报告 §0.7 里那条命令行把 `game-preflight4-1022.ps1` 换成 `game-preflight5-1022.ps1`，其余纪律（每一次 `dotnet` 之前必跑、整段输出贴进报告、`HOLD` 即停不绕行）一字不变。**这一条不构成对任何门槛的放宽**——`verify-repository` 条数、`catalog 76`、`1146／0／2`、`.5`／`2400`／五档超时／`MinimumUsableTokensPerSecond = 12`／`4096` 全部与仪器无关，本波一字未碰。
+
+### 9.6 续跑执行结果（守门人登记，同夜更晚；执行方＝`wave8b-lane` ＋ 守门人自证一轮）
+
+§9.1～§9.5 那几节是**第一次派单撞 `HOLD`** 的记录，原文保留。续跑（预检脚本已按 9.5 换 v5）的结果如下，逐份 TRX 由守门人自己读过，不采信自述：
+
+- **实测红＝18 格中 17 格，且 17 格的归属全部干净**。定向六批用满（`run1-core-red`～`run6-api-green`）：Core 批1 红 7（C1／C2／C3／C5／C6／C7／C8）、Core 批2 红 5（C4＋A1～A4）、Core 还原复绿 525／0 红；Api 批1 红 3（W1＋S1＋S3，W2／W3 该轮 `Passed`）、Api 批2 红 3（W3＋S2＋S3）、Api 还原复绿 278／0 红。每批"不同红名数＝`failed` 计数器"逐份相等，无多余红、无脏读数顶账。
+- **够不着只剩一格＝W2**（`Every_downgrade_candidate_keeps_a_positive_input_budget`）：单枚 M-CB1 与 M-CB1∧M-CB6 两种配方都实测 `Passed`。根因由执行方读码＋实测拿到——`ContextBuilder.cs:39` 的返回门是 `inputBudget >= MinimumInputTokens(512)`，两枚夹子同拿掉后归一化返 **false**，`ModelPerformancePolicy.WithContext:48` 落兜底 `MaxOutputTokens = 1`，反而给出正输入预算。**这一格继续欠着，按 §③ 的口径登记为"未取到实测红"，不写成"不需要拆"。**
+- **守门人核出执行方一处归属错账并另起一轮净化**：`wave8b-lane` 把批2 的 W3 写成"M-W3 唯一命中"，但那条红的消息是 `ContextBudgetException`（抛出点 `ContextBuilder.cs:46`、测试点 `ContextWindowLoadTests.cs:52`），按逐值算术它由 **M-CB1∧M-CB6** 产生，M-W3 在那一批根本没被执行到。守门人在同一载体只放 M-W3 一枚（`ModelPerformancePolicy.cs:47`，突变态 sha 与 lane 记录的同一值）另跑一次 `run8-gk-mw3-only` ⇒ total 278／failed **1**＝W3，消息 `Assert.Equal() Failure Expected: 8192 Actual: 16384`（`ContextWindowLoadTests.cs:53`），W1／W2／S1～S3 全绿 ⇒ **W3 的清洁凭证来自这一轮**；批2 那条改登记为"同一格的第二条因"，不作废、不合并。全文见报告 §十二（署守门人 id `eval-GK-WAVE8B-1022`）。
+- **出口读数与在册基线逐字相同**：`run7-full` 四份 TRX＝Client 108／App 233／Api 278／Core 527（executed 525／passed 525）⇒ **total 1146／passed 1144／0 红／2 条按名跳过**（SenseVoice＋LlamaServer，均在 `Pry.Core.Tests.dll` 名下）。App 读到 233 而非主树脏副本的 236，是因为全量跑在干净载体上、不含他人未提交那 3 条——这条排除口径按 §⑦ 照记。本波零新判据、零删除判据、零产品代码 ⇒ 不改写任何在册基线。
+- **载体收尾**：五份被改文件 work 侧 sha 与 `git show HEAD:` 逐字节相同，`git status --short`＝**0 行**，HEAD 仍 `6b6f549`；守门人自证那一轮改的同一文件也已还原（还原后 sha `3f18ee19…71274c` 与 HEAD 同值）。没有把任何改坏留给下一位。
+- **当日预算并账（不按刀数掩盖）**：解决方案级构建 1／1、全量 1／1、定向 **7**（lane 6 用满＋守门人自证 1）、焦点预检 **11** 次（lane 9＋守门人 2）全部 `BUILD_OK`、无一次 `HOLD`、无绕行、预检脚本一字未改。**零提交／零 tag／零 push／零打包**由执行方守住；本报告与工单的落地由守门人以文档刀完成。
+- **仍未闭合的（照 §⑦ 由守门人处置，执行方无权）**：`docs/` 三份登记（工单本节＋`PROJECT_PLAN.md` §9＋`docs/full-scope-sprint.md` §0／§3）与报告的归位提交；格子账＝43 − 17 ＝ **26 格继续挂账**（含本波够不着的那一格 W2，以及 `faf8ecf`／`1edf69e` 之外各把的零头 25 格）；`QA-TIP1020-02`（他人暂存项挡着的那条）照旧。
