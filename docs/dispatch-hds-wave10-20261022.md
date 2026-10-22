@@ -6,10 +6,10 @@
 ## 〇 起点读数与挪树（先落盘，再碰任何代码）
 
 1. 主树只做只读测量：`git -C C:/Users/24782/Desktop/Pry_Project status --short --branch`、`git log --oneline -3`、`git rev-parse HEAD`。**主工作树里你一个字都不许写**（唯一例外见 §六 交付物）。
-2. 独立载体：`git -C <主树> worktree add --detach <主树>/.local-notes/qa-wave10-1022/carrier <线尾SHA>`，进载体后 `git status --short` 必须＝0 行、`git rev-parse HEAD` 必须等于工单开头写的线尾号。把这两行原样贴进报告 §〇。**载体落后线尾任何一格都算起点不成立**（先 `git worktree remove` 再重建，不许在旧树上接着跑）。
+2. 独立载体：`git -C <主树> worktree add --detach <主树>/.local-notes/qa-wave10-1022/carrier 2002210`，进载体后 `git status --short` 必须＝0 行、`git rev-parse HEAD` 必须等于 `2002210`（守门人出闸时实测的线尾）。把这两行原样贴进报告 §〇。**"起点成立"的判据是代码不是文档**：载体钉在 `2002210`，而主树此后可能再落守门人自己的纯文档登记刀——那不是你的起点缺陷。所以跑之前当场数一次 `git -C <主树> diff 2002210..<主树当前线尾> -- src tests`，**为空**＝起点成立（照旧跑），**不为空**＝有人动了产品码，停刀登记差异、不要在旧树上继续。
 3. **起点格账从盘上取，不许做加减**（这是守门人 10-22 深夜自己踩过的坑，写进模板）：本单三处锚点你都要**当场读回该行原文**（`sed -n` 或 Read）并按下面逐条核对；守门人已在出闸前把每一行原文读过一遍（`src/Pry.Core/Prompting/ContextBuilder.cs` 在工作树里与 `git show ab9b3cf:` 侧逐字节相同，sha `c5da1e3e…bae3ef`）：
 
-   | 锚点 | 盘上原文（行号以线尾 `ab9b3cf` 为准） |
+   | 锚点 | 盘上原文（行号以载体钉住的 `2002210` 为准；守门人出闸后实测 `git diff ab9b3cf..2002210 -- src tests`＝空，两格的 `src/`／`tests/` 逐字相同） |
    |---|---|
    | `src/Pry.Api/Services/ModelPerformancePolicy.cs:47` | `if (!ContextBudget.TryNormalizeWindow(contextSize, intended, out var ctx, out var output, out _))` |
    | `src/Pry.Core/Narrative/DeliveryLedger.cs:79` | `if (!_commits.TryGetValue(key.CommitId, out var commit))`（`:81` 是拒绝码 `SegmentCommitUnknown`） |
