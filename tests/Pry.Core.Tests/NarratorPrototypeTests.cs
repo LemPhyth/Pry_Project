@@ -819,4 +819,171 @@ public sealed class NarratorPrototypeTests
         Assert.Equal(new[] { "abcd" }, NarrativeRoundRunner.SplitContiguous("abcd", 1));
         Assert.Throws<ArgumentOutOfRangeException>(() => NarrativeRoundRunner.SplitContiguous("abcd", 0));
     }
+
+    // —— 第十八波补格（工单 §一.1，来源＝第十三波报告 §三.16 那 9 组"落门没有单枚反证"）——
+    //  每格只钉一处具体判定（文件＋行号写在注释里），并且都在报告 §二 配一枚单点突变反证。
+    //  既有 49 格一字未动；本段只追加在文件末尾，不移动任何既有行号。
+
+    /// <summary>
+    /// 钉 <c>src/Pry.Core/Narrative/NarrativeRoundRunner.cs:150</c> 的分岔次序：即时支在延迟支之前判，
+    /// 同轮里既有即时又有延迟动作时走即时支，且即时支不登记意图（<c>:37-38</c> 的"即时与沉默必须为空"）。
+    /// </summary>
+    [Fact]
+    public async Task Mixed_round_takes_the_immediate_branch_and_registers_no_intent_there()
+    {
+        var round = Round(Draft(actions: [ImmediateAction(), DeferredAction("intent-1")], intents: [PendingIntent()]));
+
+        var result = await round.Runner.RunAsync(Request(), Payloads(), RoundTimeout, Now, TestContext.Current.CancellationToken);
+
+        Assert.Equal(NarrativeRoundDisposition.Immediate, result.Disposition);
+        Assert.Equal(3, result.HistoryEntries.Count);
+        Assert.Equal(1, result.OutboundActionCount);
+        Assert.Equal(1, result.DeferredActionCount);
+        Assert.Empty(result.RegisteredIntents);
+        Assert.Equal(3, round.Ledger.Snapshot().Count);
+    }
+
+    /// <summary>
+    /// 钉 <c>src/Pry.Core/Narrative/NarrativeRoundRunner.cs:331-334</c>：provider 自己取消、宿主令牌与本轮超时界都还活着时，
+    /// 只能落成"超时"这一种形状，不许被读成宿主取消（<c>:327-330</c>）也不许被读成 provider 故障。
+    /// </summary>
+    [Fact]
+    public async Task Provider_side_cancellation_with_a_live_host_token_is_named_timeout_not_failure()
+    {
+        var ownership = new OutboxOwnershipRegistry();
+        var grant = ownership.TryAcquire(Alpha, EngineMode.NarrativeV1, WriterId, Now);
+        Assert.True(grant.Accepted, grant.Detail);
+        var ledger = new DeliveryLedger(ownership);
+        var provider = new SelfCancellingNarrator();
+        var runner = new NarrativeRoundRunner(provider, ledger, WriterId, Estimator);
+
+        var result = await runner.RunAsync(Request(), Payloads(), TimeSpan.FromSeconds(5), Now, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, provider.InvocationCount);
+        Assert.Equal(1, result.NarratorCallCount);
+        Assert.Equal(NarratorOutcomeKind.TimedOut, result.Outcome!.Kind);
+        Assert.Equal(NarrativeRoundDisposition.ProviderRejected, result.Disposition);
+        Assert.Empty(ledger.Snapshot());
+    }
+
+    /// <summary>只在自己的内部令牌上取消的 provider；宿主令牌与 <c>narratorTimeout</c> 都不会触发。</summary>
+    private sealed class SelfCancellingNarrator : INarrator
+    {
+        public int InvocationCount { get; private set; }
+
+        public async Task<NarratorOutcome> ProposeAsync(NarratorCall call, CancellationToken cancellationToken)
+        {
+            InvocationCount++;
+            using var inner = new CancellationTokenSource();
+            inner.Cancel();
+            await Task.Delay(Timeout.InfiniteTimeSpan, inner.Token);
+            return NarratorOutcome.Produced(Draft());
+        }
+    }
+
+    /// <summary>
+    /// 钉 <c>src/Pry.Core/Narrative/NarrativeContextCompiler.cs:443-444</c> 的统一预算不等式本体：
+    /// 边界取等号（&lt;=）而不是严格小于，越界一个令牌即不成立。装配器产出的体（<c>:178</c>）走不到这条边界，
+    /// 所以这里直接构造装配体，不动任何门槛数字。
+    /// </summary>
+    [Fact]
+    public void Unified_budget_inequality_is_pinned_at_the_edge_and_one_token_past_it()
+    {
+        var atEdge = new NarrativeContextAssembly
+        {
+            InstanceId = Alpha, ConversationId = Conversation, BatchId = Batch, Trigger = NarrativeTriggerKind.UserInput,
+            Segments = [], ContextTokens = 4096, OutputReservationTokens = 512, SafetyTokens = 128,
+            InputBudgetTokens = 3456, InputEstimateTokens = 3456,
+        };
+
+        var onePastEdge = atEdge with { InputEstimateTokens = 3457 };
+        var oneBelowEdge = atEdge with { InputEstimateTokens = 3455 };
+
+        Assert.True(atEdge.WithinUnifiedBudget);
+        Assert.False(onePastEdge.WithinUnifiedBudget);
+        Assert.True(oneBelowEdge.WithinUnifiedBudget);
+        Assert.Equal(NarrativeCompileReason.Ok, atEdge.ReasonCode);
+    }
+
+    /// <summary>
+    /// 钉 <c>src/Pry.Core/Narrative/NarrativeContextCompiler.cs:294</c>：整段留／整段丢的两段（<c>AddSection</c> 走 <c>Simple</c>）
+    /// 也带自己的来源引用——第十三波 §三.16 明写这处"改坏零代价"，既有格一枚都不点这个名。
+    /// </summary>
+    [Fact]
+    public void Whole_section_segments_carry_their_own_source_reference_even_when_dropped()
+    {
+        var assembly = new NarrativeContextCompiler(Estimator).Compile(Request(),
+            Payloads(new ContextBudget(BehaviorTokens: 10), state: "地点：画室", behavior: "先应一声再展开"));
+
+        var state = assembly.Segments.Single(s => s.Name == "State");
+        Assert.Equal(NarrativeSegmentDisposition.Included, state.Disposition);
+        Assert.Equal(new[] { "scene:current" }, state.SourceRefs);
+
+        var behavior = assembly.Segments.Single(s => s.Name == "BehaviorReferences");
+        Assert.Equal(NarrativeSegmentDisposition.Dropped, behavior.Disposition);
+        Assert.Equal("budget", behavior.DispositionReason);
+        Assert.Equal(new[] { "intelligence:behavior" }, behavior.SourceRefs);
+        Assert.Equal("", behavior.EmittedText);
+    }
+
+    /// <summary>
+    /// 钉 <c>src/Pry.Core/Narrative/NarrativeContextCompiler.cs:285</c> 的 <c>"not_supplied"</c> 串本身：
+    /// 宿主没给料（NotSupplied）与给了但装不下（Dropped＋"budget"）是两回事，第十三波 §三.16/m10 都只钉住 Disposition。
+    /// </summary>
+    [Fact]
+    public void Absent_sections_are_named_not_supplied_rather_than_budget()
+    {
+        var assembly = new NarrativeContextCompiler(Estimator).Compile(Request(), Payloads());
+
+        var reasons = assembly.Segments
+            .Where(s => s.Disposition == NarrativeSegmentDisposition.NotSupplied)
+            .Select(s => s.DispositionReason!).ToArray();
+        Assert.Equal(7, assembly.NotSuppliedSegmentCount);
+        Assert.Equal(new[] { "not_supplied", "not_supplied", "not_supplied", "not_supplied", "not_supplied",
+            "not_supplied", "not_supplied" }, reasons);
+        Assert.Equal(0, assembly.DroppedSegmentCount);
+    }
+
+    /// <summary>
+    /// 钉 <c>src/Pry.Core/Narrative/NarrativeContextCompiler.cs:265</c> 的第三种理由串
+    /// <c>"cross_scope_and_unit_budget"</c>：跨会话与预算见底同时发生时必须两个名字都报出来，全仓此前零格经过这一支。
+    /// </summary>
+    [Fact]
+    public void Unit_run_losing_units_to_both_reasons_names_both_together()
+    {
+        var units = new[] { Unit("input:104", "0123456789"), Unit("other:1", "abcdefghij", "room-2"),
+            Unit("input:103", "KLMNOPQRST") };
+        var assembly = new NarrativeContextCompiler(Estimator).Compile(Request(),
+            Payloads(new ContextBudget(RecentTokens: 20), recent: units));
+
+        var section = assembly.Segments.Single(s => s.Name == "RecentMessages");
+        Assert.Equal(NarrativeSegmentDisposition.PartiallyIncluded, section.Disposition);
+        Assert.Equal("cross_scope_and_unit_budget", section.DispositionReason);
+        Assert.Equal(1, section.IncludedUnitCount);
+        Assert.Equal(1, section.CrossScopeUnitCount);
+        Assert.Equal(1, section.BudgetDroppedUnitCount);
+        Assert.Equal(2, section.DroppedUnitCount);
+        Assert.Equal(new[] { "input:104" }, section.SourceRefs);
+        Assert.Equal("\n- 0123456789", section.EmittedText);
+    }
+
+    /// <summary>
+    /// 钉 <c>src/Pry.Core/Narrative/NarrativeContextCompiler.cs:263</c> 的第一支：<c>included == 0</c> 时理由串是
+    /// <c>"budget"</c>——即使这一节一条单元都没装进去，即使同一节里还混着跨会话单元。既有三格都只经过 <c>included ≥ 1</c> 的形状。
+    /// </summary>
+    [Fact]
+    public void Unit_run_that_fits_no_unit_at_all_is_dropped_and_named_budget()
+    {
+        var assembly = new NarrativeContextCompiler(Estimator).Compile(Request(),
+            Payloads(new ContextBudget(RecentTokens: 5), recent: [Unit("input:103", "0123456789")]));
+
+        var section = assembly.Segments.Single(s => s.Name == "RecentMessages");
+        Assert.Equal(NarrativeSegmentDisposition.Dropped, section.Disposition);
+        Assert.Equal("budget", section.DispositionReason);
+        Assert.Equal(0, section.IncludedUnitCount);
+        Assert.Equal(1, section.DroppedUnitCount);
+        Assert.Equal(0, section.CrossScopeUnitCount);
+        Assert.Equal("", section.EmittedText);
+        Assert.Empty(section.SourceRefs);
+    }
 }

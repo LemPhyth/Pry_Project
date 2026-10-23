@@ -537,4 +537,54 @@ public sealed class NarrativeIdentityContractTests
 
         return (request, draft);
     }
+
+    // —— 第十八波补格（工单 §一.2：第十二波在册的"正向 → None／放行"方向无人守）——
+    //  第十二波 20 枚突变全是"摘成员／删门"（把门放宽）一侧；这侧的红由下面两格＋矩阵 None 行来接。
+    //  既有 62 格一字未动，本段只追加在文件末尾，不移动任何既有行号。
+
+    /// <summary>
+    /// 钉 <c>src/Pry.Core/Narrative/NarrativeDraftValidator.cs:318</c> 的放行边界：置信度恰好取到闭区间两端
+    /// （0 与 1）时必须零拒绝。第十二波 M-02／M-03 只拆过"放宽"侧（去掉 <c>or > 1</c>／去掉 <c>&lt; 0 or</c>），
+    /// 收紧侧（把开区间误写成闭区间的反面）全仓无人经过。
+    /// </summary>
+    [Theory]
+    [InlineData(0d)]
+    [InlineData(1d)]
+    public void Candidate_at_a_closed_interval_confidence_edge_is_released(double confidence)
+    {
+        var (_, draft) = Fixture();
+        var candidate = new KnowledgeCandidate
+        {
+            CandidateId = "kc-w18-edge",
+            InstanceId = draft.InstanceId,
+            Kind = CognitionKind.UserReportedFact,
+            Origin = CognitionOrigin.UserMessageEvidence,
+            Claim = "她说她要搬家",
+            Confidence = confidence,
+            EvidenceRefs = ["msg-102"],
+            ProposedBy = "narrator",
+        };
+
+        var rejections = KnowledgeCandidatePolicy.Validate(candidate, NarrativeContent.From(draft));
+        Assert.Empty(rejections);
+    }
+
+    /// <summary>
+    /// 钉 <c>src/Pry.Core/Narrative/NarrativeDraftValidator.cs:281</c> 的放行边界：最晚时间恰好等于最早时间是合法的
+    /// （只有 <c>latest &lt; earliest</c> 才拒）。第十二波 M-18 只拆过删门侧；<c>&lt;=</c> 这种"把边界误收紧"的形状
+    /// 全仓无一行经过——夹具里 <c>LatestDueAtUtc</c> 只在 <c>:461</c> 出现过一次，且取的是"早于"侧。
+    /// </summary>
+    [Fact]
+    public void Intent_whose_deadline_equals_its_earliest_is_released()
+    {
+        var (_, draft) = Fixture();
+        var intent = draft.Intents[0] with
+        {
+            EarliestDueAtUtc = Now.AddMinutes(20),
+            LatestDueAtUtc = Now.AddMinutes(20),
+        };
+
+        var rejections = NarrativeIntentPolicy.Validate(intent, NarrativeContent.From(draft));
+        Assert.Empty(rejections);
+    }
 }
