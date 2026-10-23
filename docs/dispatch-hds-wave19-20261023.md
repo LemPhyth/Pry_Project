@@ -75,8 +75,8 @@
 
 ## 三 出口读数（原样贴命令与输出）
 
-- `git -C <主树> status --short` 与开工那一行逐字节相同（你没有碰主树）。
-- `git -C <载体> status --short | wc -l` ＝ 0（报告落盘后是 1，那一行只有你自己的报告）。
+- `git -C <主树> status --short` 与开工那一行相同，差集只许是**你自己那一份报告**那一行 `??`（报告写主树路径，不写载体）；他人名下两枚暂存项 `M ` 逐字节不动。
+- `git -C <载体> status --short | wc -l` ＝ 0（载体里不落任何文件，报告不进载体）。
 - `git -C <载体> diff --stat d82cd2d -- src tests scripts Pry.slnx Directory.Build.props` ＝ 空（本波零产品码，这一条是硬出口）。
 - 报告行数与四张表的行数：`wc -l` ＋ 每张表 `grep -c '^| '` 实数，写完当场数一遍再填，不许估。
 
