@@ -419,8 +419,8 @@ public sealed class NarrativeIdentityContractTests
         };
 
         var rejections = KnowledgeCandidatePolicy.Validate(candidate, NarrativeContent.From(draft));
-        Assert.Equal(1, rejections.Count);
-        Assert.Equal(NarrativeContractReason.RealityContamination, rejections[0].Reason);
+        var rejection = Assert.Single(rejections);
+        Assert.Equal(NarrativeContractReason.RealityContamination, rejection.Reason);
     }
 
     [Fact]
@@ -440,8 +440,8 @@ public sealed class NarrativeIdentityContractTests
         };
 
         var rejections = KnowledgeCandidatePolicy.Validate(candidate, NarrativeContent.From(draft));
-        Assert.Equal(1, rejections.Count);
-        Assert.Equal(NarrativeContractReason.ScopeEscalation, rejections[0].Reason);
+        var rejection = Assert.Single(rejections);
+        Assert.Equal(NarrativeContractReason.ScopeEscalation, rejection.Reason);
     }
 
     [Fact]
@@ -450,8 +450,8 @@ public sealed class NarrativeIdentityContractTests
         var (_, draft) = Fixture();
         var intent = draft.Intents[0] with { SourceCommitId = "" };
         var rejections = NarrativeIntentPolicy.Validate(intent, NarrativeContent.From(draft));
-        Assert.Equal(1, rejections.Count);
-        Assert.Equal(NarrativeContractReason.IntentClaimedAsFact, rejections[0].Reason);
+        var rejection = Assert.Single(rejections);
+        Assert.Equal(NarrativeContractReason.IntentClaimedAsFact, rejection.Reason);
     }
 
     [Fact]
@@ -460,8 +460,8 @@ public sealed class NarrativeIdentityContractTests
         var (_, draft) = Fixture();
         var intent = draft.Intents[0] with { LatestDueAtUtc = Now.AddMinutes(10) };
         var rejections = NarrativeIntentPolicy.Validate(intent, NarrativeContent.From(draft));
-        Assert.Equal(1, rejections.Count);
-        Assert.Equal(NarrativeContractReason.IntentClaimedAsFact, rejections[0].Reason);
+        var rejection = Assert.Single(rejections);
+        Assert.Equal(NarrativeContractReason.IntentClaimedAsFact, rejection.Reason);
     }
 
     [Fact]
@@ -470,8 +470,8 @@ public sealed class NarrativeIdentityContractTests
         var (_, draft) = Fixture();
         var intent = draft.Intents[0] with { Status = NarrativeIntentStatus.Fulfilled };
         var rejections = NarrativeIntentPolicy.Validate(intent, NarrativeContent.From(draft));
-        Assert.Equal(1, rejections.Count);
-        Assert.Equal(NarrativeContractReason.RealityContamination, rejections[0].Reason);
+        var rejection = Assert.Single(rejections);
+        Assert.Equal(NarrativeContractReason.RealityContamination, rejection.Reason);
     }
 
     /// <summary>一条合法的即时叙事：处境与话语同源于一段原文，感知只到 102，水位报到批次上界。</summary>
