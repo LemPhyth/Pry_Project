@@ -323,6 +323,31 @@ public sealed class NarrativeIdentityContractTests
     [InlineData(CognitionKind.ConfirmedAgreement, CognitionOrigin.ModelSelfReport, NarrativeContractReason.ConfirmationWithoutUserEvidence)]
     [InlineData(CognitionKind.CharacterFiction, CognitionOrigin.UserMessageEvidence, NarrativeContractReason.RealityContamination)]
     [InlineData(CognitionKind.UserReportedFact, CognitionOrigin.UserMessageEvidence, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.UserReportedFact, CognitionOrigin.HostObservation, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.UserReportedFact, CognitionOrigin.ExplicitFeedback, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.UserReportedFact, CognitionOrigin.Intent, NarrativeContractReason.RealityContamination)]
+    [InlineData(CognitionKind.CharacterFiction, CognitionOrigin.HostObservation, NarrativeContractReason.RealityContamination)]
+    [InlineData(CognitionKind.CharacterFiction, CognitionOrigin.ExplicitFeedback, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.CharacterFiction, CognitionOrigin.NarrativeProse, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.CharacterFiction, CognitionOrigin.ModelSelfReport, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.CharacterFiction, CognitionOrigin.Intent, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.Proposal, CognitionOrigin.UserMessageEvidence, NarrativeContractReason.IntentClaimedAsFact)]
+    [InlineData(CognitionKind.Proposal, CognitionOrigin.HostObservation, NarrativeContractReason.IntentClaimedAsFact)]
+    [InlineData(CognitionKind.Proposal, CognitionOrigin.ExplicitFeedback, NarrativeContractReason.IntentClaimedAsFact)]
+    [InlineData(CognitionKind.Proposal, CognitionOrigin.NarrativeProse, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.Proposal, CognitionOrigin.ModelSelfReport, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.Proposal, CognitionOrigin.Intent, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.ConfirmedAgreement, CognitionOrigin.UserMessageEvidence, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.ConfirmedAgreement, CognitionOrigin.HostObservation, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.ConfirmedAgreement, CognitionOrigin.ExplicitFeedback, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.ConfirmedAgreement, CognitionOrigin.NarrativeProse, NarrativeContractReason.ConfirmationWithoutUserEvidence)]
+    [InlineData(CognitionKind.ConfirmedAgreement, CognitionOrigin.Intent, NarrativeContractReason.ConfirmationWithoutUserEvidence)]
+    [InlineData(CognitionKind.NarrativeProse, CognitionOrigin.UserMessageEvidence, NarrativeContractReason.RealityContamination)]
+    [InlineData(CognitionKind.NarrativeProse, CognitionOrigin.HostObservation, NarrativeContractReason.RealityContamination)]
+    [InlineData(CognitionKind.NarrativeProse, CognitionOrigin.ExplicitFeedback, NarrativeContractReason.RealityContamination)]
+    [InlineData(CognitionKind.NarrativeProse, CognitionOrigin.NarrativeProse, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.NarrativeProse, CognitionOrigin.ModelSelfReport, NarrativeContractReason.None)]
+    [InlineData(CognitionKind.NarrativeProse, CognitionOrigin.Intent, NarrativeContractReason.RealityContamination)]
     public void Knowledge_candidate_origin_decides_what_it_may_assert(CognitionKind kind, CognitionOrigin origin,
         NarrativeContractReason expected)
     {
@@ -373,6 +398,80 @@ public sealed class NarrativeIdentityContractTests
         var intent = draft.Intents[0] with { InstanceId = Beta };
         var rejections = NarrativeIntentPolicy.Validate(intent, NarrativeContent.From(draft));
         Assert.Contains(rejections, r => r.Reason == NarrativeContractReason.ScopeEscalation);
+    }
+
+    [Theory]
+    [InlineData(1.5)]
+    [InlineData(-0.1)]
+    public void Confidence_outside_the_unit_interval_is_refused(double confidence)
+    {
+        var (_, draft) = Fixture();
+        var candidate = new KnowledgeCandidate
+        {
+            CandidateId = "kc-conf",
+            InstanceId = draft.InstanceId,
+            Kind = CognitionKind.UserReportedFact,
+            Origin = CognitionOrigin.UserMessageEvidence,
+            Claim = "她说她要搬家",
+            Confidence = confidence,
+            EvidenceRefs = ["msg-102"],
+            ProposedBy = "narrator",
+        };
+
+        var rejections = KnowledgeCandidatePolicy.Validate(candidate, NarrativeContent.From(draft));
+        Assert.Equal(1, rejections.Count);
+        Assert.Equal(NarrativeContractReason.RealityContamination, rejections[0].Reason);
+    }
+
+    [Fact]
+    public void Candidate_from_another_instance_scope_is_refused()
+    {
+        var (_, draft) = Fixture();
+        var candidate = new KnowledgeCandidate
+        {
+            CandidateId = "kc-scope",
+            InstanceId = Beta,
+            Kind = CognitionKind.UserReportedFact,
+            Origin = CognitionOrigin.UserMessageEvidence,
+            Claim = "她说她要搬家",
+            Confidence = .9,
+            EvidenceRefs = ["msg-102"],
+            ProposedBy = "narrator",
+        };
+
+        var rejections = KnowledgeCandidatePolicy.Validate(candidate, NarrativeContent.From(draft));
+        Assert.Equal(1, rejections.Count);
+        Assert.Equal(NarrativeContractReason.ScopeEscalation, rejections[0].Reason);
+    }
+
+    [Fact]
+    public void Intent_without_a_source_commit_is_refused()
+    {
+        var (_, draft) = Fixture();
+        var intent = draft.Intents[0] with { SourceCommitId = "" };
+        var rejections = NarrativeIntentPolicy.Validate(intent, NarrativeContent.From(draft));
+        Assert.Equal(1, rejections.Count);
+        Assert.Equal(NarrativeContractReason.IntentClaimedAsFact, rejections[0].Reason);
+    }
+
+    [Fact]
+    public void Intent_whose_deadline_precedes_its_earliest_is_refused()
+    {
+        var (_, draft) = Fixture();
+        var intent = draft.Intents[0] with { LatestDueAtUtc = Now.AddMinutes(10) };
+        var rejections = NarrativeIntentPolicy.Validate(intent, NarrativeContent.From(draft));
+        Assert.Equal(1, rejections.Count);
+        Assert.Equal(NarrativeContractReason.IntentClaimedAsFact, rejections[0].Reason);
+    }
+
+    [Fact]
+    public void Fulfilled_intent_without_a_matching_delivery_is_refused()
+    {
+        var (_, draft) = Fixture();
+        var intent = draft.Intents[0] with { Status = NarrativeIntentStatus.Fulfilled };
+        var rejections = NarrativeIntentPolicy.Validate(intent, NarrativeContent.From(draft));
+        Assert.Equal(1, rejections.Count);
+        Assert.Equal(NarrativeContractReason.RealityContamination, rejections[0].Reason);
     }
 
     /// <summary>一条合法的即时叙事：处境与话语同源于一段原文，感知只到 102，水位报到批次上界。</summary>
