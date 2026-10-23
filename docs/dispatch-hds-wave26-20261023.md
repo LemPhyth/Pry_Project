@@ -75,3 +75,11 @@
 1. 不许改上游门（`NarrativeContextCompiler.cs` 的 `:87`／`:110`／`:203` 的 `cost > cap` 半项／`:246`）去制造可达性；2. 突变轮不许 `--no-build`；3. 不许固定返回值／吞异常／`Assert.Skip`／注释掉既有断言／改 `[InlineData]` 期望值；4. 不许拿"两侧恒等"当覆盖证据；5. 不许把两轮突变合进一轮；6. 不许引用 `.local-notes` 之外的历史 TRX 当本轮凭证；7. 不许在本刀里顺手做归位／FF／tag／push／改 `main`；8. 不许动主树那两枚他人暂存项，也不 `stash`／`clean`／`rm`；9. 不许把片 B 说成"新链已接线"；10. 不许为凑绿灯把没响过的格留在文件里；11. 不新增数字门槛，也不改既有门槛（在册零改动清单＝检索 `.7`／`.5`、`2400`、五档超时、`MinimumUsableTokensPerSecond = 12`、`4096`、`DefaultSafetyTokens = 128`、`MinimumInputTokens = 512`、`MessageFramingOverhead = 8`、`SegmentCount = 8`）；不接 `src/Pry.Api`／`src/Pry.App`／`src/Pry.Client`／任何端点／任何界面；不碰 `%LOCALAPPDATA%\PryCompanion`；`licenses/**`、`licenses/THIRD-PARTY-NOTICES.md`、`ASSETS_LICENSE.md`、`FAN_CONTENT_POLICY.md` 一字不碰。
 
 —— 完 ——
+
+## 七 守门人更正与续跑前置（追加于 10-23 22:4x，签名 `eval-QA-WAVE26-GK-1023`；§〇–§六 原文一字不改，错了的按本节目视作废）
+
+1. **§二 末行那条还原 SHA 作废**：写的 `92fbce48c7948105479a6ca3fe75697dc24201c4f4d120b7ecc086729c353570` ＝ `a804a53`（提取前线尾）的字节，而本刀载体钉在 `24d1b6f`＝**交付面本身**，该值在载体里不可达。正确判据＝`git show 24d1b6f8b0a4a3d199dcab832e15facc84a16a01:src/Pry.Core/Narrative/NarrativeRoundRunner.cs` 的 blob＝ **`961fb49bb464188a93eebb4c7059e8c1129d2287e9f626976cae754c65ed37e9`**，与 `sha256sum <carrier>/…/NarrativeRoundRunner.cs` 当场同值。这条错出在守门人抄写上一刀 §六 时没按"载体基点＝交付面"重算，不是执行方的错。**通用口径（以后所有续跑刀照用）**：突变对象文件若被载体提交自身改过，还原判据取**该载体的 HEAD-blob**，绝不取主树线尾值；未被改过的文件两处同值（本刀 `NarrativeContextCompiler.cs`＝`86c30160…` 就是这种，§〇.3 那条照旧有效）。
+2. **§〇.7 的额度按"刀"计，不按"日"计**：第二十六波那把已把 8 次预检用满（八次全 `HOLD`，其中 #5 与 #4 相距 4m32s、差 28 秒不合规，lane 自报后我收下并登记＝不罚也不但，但**不许把它算成还有额度**）。续跑＝**新的一把 lane、重新数 8 次**，配方直接取 `docs/eval/reports/2026-10-23-hds003-010-red-proof-and-final-gate.md` 的 §六（逐字可粘贴，只把 R4 的还原值按上一条更正）。
+3. **起跑前置改了一条**：本刀的 §一／§二／§三 **只在一次 `VERDICT=BUILD_OK` 之后起跑**。载体、结果目录、两枚突变副本（`tools/dryrun/r3_after.cs`＝`72340f05…`、`r4_after.cs`＝`1126b601…`，均已与交付面逐字符核过）、读盘仪器 `tools/readtrx.sh` 全部就位——**这些不需要重做**；在 `HOLD` 窗口里再放一把 lane 出去只是反复跑同一支预检，150 轮额度会烧在等待上。
+4. **收尾那轮的顺序（§三 补一句硬线）**：`scripts/measure-fixed-eval.ps1 -ResultsDirectory <目录>` 会向该目录**写** `fixed-eval-coverage.json`（`:111-112`），所以必须**先 `ls *.trx` 数到 4 枚、逐份读完 `<Counters>` 与两条 `outcome="NotExecuted"` 点名，再跑它**；反过来会把 json 混进计数、把"四份 TRX"这条判据数歪。
+5. 上一条更正之后，本工单其余各节（含 §二 那条"不响就当场撤格、不许提交常绿门"的硬线）**照旧全量生效**。
