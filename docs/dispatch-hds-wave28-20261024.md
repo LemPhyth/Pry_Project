@@ -1,0 +1,65 @@
+# 工单 HDS-WAVE28-1024｜HDS-006「记忆与删除全链」第一片：证据身份与统一检索的隔离原型（零生产调用方，数字门槛零改动）
+
+- 工单 id：`HDS-WAVE28-1024`
+- 性质：**功能刀·隔离原型**（新建文件，不改任何既有产品文件的一个字节；零生产调用方）
+- 任务编号：`HDS-006`（登记处＝`docs/plans/PROJECT_PLAN.md` §4.2 第 77 行那一行；架构面依据＝`docs/plans/Pry_HDS_Rewrite_Architecture_Plan_v4.md` 的第 325 行任务行、第 302 行 AUD-03 缺陷行、第 405 行"旧 RT-005/MEM-005/006 语义转 HDS-006"那句）
+- 出闸：守门人 2026-10-24 15:1x。作者原令逐字＝「我不想思考了，你就继续给我派工单，该提交的提交吧」＋「你，还是自己起Agent吧」＋「继续工作，不要让我拍板啥的，告诉我现在是什么情况就行」＋「下一次不要再三构建触发那个防火墙烦我打游戏」
+- 执行方：冷启动 lane（第二十八号载体）
+- **起跑前置**：一次 `VERDICT=BUILD_OK` 的焦点预检窗口。读到 `HOLD` 就按 §〇.7 办，不许起跑、不许请示。
+
+## 〇 开工前必读与入场（缺一条就就地停刀登记，不要自扩范围）
+
+1. **先读六份**：`docs/plans/README.md`、`docs/plans/PROJECT_PLAN.md`（§4.2 的 HDS-006 行＋§9 最新三条 entry，最新一条是 10-24 的第二十七波收口）、`docs/agent-engineering-standards.md`（全文，交付形态按 §10 四项）、`docs/plans/Pry_HDS_Rewrite_Architecture_Plan_v4.md` 的 §HDS-006 那一段与第 302／325／405 三行、`docs/narrative-storage-contract.md`（HDS-005 落库面契约，本片要接它的"证据身份"那一半）、`docs/legacy-chain-deprecation.md`（旧链退役的四条要求——**本刀不碰删除片，但必须明白原型是为了让那句话将来能成立**）。
+2. **入场读数当场贴进报告 §〇**（不许引用本工单的数字）：`date`、`git -C C:/Users/24782/Desktop/Pry_Project rev-parse HEAD`、`git status --short --branch` 原样、`git worktree list`、`git log --oneline -3`。
+3. **载体**：`git worktree add --detach C:/Users/24782/Desktop/Pry_Project/.local-notes/qa-wave28-1024/carrier 2d90650`（当前线尾＝第二十七波收口那一把；入场后自证三件事并贴进 §〇：`git rev-parse HEAD`＝上面那个全号、`git status --short`＝**0 行**、`sha256sum src/Pry.Core/Narrative/Storage/NarrativeSqliteStore.cs` 当场取一次并记下）。
+4. **在册基线起点＝当场从第二十七波报告 §三.2 读到的那个数**（守门人 10-24 顶到的是 **1339／executed 1337／failed 0／跳过 2**，分项 Client 108／App 233／Api 280／Core 718、executed 716）。本刀**新格数由你按格名逐文件 `grep -n '\[Fact\]\|\[InlineData\|\[Theory'` 当场算**，出口读数＝起点＋N，右端必须由你收尾那四份原始 TRX 当场求和取出，不许从本工单抄，也不许用"条数＝断言数"这种换算。
+5. **他人资产**：主树那两枚 `M ` 暂存项（`docs/dispatch-tip1020-02-memory-group-judgment.md`、`tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs`）与全部 `??`＝别人的，不读内容、不改、不提交、不 `stash`／`clean`／`rm`。**共享主树里禁止任何 `git commit`／`add`／`checkout`／`reset`／`cherry-pick`／`merge`／`tag`／`push`／`git apply`**；交付物只落在你自己的载体＋那一份报告文件（**归位由守门人做**，通道见 §四）。
+6. **允许文件面（只有这些，超出即作废）**：
+   - ① `.local-notes/wave28-1024/`（自建，gitignored）里的仪器与全部 TRX；
+   - ② 报告 `docs/eval/reports/2026-10-24-hds006-evidence-identity-retrieval-prototype.md`（主树里唯一允许新建/写入的文件，不提交、不 `git add`）；
+   - ③ **新建**文件只许落在 `src/Pry.Core/Memory/` 与 `tests/Pry.Core.Tests/` 两处（文件名你定，但必须一眼能看出是 HDS-006 第一片的隔离原型）；**既有文件零字节持久化改动**——`src/Pry.Core/Narrative/**`、`src/Pry.Core/Memory/**` 的既有各文件、`src/Pry.Api`／`src/Pry.App`／`src/Pry.Client`、`scripts/**`、`Pry.slnx`、`Directory.Build.props` 一字不碰。
+7. **焦点预检（这条会打断作者本人，违反＝本波作废）**：每一次 `dotnet`（含 build／test／每一枚突变轮）之前先跑
+
+   ```
+   powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/24782/Desktop/Pry_Project/.local-notes/game-preflight6-1022.ps1
+   ```
+
+   整段输出贴进报告并归档到 `.local-notes/wave28-1024/out/preflight-<ID>.txt`。只有 `VERDICT=BUILD_OK` 才起跑。读到 `HOLD`：**不许起跑、不请示、不改预检判据、不绕过**；先把零 `dotnet` 的活做完（写 §〇、摆载体、读码、写文件、把突变文本先在临时副本上合成并 `sha256sum` 记下——这是第二十七波立的新前置），然后**可以重跑预检，最多累计 8 次、相邻两次之间不短于 5 分钟**（额度按"刀"计、不按"日"计）。8 次之后仍 `HOLD` ⇒ **带着"本刀零 `dotnet` 起跑"的交付回来，那是合法交付**，报告里写清跑到哪一步、下一手从哪一行接着跑。`free_memory_gb` 偏低或读数呈 SQLite `disk I/O`／`out of memory` 形态时那一轮读数作废（那是他机器的资源形状，不是断言失败），不动任何进程。
+8. **预算（用满即停，不许自扩）**：解决方案级构建 **≤1**、解决方案级全量 **≤1**、**定向 ≤8**（每枚单放突变各一轮，形状不符时留 2 枚额度复取）。突变轮**一律不许 `--no-build`**（只有收尾那轮全量允许）。跑法固定写法＝`dotnet test <工程或解决方案> -c Release [--no-build 仅收尾全量] --results-directory "<绝对路径>" --logger trx`；**每轮独立结果目录、不许复用**；跑完先 `ls *.trx` 数枚数再读 `<Counters>`；`dotnet` 次数只认盘上产物。
+9. **报告先建、逐轮落盘**（150 轮硬上限，一夜三把栽在这格上）：动第一次 `dotnet` 前把 §〇 写满建文件，之后**每完成一轮立刻把该轮字段追加进报告再跑下一轮**。反证轮十一项＝①文件:行 ②改前原文 ③改后原文 ④`git diff --stat` ⑤跑法整行 ⑥TRX 文件名 ⑦红格全名＋消息要点＋红点行号 ⑧还原命令 ⑨还原后 `git status --short` 行数 ⑩突变态与还原后 SHA-256 ⑪当轮预检整段。缺 ⑨⑩⑪ 的轮次按第二十二波口径退回、不补签。**⑩ 的那枚"还原后应为"值必须由 `git show <载体 HEAD>:<该文件>` 当场取**（若该文件被你自己的提交改过，线尾值在载体里不可达——这是第二十六波踩过的坑）。
+
+## 一 这一片要造什么（按 v4 第 325 行那一格拆到可判）
+
+在 `src/Pry.Core/Memory/` 新建**一枚隔离原型**（全内存、参数全走入参、零生产调用方），把 HDS-006 的"证据身份"与"统一检索"这两半做成可跑的形状。范围**只有下面这五条**，多出任何一条都算自扩：
+
+1. **三类身份不混**：现实／虚构／认知（real／fiction／cognitive）同一句话在三个身份下是三条不同证据；检索一条不能顺带把另一条带出来。
+2. **证据来源可指认**：每条证据带一个可比较的来源标识与一个可判定的"来源是否已失效"；来源缺失＝明确失败原因，不是静默丢弃。
+3. **统一检索一个入口**：一次调用、一个入参形状，返回集合的排序与截断规则必须**当场可判**（哪几条被截、被截的为什么被截）。**`.5` 那条既有检索地板不许动、不许复制成第二处、不许新增任何数字门槛**——原样引用既有常量；如果新链今天还没有那把地板，就把"没有地板"这件事登记成一条明写的事实与一条格，别造一个新数去凑。
+4. **派生物三处失效各自有格**：摘要／向量／缓存三处派生物，任一处失效时另外两处不受影响；失效必须能被观察到（不是内部布尔翻一下就完事）。
+5. **撤销 CAS**：把 v4 第 302 行那句 AUD-03 的教训（`SqliteMemoryRepository:433` 恢复状态的版本更新结果未检查、后续证据仍可覆盖）在新链形状上做成一枚**会响**的格：版本不匹配时撤销必须失败且失败可判，不能让后续写入覆盖掉已撤销的内容。
+
+## 二 判据（`tests/Pry.Core.Tests/` 新建一枚文件）
+
+- 逐条对上 §一 的五条，**每条至少一枚独立可判的格**；断言只钉**绝对字面量**或"当场算出并与字面量比"的形状。**"两个入口都调同一个工厂所以恒等"这类断言不算覆盖证据**（第二十五波 §〇.6.4 立的口径），要写就把期望值写成绝对字面量，并用至少三条区分性探针证明它们不是同一条路的三个别名。
+- **不许造常绿门**：任何一枚结构上红不了的格（对空集合判"不含某元素"这类），要么不写，要么在报告里点名它是常绿形状。写完每一格，先按 §三 的定向轮逐枚取红，拿不到红的格**照实登记并押下一把**，不许为了让它响去改判据、改 `[InlineData]` 期望值、`Assert.Skip`、注释掉既有断言或改上游门。
+- 判据格数＝你新加的文件里 `[Fact]`／`[Theory]` 展开后的节点数，报告 §〇 与 §五 各数一次并顶账；`grep -c '[Fact]'` 只算 `[Fact]`，`[Theory]` 的 `InlineData` 逐行数，**别把一条用例里的两个断言记成两条**（10-20 犯过一次）。
+
+## 三 反证（定向 ≤8）
+
+- 每枚突变只改**你自己新建的那枚产品文件**（既有文件一律不许改坏），一次一枚，一枚一轮，不许合轮。
+- 落笔载体之前，先把突变文本在临时副本上合成一次并 `sha256sum` 记下（第二十七波的前置），跑完逐字节还原并核 §〇.9 那三条。
+- 判据必须**恰 1 枚红**（除非你在报告里事前论证并点名"这一枚必然连带响哪几枚、为什么"），红格名逐字取到 TRX 的 `outcome="Failed"` 节点。
+
+## 四 归位通道（给守门人，不在本 lane 权限内）
+
+**别再写 `git merge --ff-only`**（第二十七波更正：载体提交的父若不是线尾，FF 必失败）。守门人按**路径**落地＝`git checkout <载体提交> -- <你那几枚新建文件>` ＋ `git commit --only -- <同路径>`（共享脏树里必须 `--only` 显式路径，否则会把他人两枚 `M ` 暂存项卷进提交）。守门人核四件事：① 反证的红格归属是否逐格点名到 TRX 节点（批次红不许署成单枚突变的归属）；② 有没有常绿门混在里面；③ 收尾四份 TRX 求和与 `measure-fixed-eval.ps1` 是否自洽，在册基线由这一把顶；④ §一 那五条是否每条都有一枚会响的格。**产品面自证**＝`git diff --stat 2d90650..HEAD -- src tests scripts Pry.slnx Directory.Build.props` 只许出现你新建的那几枚文件；`git diff --check` 干净；载体 `git status --short`＝0 行。
+
+## 五 未验证（报告里必须有一节，逐条点名，不用"已完成"混过去）
+
+真实模型对照（零读数）；**生产接线**（本片零生产调用方，`HDS-006` 的"全链"要接的是 005 的落库面与端点，本刀一律没接，接线时机＝U-9 仍未拍）；UI 可见行为（零读数）；生产库（零接触，`%LOCALAPPDATA%\PryCompanion` 不许当载体）；待标定参数权威值；旧链删除片与"构建时不把旧链打进包"那道门（**未开始**，`docs/legacy-chain-deprecation.md` §4 第 2／3／4 项照旧欠）；`.5` 检索地板在新链上是否真的守住了（若本片没有可响的格，就登记为未验而不是"设计上会守"）；**本刀新格的换人复采**（写判据的那只手不能同时是第二双手，押下一把复采刀；换手欠账现值＝**75 格**，与你的新格无交集也不因你新增而减）。**三句话照旧不许出现在任何页面**：新链已接线／旧链可删／不进包已做到。
+
+## 六 不许走的捷径（每条都有前例）
+
+1. 不许改任何既有文件的一个字节（包括"顺手修个注释"）；2. 不许新增或改动任何数字门槛（在册零改动清单＝检索 `.7`／`.5`、`2400`、五档超时、`MinimumUsableTokensPerSecond = 12`、`4096`、`DefaultSafetyTokens = 128`、`MinimumInputTokens = 512`、`MessageFramingOverhead = 8`、`SegmentCount = 8`）；3. 突变轮不许 `--no-build`；4. 不许固定返回值／吞异常／`Assert.Skip`／注释掉既有断言／改 `[InlineData]` 期望值；5. 不许拿"两侧同工厂恒等"当覆盖证据；6. 不许把两枚突变合进一轮；7. 不许引用 `.local-notes` 之外的历史 TRX 当本轮凭证；8. 不许在本刀里做归位／FF／tag／push／改 `main`；9. 不许动主树他人暂存项与未跟踪资产，也不 `stash`／`clean`／`rm`；10. 不许把"原型跑通"写成"记忆与删除全链已完成"或"新链已接线"；11. 不接 `src/Pry.Api`／`src/Pry.App`／`src/Pry.Client`／任何端点／任何界面；`licenses/**`、`licenses/THIRD-PARTY-NOTICES.md`、`ASSETS_LICENSE.md`、`FAN_CONTENT_POLICY.md` 一字不碰；12. 撞轮次上限前先收尾报告，绝不替自己补写没跑过的轮次。
+
+—— 完 ——
