@@ -479,7 +479,3 @@ $ find .local-notes/qa-wave29-1024/carrier -maxdepth 4 -type d \( -name bin -o -
 - 顺序与参数全部现成（本报告"下一手"那段就是它的作业单）：B1 一次解决方案级构建 → G0 绿基线定向 → R1–R7 逐枚定向（覆盖→跑→按 blob 还原→核 `status` 0 行与 `90947162…`／`9bf4dc31…`）→ F 收尾全量（**不带** `--no-build`，先数满 4 份 TRX 再逐份读 `<Counters>` 求和）→ 最后 `measure-fixed-eval.ps1 -ResultsDirectory`。
 - **归位仍由守门人做**（按路径落地＋`commit --only`），lane 不许碰主树 ref；在册基线由拿到 F 那一轮求和的那一手顶，本把不动。
 - 若第三十波仍连续 `HOLD` 到额度用尽：**它同样是合法交付，而扣住归位这件事照旧成立**——新格的准入判据是红证，不是"字节已经写好、只差一轮构建"。
-
-
-
-
