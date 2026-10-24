@@ -83,3 +83,8 @@
 3. **起跑前置改了一条**：本刀的 §一／§二／§三 **只在一次 `VERDICT=BUILD_OK` 之后起跑**。载体、结果目录、两枚突变副本（`tools/dryrun/r3_after.cs`＝`72340f05…`、`r4_after.cs`＝`1126b601…`，均已与交付面逐字符核过）、读盘仪器 `tools/readtrx.sh` 全部就位——**这些不需要重做**；在 `HOLD` 窗口里再放一把 lane 出去只是反复跑同一支预检，150 轮额度会烧在等待上。
 4. **收尾那轮的顺序（§三 补一句硬线）**：`scripts/measure-fixed-eval.ps1 -ResultsDirectory <目录>` 会向该目录**写** `fixed-eval-coverage.json`（`:111-112`），所以必须**先 `ls *.trx` 数到 4 枚、逐份读完 `<Counters>` 与两条 `outcome="NotExecuted"` 点名，再跑它**；反过来会把 json 混进计数、把"四份 TRX"这条判据数歪。
 5. 上一条更正之后，本工单其余各节（含 §二 那条"不响就当场撤格、不许提交常绿门"的硬线）**照旧全量生效**。
+
+## 八 前置达成与三项到账（追加于 10-24 15:0x，签名 `eval-QA-WAVE27-GK-1024`；§〇–§七 原文一字不改）
+
+6. **§七.3 那条前置已达成**：10-24 14:44 焦点预检读到 `VERDICT=BUILD_OK`（前景窗＝`msedge`、非游戏），本工单 §一／§二／§三 由守门人**亲手跑穿**（不再派冷启动 lane：§七.3 列的那四件前置全已就位，只剩"跑"这一件事，派一把出去会把额度花在重读文档上）。三项全部到账＝§一 恰 1 枚红（红点 `NarrativeBudgetInequalityCellTests.cs:line 65`，`Expected: Ok／Actual: BudgetInequalityViolated`）、§二 恰 5 枚红（`:line 60`／`:line 92` 三枚／`:line 117`，**第 55 行那枚 `[Fact]` 响了 ⇒ 撤格硬线未触发，6 枚格一枚没撤**）、§三 构建 `0 个警告 0 个错误`＋全量四份 TRX 当场求和 **1339／executed 1337／failed 0／跳过 2**。逐轮十一项字段、四枚预检整段、突变态与还原后 SHA 全部齐在 `docs/eval/reports/2026-10-24-hds003-010-red-proof-run2-and-final-gate.md`。本工单 §五 那句"三句话照旧不许出现"照旧有效：这 6 枚格有红证不等于新链接了线。
+7. **§四 归位通道里那句 `git merge --ff-only 24d1b6f` 作废**（是工单编写错误，不是执行错误）：`24d1b6f` 的父＝`a804a53`，而线尾在第二十四／二十五／二十六波的收口途中已被纯文档刀推到 `bb44fa6` ⇒ 那枚代码提交**不再是**线尾的后代，`merge --ff-only` 照字面跑必失败。实际落法＝按路径落地：`git checkout 24d1b6f -- 那三枚文件` ＋ `git commit --only -- 同三枚`（共享脏树里必须用 `--only` 显式路径，否则会把他人两枚 `M ` 暂存项卷进提交），代码提交＝ **`e7eb724`**（`3 files changed, 304 insertions(+), 3 deletions(-)`）。此后各单若还要落一枚"父在本线某个更早提交上"的载体提交，一律走这条通道，别再写 `merge --ff-only`。
