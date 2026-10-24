@@ -180,7 +180,7 @@ public sealed class NarrativeRoundRunner
         CommunicationAction[] immediate, NarrativeRequest request, NarrativeContextAssembly assembly,
         NarratorCallBudget budget, DateTimeOffset now)
     {
-        var commit = BuildCommit(draft, request, now);
+        var commit = BuildCommit(draft, request, now, _writerId);
         _history.RegisterAppliedCommit(commit, request.MaxOutboundSegments);
 
         var appended = new List<DeliverySegment>();
@@ -257,7 +257,8 @@ public sealed class NarrativeRoundRunner
         return null;
     }
 
-    private NarrativeCommit BuildCommit(NarrativeDraft draft, NarrativeRequest request, DateTimeOffset now)
+    internal static NarrativeCommit BuildCommit(NarrativeDraft draft, NarrativeRequest request, DateTimeOffset now,
+        string writerId)
     {
         var commitId = "commit-" + draft.ProposalId;
         var consumed = request.Inputs
@@ -277,7 +278,7 @@ public sealed class NarrativeRoundRunner
             Intents = draft.Intents, KnowledgeCandidates = draft.KnowledgeCandidates,
             ProcessedThrough = draft.ProcessedThrough, PerceivedInputRefs = draft.PerceivedInputRefs,
             ExpectedStoryVersion = draft.StoryVersionBase, DeletionEpoch = request.DeletionEpoch,
-            OwnershipEpoch = draft.OwnershipEpoch, ContentHash = hash, CommittedByWriter = _writerId,
+            OwnershipEpoch = draft.OwnershipEpoch, ContentHash = hash, CommittedByWriter = writerId,
             CommittedAtUtc = now, ProposalId = draft.ProposalId, ConsumedInputSeqs = consumed,
         };
     }
