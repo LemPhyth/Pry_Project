@@ -479,3 +479,575 @@ $ find .local-notes/qa-wave29-1024/carrier -maxdepth 4 -type d \( -name bin -o -
 - 顺序与参数全部现成（本报告"下一手"那段就是它的作业单）：B1 一次解决方案级构建 → G0 绿基线定向 → R1–R7 逐枚定向（覆盖→跑→按 blob 还原→核 `status` 0 行与 `90947162…`／`9bf4dc31…`）→ F 收尾全量（**不带** `--no-build`，先数满 4 份 TRX 再逐份读 `<Counters>` 求和）→ 最后 `measure-fixed-eval.ps1 -ResultsDirectory`。
 - **归位仍由守门人做**（按路径落地＋`commit --only`），lane 不许碰主树 ref；在册基线由拿到 F 那一轮求和的那一手顶，本把不动。
 - 若第三十波仍连续 `HOLD` 到额度用尽：**它同样是合法交付，而扣住归位这件事照旧成立**——新格的准入判据是红证，不是"字节已经写好、只差一轮构建"。
+
+## 八 第三十波轮次记录（续跑刀 `HDS-WAVE30-1024`）
+
+本节由第三十号冷启动 lane 写。§〇–§六 是第二十九波 lane 原文、§七 是守门人划账（`eval-QA-WAVE29-GK-1024`），**本刀一字未改、未重排、未"顺手更正"**；本节若发现某句与本轮实测不符，只在这里点名并附盘上读数。本刀不写状态词／结案词、不自封在册基线、不碰主树 ref（归位由守门人做）。
+
+### 八.0 入场自证与起跑前判据（全部当场取，2026-10-27 23:20–23:2x）
+
+必读五份已逐份完整读完：工单 `docs/dispatch-hds-wave30-1024.md`（69 行全文）、上一把报告全文（482 行，含 §七）、`docs/dispatch-hds-wave29-1024.md`（含 §七 守门人划账）、`docs/agent-engineering-standards.md`（214 行全文，交付形态按其 §10 四项）、`docs/plans/PROJECT_PLAN.md` 的 §4.2 HDS-007 行（第 80 行）＋§9 最新两条（第 202 行＝10-24 17:1x 收第二十九波、第 213 行＝10-24 16:2x 出闸第二十九波）；另按 `AGENTS.md` 与 `docs/plans/README.md`（50 行全文，权威工作规则 14 条）的要求读了入口页。起点读数按工单 §〇.3 要求从第二十八波报告取，见本末。
+
+主树入场读数（原样，本刀零 `git` 写）：
+
+```
+$ date
+Tue Oct 27 23:22:23     2026
+
+$ git -C C:/Users/24782/Desktop/Pry_Project rev-parse HEAD
+9ac43969bb9965cdcd439a2d87d4ca694ca254a7
+
+$ git status --short --branch
+## codex/ui-main-window-redesign
+M  docs/dispatch-tip1020-02-memory-group-judgment.md
+ M docs/plans/PROJECT_PLAN.md
+M  tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs
+?? .qoder/
+?? docs/character-learning-safety.patch
+?? docs/research/HDS_INTERLUDE.md
+?? docs/research/HDS_QQ_RESEARCH_INDEX.md
+?? docs/research/QQ_BRIDGE.md
+
+$ git worktree list | wc -l
+75
+```
+
+- 与上一把 §〇.2 那版入场读数相比多了两件事，都属他人所有、本刀一字不碰：线尾已从 `2c681a4` 前进到 `9ac4396`（第二十九波报告入库＋波 30 工单＋两枚文末空白整理），且 `docs/plans/PROJECT_PLAN.md` 现有一枚**未暂存**的 ` M` 改动（上一把入场时没有）。工单 §〇.5 点名的是两枚 `M ` 暂存项＋全部 `??`；这枚 ` M` 不在那三件名下，但它同样不在本刀文件面内 ⇒ 本刀对它零写、零提交、不 `stash`／`clean`／`rm`。
+- **入场自证三条（工单 §〇.2）全部成立** ⇒ 不停刀：
+
+```
+$ git -C C:/Users/24782/Desktop/Pry_Project/.local-notes/qa-wave29-1024/carrier rev-parse HEAD
+663d2c9d78d7f607137f10cd2af09069b0a4f841      ← 与工单指定的全号逐字符相同
+
+$ git -C .../carrier status --short | wc -l
+0                                              ← 入场即干净
+
+$ git -C .../carrier ls-tree -r --name-only HEAD -- src/Pry.Core/Narrative/Advancement tests/Pry.Core.Tests/BoundedAdvancementPrototypeTests.cs
+src/Pry.Core/Narrative/Advancement/AdvancementContracts.cs
+src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs
+src/Pry.Core/Narrative/Advancement/DueIntentRegistry.cs
+tests/Pry.Core.Tests/BoundedAdvancementPrototypeTests.cs      ← 四枚仍在
+
+$ git -C .../carrier log --oneline -4
+663d2c9 线尾 → 77a7d91 → ed7995c → 8e9c13d（基点，detached）
+```
+
+- **四枚"还原后应为"现值由本刀自己重取**（`git -C <载体> cat-file blob HEAD:<path> | sha256sum`，2026-10-27 23:21 当场），与工单 §〇.6 那四枚逐字符相符 ⇒ 可以按表跑：
+
+| 文件 | 本刀重取值（载体 HEAD blob） | 工单 §〇.6 | 相符 |
+|---|---|---|---|
+| `AdvancementCoordinator.cs`（R1／R2／R3／R4／R6 目标） | `90947162fed797f8de98bd5130a11dfacc25886bfa035182dccaf395b9d32b73` | 同 | 是 |
+| `DueIntentRegistry.cs`（R5／R7 目标） | `9bf4dc31bd3d1c724a804f2dc01334806dada6a1c88861eb07f89fc0897ce5a1` | 同 | 是 |
+| `AdvancementContracts.cs`（非突变目标，只登记） | `259474dcccbfb1f0327d92ba5c49e1e8ee35280c16abf6761088332695976ac0` | 同 | 是 |
+| `tests/Pry.Core.Tests/BoundedAdvancementPrototypeTests.cs`（判据，本刀全程零写入） | `1fd944f94d399a8f742482c1f724f8afec150eac865cf06cdfa149d4926a200b` | 同 | 是 |
+
+- 盘上字节与探针也当场复对：`probe/base-coordinator.cs`＝`90947162…`、`probe/base-registry.cs`＝`9bf4dc31…`（与 HEAD blob 同一字节）；七枚探针 `sha256sum` 与 §三.0 表七枚预合值**逐字符相符**（`7f207e75…`／`1ac7ad8e…`／`9602e82e…`／`d08e4c64…`／`32d41cf5…`／`af66ff56…`／`970d3628…`），未跑那枚 `probe/unrun-replay-mark-removed.cs`＝`cdd18e3f…` 仍在盘、**本刀不跑**（定向额度已被 G0＋R1–R7 排满，无作废空额，工单 §一 末段条件不成立）。
+- 单枚性用 `diff -u` 复对（零 `dotnet`）：R1／R2／R4／R5／R7 各 1 行换 1 行、R3 删 1 行、R6 删同一条语句的 2 个物理行，七枚全部单 hunk；目标行号与 §三.0 表逐字相符（`AdvancementCoordinator.cs` 133／59／78／85／50-51；`DueIntentRegistry.cs` 69／68）。
+- **起点读数（从波 28 报告 §八.7 原文照抄，不从工单抄）**：出处＝`docs/eval/reports/2026-10-24-hds006-evidence-identity-retrieval-prototype.md:616` 那句原文「顶账＝**1357／executed 1355／failed 0／跳过 2**（分项 Client 108／App 233／Api 280／Core **736**、Core executed 734）」⇒ 本刀起点＝1357／executed 1355／failed 0／跳过 2。出口读数右端只由本刀收尾那四份原始 TRX 的 `<Counters>` 当场求和取出，**不用 `1357＋23＝1380` 预写**。
+- 仪器与目录：`.local-notes/wave29-1024/round.py`（上一把留的"覆盖→跑→按 `git cat-file blob HEAD:` 还原→核 SHA 与 `status`→数 TRX→读 `<Counters>`→点 `outcome="Failed"` 节点"流水线，直接复用；⑤⑪ 由本刀手写）；各轮独立结果目录命名＝`out/trx-B1`／`trx-G0`／`trx-R1`…`trx-R7`／`trx-FULL`，不复用。入场时 `find .local-notes/wave29-1024 -name "*.trx" | wc -l`＝**0**（23:20 当场数）⇒ 下面每一枚 TRX 都由本刀产生。
+
+本刀预算与用量（用满即停）：
+
+| 面 | 上限 | 本刀计划 | 已用 |
+|---|---|---|---|
+| 解决方案级构建 | ≤1 | 1（B1，工作目录＝载体） | **1**（B1，exit 0） |
+| 定向 | ≤8 | G0 绿基线＋R1–R7＝**正好 8 枚，无复取位** | **8**（G0 1 ＋ R1–R7 7，额度用满，无第 9 枚） |
+| 解决方案级全量 | ≤1 | 1（F，**不带** `--no-build`） | **1**（F，exit 0，4 枚 TRX） |
+
+⇒ `dotnet` 实际调用总次数＝**10**（盘上凭据：`out/build-B1.txt` ＋ `out/run-G0.txt`／`run-R1.txt`…`run-R7.txt`／`run-F.txt` 共 10 份，`.trx` 共 12 枚＝1＋7＋4，结果目录 9 个各不重复）；`measure-fixed-eval.ps1` 1 次（非 `dotnet`）；焦点预检 10 枚（P10–P19）。上一把的 §〇.6 那张表（三列全 0）是它自己时点的合法读数，本刀不改它，只在这里记本刀自己的用量。
+
+焦点预检台账（编号沿用上一把，从 `P10` 起；`HOLD` 之后的重跑额度＝8 枚＝`P10`…`P17`，相邻两次不短于 5 分钟；每枚先读上一枚文件 `LastWriteTime` 再决定等多久，跑完用 `LastWriteTime` 复核实际间隔并写进本表）：
+
+| 预检 | 归档文件 | VERDICT | 落盘时刻 | 距上一枚实际间隔 | 紧随其后的 `dotnet` |
+|---|---|---|---|---|---|
+| P10 | `out/preflight-P10.txt` | **BUILD_OK** | 2026-10-27 23:23:57（`LastWriteTime` 复核） | 本刀第一枚，无前枚 | **1 次**：B1 `dotnet build Pry.slnx -c Release`（exit 0） |
+| P11 | `out/preflight-P11.txt` | **BUILD_OK** | 2026-10-27 23:25:30（`LastWriteTime` 复核） | 93 秒（非 HOLD 重跑，不受 5 分钟口径约束） | **1 次**：G0 `dotnet test tests/Pry.Core.Tests`（exit 0，TRX 1 枚） |
+| P12 | `out/preflight-P12.txt` | **BUILD_OK** | 23:28:34 | 184 秒 | **1 次**：R1（exit 1＝有 1 枚红，TRX 1 枚） |
+| P13 | `out/preflight-P13.txt` | **BUILD_OK** | 23:31:25 | 171 秒 | **1 次**：R2（exit 1，TRX 1 枚） |
+| P14 | `out/preflight-P14.txt` | **BUILD_OK** | 23:33:02 | 97 秒 | **1 次**：R3（exit 1，TRX 1 枚） |
+| P15 | `out/preflight-P15.txt` | **BUILD_OK** | 23:34:11 | 69 秒 | **1 次**：R4（exit 1，TRX 1 枚） |
+| P16 | `out/preflight-P16.txt` | **BUILD_OK** | 23:35:22 | 71 秒 | **1 次**：R5（exit 1，TRX 1 枚） |
+| P17 | `out/preflight-P17.txt` | **BUILD_OK** | 23:36:41 | 79 秒 | **1 次**：R6（exit 1，TRX 1 枚） |
+| P18 | `out/preflight-P18.txt` | **BUILD_OK** | 23:37:49 | 68 秒 | **1 次**：R7（exit 1，TRX 1 枚） |
+| P19 | `out/preflight-P19.txt` | **BUILD_OK** | 23:39:04 | 75 秒 | **1 次**：F `dotnet test Pry.slnx`（exit 0，TRX 4 枚） |
+| （说明） | 十枚预检全部 `BUILD_OK`、`HOLD` 0 枚 ⇒ §〇.5 那 8 枚"HOLD 之后重跑"额度**未动用（0/8）**；上表"间隔"列是相邻两枚预检的实际间隔（`LastWriteTime` 复核），本刀没有 `HOLD` 重跑，故 5 分钟口径没有适用点，间隔仍照实登记。编号沿上一把 P1–P9 之后连续排（未另起 `P1`，两把台账不混）。 | | | | |
+
+
+P10 整段（23:23:57 当场原样，归档＝`out/preflight-P10.txt`；本刀入场后第一枚预检，读到 `BUILD_OK` ⇒ 允许起跑）：
+
+```
+=== GAME PREFLIGHT v6 (v5 rule + unreadable-path hold + game window-class hold) ===
+  FOREGROUND: explorer pid=7404 class=CabinetWClass style=0x14CF0000 rect=241,372,1082x910 screen=2560x1440 covers=False borderless=False title=C:\Users\24782\Desktop\AI_Act\AI_Act_Mod_Launche
+  UNFOCUSED-BORDERLESS-FULLSCREEN (informational only): TextInputHost pid=21788, NVIDIA Overlay pid=18308
+gpu_util=0% used=2246MB
+free_memory_gb=8.2
+VERDICT=BUILD_OK
+```
+
+- 与上一把九枚的区别：前台窗是普通的资源管理器窗口（`covers=False borderless=False`，非整屏矩形），不是无边框全屏应用 ⇒ v6 放行。`free_memory_gb`＝**8.2**，比上一把台账的 10.7–11.1 低，但仪器自身的资源判据给的是 `BUILD_OK`；本刀照 §〇.5 只做一件事——若某一轮读数出现 SQLite `disk I/O`／`out of memory` 形态，那一轮读数作废并如实登记，不动任何进程。下面 G0 起每一枚预检的 `free_memory_gb` 逐枚记进台账。
+- "HOLD 之后的重跑"额度：**尚未动用**（0/8，P10 一枚即 `BUILD_OK`）。
+
+P11 整段（23:25:30 当场原样，归档＝`out/preflight-P11.txt`；G0 轮前的预检。距 P10 ＝ 93 秒；**这不是"HOLD 之后的重跑"**——P10 读到 `BUILD_OK`，工单 §〇.5 的 5 分钟间隔与 8 枚上限只约束 `HOLD` 之后的重跑，故不受该额度与间隔约束，间隔照实登记）：
+
+```
+=== GAME PREFLIGHT v6 (v5 rule + unreadable-path hold + game window-class hold) ===
+  FOREGROUND: QQ pid=27508 class=Chrome_WidgetWin_1 style=0x14C70000 rect=-1746,242,1215x802 screen=1920x1080 covers=False borderless=False title=QQ
+  UNFOCUSED-BORDERLESS-FULLSCREEN (informational only): TextInputHost pid=21788, NVIDIA Overlay pid=18308, explorer pid=7404
+gpu_util=5% used=2274MB
+free_memory_gb=6.7
+VERDICT=BUILD_OK
+```
+
+- 前台窗＝`QQ`（`covers=False borderless=False`，非整屏，副屏坐标 `-1746,242`）⇒ 放行。`free_memory_gb` 从 8.2 降到 **6.7**：仪器的资源判据仍给 `BUILD_OK`，本刀按 §〇.5 照跑，并在每一轮把 TRX 的 `failed`／`error` 计数与日志里的 `disk I/O`／`out of memory` 形态一起核；一旦出现该形态，那一轮读数作废并如实登记（G0 未见，`failed=0`、`error=0`）。
+
+
+### 八.1 轮次记录（十一项字段逐轮追加）
+
+#### B1｜解决方案级构建（额度 1/1 用满）
+
+| 项 | 读数 |
+|---|---|
+| ① 文件:行 | **本轮无突变覆盖**（B1 是构建轮，工单 §一.1 顺序里的第一轮；四枚文件保持载体 HEAD 字节） |
+| ② 改前原文 | N/A（零覆盖） |
+| ③ 改后原文 | N/A |
+| ④ `git diff --stat` | **0 行**（载体 `git diff --stat` 输出空）；`git status --short`＝**0 行** |
+| ⑤ 跑法整行 | `dotnet build Pry.slnx -c Release`，工作目录＝`C:/Users/24782/Desktop/Pry_Project/.local-notes/qa-wave29-1024/carrier`（由 `python .local-notes/wave29-1024/round.py B1 --build` 发起，脚本内 `cwd=CARRIER`） |
+| ⑥ TRX 文件名＋`<Counters>` | **本轮不产 TRX**（构建无 `--logger trx` 语义）。盘上凭据＝`out/build-B1.txt` 全文 29 行，末三行读数原文＝`已成功生成。`／`    0 个警告`／`    0 个错误`，`已用时间 00:00:13.81`；`dotnet` 退出码＝**0** |
+| ⑦ 红格全名／消息／行号 | 无（构建轮，零错误零警告，不存在失败节点） |
+| ⑧ 还原命令 | 本轮无覆盖 ⇒ 无需还原；作为对照执行的复核＝`sha256sum` 直接取盘上三枚目标文件字节 |
+| ⑨ 还原后 `git status --short` 行数 | **0 行**（构建之后当场数，构建产物 `bin`/`obj` 共 18 枚目录全在 gitignore 面内，未进 `status`） |
+| ⑩ 突变态与还原后 SHA-256 | 无突变态；盘上现值＝`AdvancementCoordinator.cs` `90947162fed797f8de98bd5130a11dfacc25886bfa035182dccaf395b9d32b73`、`DueIntentRegistry.cs` `9bf4dc31bd3d1c724a804f2dc01334806dada6a1c88861eb07f89fc0897ce5a1`、判据 `1fd944f94d399a8f742482c1f724f8afec150eac865cf06cdfa149d4926a200b` —— 三枚与 §八.0 那枚"载体 HEAD blob 重取值"**逐字符相同** ⇒ 构建没有改动任何判据或产品字节 |
+| ⑪ 当轮预检 | **P10**（`out/preflight-P10.txt`，23:23:57，`VERDICT=BUILD_OK`，`free_memory_gb=8.2`），整段原文见 §八.0 末尾 |
+
+- B1 的判读意义：上一把那三枚提交（`ed7995c`→`77a7d91`→`663d2c9`）落的四枚文件**能编译**，这是它从未被验证过的一条（§〇.1 里波 29 的 §五.0 明写"零轮次"）。构建通过不等于 23 枚格绿，绿不绿只看 G0 那轮的 TRX。
+- 顺带登记一条**与本刀实测不符的上一把原文**（工单 §〇.4 允许的更正方式＝在 §八 点名＋附盘上读数，不改原文）：§三.1 那句"载体里 `bin`/`obj` 0 枚"在 B1 之后变成 18 枚目录（`find . -maxdepth 4 -type d \( -name bin -o -name obj \) | wc -l`＝18，23:24 当场）。那行是上一把**它自己零起跑时点**的合法读数，本刀不判它错，只说明本刀已把它推进了一格。
+
+#### G0｜绿基线定向（定向额度 1/8）
+
+| 项 | 读数 |
+|---|---|
+| ① 文件:行 | **本轮无突变**（绿基线轮，四枚文件＝载体 HEAD 字节，入场时已核 §八.0） |
+| ② 改前原文／③ 改后原文 | N/A（零覆盖；`git diff --stat` 本轮前后各数一次均 **0 行**，`git status --short` **0 行**） |
+| ⑤ 跑法整行 | `dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-G0" --logger trx`（工作目录＝载体；由 `python .local-notes/wave29-1024/round.py G0` 发起） |
+| ⑥ TRX 文件名＋`<Counters>` | 目录 `out/trx-G0` 内 `ls *.trx` 数满＝**1 枚**：`24782_PHYTHLINK_2026-10-27_23_25_42.trx`。`<Counters>` 原文逐属性＝`total=759`／`executed=757`／`passed=757`／`failed=0`／`error=0`／`notExecuted=0`／`aborted=0`／`inconclusive=0`／`warning=0`／`completed=0`／`disconnected=0`／`inProgress=0`／`notRunnable=0`／`passedButRunAborted=0`／`pending=0`／`timeout=0` |
+| ⑦ 红格 | **零枚红**（`failed=0`、`error=0`；`outcome="Failed"` 节点计数 0）。按 `outcome="NotExecuted"` 点名的两枚＝`Pry.Core.Tests.LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key` 与 `Pry.Core.Tests.CoreTests.Configured_sense_voice_model_can_run_offline`——与波 28 §八.7 那两条同名跳过逐字相同，**不是本刀的格**，`notExecuted` 计数器照旧恒 0 不看 |
+| ⑧ 还原命令 | 本轮无覆盖 ⇒ 无需还原 |
+| ⑨ `git status --short` 行数 | **0 行**（跑后当场数） |
+| ⑩ SHA-256 | 无突变态；三枚目标文件盘上现值跑后仍＝`90947162…`／`9bf4dc31…`／`1fd944f9…`（与 §八.0 逐字符同）⇒ 判据字节本轮未被写过 |
+| ⑪ 当轮预检 | **P11**（`out/preflight-P11.txt`，23:25:30，`VERDICT=BUILD_OK`，`free_memory_gb=6.7`），整段见下 |
+
+**本刀 23 枚新格在 G0 的逐格读数（从同一枚 TRX 的 `outcome` 属性逐节点取，`testName` 含 `BoundedAdvancementPrototypeTests` 的节点计数＝23，全 `Passed`）**：
+
+```
+[Passed] Each_trigger_kind_enters_the_one_advancement_entry_and_names_its_own_reference(asked: UserEvent, expectedReference: "ue-1")
+[Passed] Each_trigger_kind_enters_the_one_advancement_entry_and_names_its_own_reference(asked: DueIntent, expectedReference: "due-1")
+[Passed] Each_trigger_kind_enters_the_one_advancement_entry_and_names_its_own_reference(asked: BackgroundScene, expectedReference: "bg-1")
+[Passed] The_advancement_coordinator_exposes_exactly_one_public_entry_method
+[Passed] The_same_intent_resubmitted_inside_the_cooldown_window_is_deferred_and_names_the_earliest_next_instant
+[Passed] An_intent_resubmitted_at_the_instant_the_cooldown_window_closes_advances_again
+[Passed] A_due_intent_inside_the_quiet_window_is_deferred_until_the_window_closes_and_stays_observable
+[Passed] A_quiet_deferred_intent_advances_once_the_window_closes_and_leaves_the_pending_list
+[Passed] An_exhausted_call_budget_stops_advancement_and_names_consumed_remaining_and_the_dimension
+[Passed] A_budget_that_is_zero_at_entry_is_a_distinct_shape_from_one_that_ran_out
+[Passed] A_cost_budget_running_out_stops_advancement_while_calls_are_still_available
+[Passed] An_advancement_that_exactly_consumes_the_remaining_call_budget_is_allowed
+[Passed] After_a_clock_forward_jump_due_intents_are_replayed_in_registration_order
+[Passed] Replay_delivers_each_due_intent_exactly_once_across_two_clock_jumps_and_loses_none
+[Passed] A_due_intent_that_has_not_reached_its_due_instant_is_left_pending_and_still_reported
+[Passed] A_late_advancement_carrying_a_superseded_effect_version_is_refused_and_writes_nothing
+[Passed] An_advancement_whose_source_cannot_be_pointed_to_fails_with_a_named_reason_and_stays_in_the_log
+[Passed] Missing_source_is_refused_for_every_trigger_kind_with_the_same_named_failure(asked: UserEvent, requestId: "req-missing-ue")
+[Passed] Missing_source_is_refused_for_every_trigger_kind_with_the_same_named_failure(asked: DueIntent, requestId: "req-missing-due")
+[Passed] Missing_source_is_refused_for_every_trigger_kind_with_the_same_named_failure(asked: BackgroundScene, requestId: "req-missing-bg")
+[Passed] A_successful_advancement_carries_the_source_reference_into_the_record_it_produces
+[Passed] Advancement_prototype_sources_carry_no_legacy_chain_names_and_the_probe_proves_the_scan_bites
+[Passed] Advancement_prototype_declares_no_source_side_default_for_windows_or_budgets
+count=23 byOutcome={"Passed":23}
+```
+
+- **工单 §一.1 对 G0 的期望（"那 23 枚全绿"）成立**，且 Core 面 `total=759`＝波 28 在册的 Core 736＋本刀 23 枚，等式与 §二 顶账形状一致（右端仍要以 F 那四份 TRX 当场求和为准，G0 只覆盖 Core 一份）。
+- 关于"上一把原文与本轮实测是否相符"，本节做一次专门复核（工单 §〇.4 允许的动作＝在 §八 点名＋附盘上读数，不改原文）：**本刀没有点出任何一条需要更正的实质不符**。举一处最容易误判的为例——§三.0 的 R2 事前论证那句"其余格的第二次请求都严格晚于上次生效时刻且冷却窗口传 `TimeSpan.Zero`（`Noon >= 12:05` 为假）"：本刀复算 `Noon`＝12:00，`12:00 >= 12:05` 确实为假，且 R2 轮实测 `failed=1` 说明那批夹具在 `>` 与 `>=` 下同判 ⇒ 该句与盘上读数相符，不列为疑点。R1／R3／R4／R5／R6／R7 六轮的事前论证与实测红集**逐字相符**（每轮的对照见 §八.1 各轮末段）。唯一与本刀实测有差的一句是 §三.1 那句"载体里 `bin`/`obj` 0 枚"——那是上一把零起跑时点的合法读数，本刀 B1 之后为 18 枚，已按上文登记，不算它的错。
+
+
+#### R1｜`AdvancementCoordinator.cs:133` 背景场景臂指向到期意图引用（定向额度 2/8）
+
+十一项字段（②③ 逐字节取自载体与探针副本，④⑥⑦⑧⑨⑩ 的原始材料由 `round.py` 当场打印＝`out/w30-round-R1.txt`，⑤⑪ 本刀手写）：
+
+| 项 | 读数 |
+|---|---|
+| ① 文件:行 | `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs:133`（载体相对路径；绝对＝`C:/Users/24782/Desktop/Pry_Project/.local-notes/qa-wave29-1024/carrier/src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs`） |
+| ② 改前原文 | `        AdvancementTriggerKind.BackgroundScene => request.BackgroundSceneReference,` |
+| ③ 改后原文 | `        AdvancementTriggerKind.BackgroundScene => request.DueIntentReference,` |
+| ④ `git diff --stat` | `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs \| 2 +-` → `1 file changed, 1 insertion(+), 1 deletion(-)`（单 hunk、单行换单行，与 §三.0 末段"单枚性预检"一致） |
+| ⑤ 跑法整行 | `dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-R1" --logger trx`（工作目录＝载体；**未带** `--no-build`，突变轮一律自行重建）。发起命令＝`python .local-notes/wave29-1024/round.py R1 --probe "…/probe/R1-bg-arm-aliased.cs" --target "…/carrier/src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs"` |
+| ⑥ TRX 文件名＋`<Counters>` | `out/trx-R1` 内 `ls` 数满＝`total=1 trx=1`：`24782_PHYTHLINK_2026-10-27_23_28_46.trx`。`<Counters>` 逐属性＝`total=759`／`executed=757`／`passed=756`／`failed=1`／`error=0`／`notExecuted=0`／其余（aborted／completed／disconnected／inProgress／inconclusive／notRunnable／passedButRunAborted／pending／timeout／warning）＝0 |
+| ⑦ 红格全名＋消息要点＋红点行号 | 红格**恰 1 枚**，格名逐字＝`Pry.Core.Tests.BoundedAdvancementPrototypeTests.Each_trigger_kind_enters_the_one_advancement_entry_and_names_its_own_reference(asked: BackgroundScene, expectedReference: "bg-1")`。消息要点＝`Assert.Equal() Failure: Strings differ` / `Expected: "bg-1"` / `Actual: "due-1"`（＝背景场景那一臂读到的是到期意图引用，三类触发成别名）。**TRX 里的红点行号**（照抄 `StackTrace` 那一行）＝`…carrier\tests\Pry.Core.Tests\BoundedAdvancementPrototypeTests.cs:line 63`；**源码里该 assert 文本在哪行**＝判据文件第 63 行 `Assert.Equal(expectedReference, readout.TriggerReference);` ⇒ 两者相同（本刀另按工单要求分栏登记，相同不构成疑点） |
+| ⑧ 还原命令 | `git -C <载体> cat-file blob HEAD:src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs > src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs`（由 `round.py` 以 `blob(rel)` 逐字节写回） |
+| ⑨ 还原后 `git status --short` 行数 | **0 行**（`status --short lines after restore: 0 []`） |
+| ⑩ SHA-256 | 覆盖前工作树＝`90947162…`（`== HEAD blob: True`）；**突变态**＝`7f207e75dde25d7e2164688f7fd76fe316df82f632dbe4c98c4f9b199616cc75`（与 §三.0 表 R1 预合值逐字符相同）；**还原后**＝`90947162fed797f8de98bd5130a11dfacc25886bfa035182dccaf395b9d32b73`（`== HEAD blob: True`，与 §八.0 本刀重取值相同）。判据文件本刀零写入，仍＝`1fd944f9…` |
+| ⑪ 当轮预检 | **P12**（`out/preflight-P12.txt`，23:28:34，`VERDICT=BUILD_OK`，`free_memory_gb=7.3`），整段见下 |
+
+P12 整段（R1 轮前预检，23:28:34 当场；距 P11 184 秒，非 HOLD 重跑故不受 5 分钟口径约束）：
+
+```
+=== GAME PREFLIGHT v6 (v5 rule + unreadable-path hold + game window-class hold) ===
+  FOREGROUND: QQ pid=27508 class=Chrome_WidgetWin_1 style=0x14C70000 rect=-1746,242,1215x802 screen=1920x1080 covers=False borderless=False title=QQ
+  UNFOCUSED-BORDERLESS-FULLSCREEN (informational only): TextInputHost pid=21788, NVIDIA Overlay pid=18308, explorer pid=7404
+gpu_util=3% used=2256MB
+free_memory_gb=7.3
+VERDICT=BUILD_OK
+```
+
+- **与 §三.0 事前论证的对照**：期望红集＝"恰 1 枚＝`Each_trigger_kind_enters_the_one_advancement_entry_and_names_its_own_reference(asked: BackgroundScene, expectedReference: "bg-1")`"，实测红集＝**同一枚、且只有这一枚**（`failed=1`，另两条 `UserEvent`／`DueIntent` 探针、`Missing_source_is_refused_for_every_trigger_kind` 三条、§一.2 那两枚静默格全在 `passed=756` 里）。⇒ **R1 形状相符，清洁红 1 枚**。
+- 附一条仪器记账：`round.py` 的 `report_trx` 在打印失败消息时抛 `SyntaxError: prefix 'http' not found in prefix map`（它的 ElementTree xpath 写法在 Python 3.14 下不接受未加前缀的命名空间谓词）。崩溃点在该轮**全部关键动作之后**（覆盖→跑→还原→核 SHA 与 `status`→数 TRX→读 `<Counters>`→点名 `outcome="Failed"` 节点都已打印完毕，见 `out/w30-round-R1.txt` 前 20 行），缺的只有 ⑦ 的消息正文；本刀用自写的 `out/w30-failmsg.js` 直接从 TRX 取 `Message`/`StackTrace`，**没有改动上一把的仪器一个字节**，也没有因此重跑 `dotnet`（该轮 `dotnet` 仍只 1 次）。
+
+#### R2｜`AdvancementCoordinator.cs:59` 冷却窗口外沿 `>`→`>=`（定向额度 3/8）
+
+| 项 | 读数 |
+|---|---|
+| ① 文件:行 | `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs:59` |
+| ② 改前原文 | `        if (cooldownOpensAt is { } cooldownEnd && cooldownEnd > request.Window.NowUtc)` |
+| ③ 改后原文 | `        if (cooldownOpensAt is { } cooldownEnd && cooldownEnd >= request.Window.NowUtc)` |
+| ④ `git diff --stat` | `AdvancementCoordinator.cs \| 2 +-` → `1 file changed, 1 insertion(+), 1 deletion(-)`（单 hunk，方向类突变，无新增数字门槛） |
+| ⑤ 跑法整行 | `dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-R2" --logger trx`（工作目录＝载体；未带 `--no-build`）。发起＝`python .local-notes/wave29-1024/round.py R2 --probe "…/probe/R2-cooldown-boundary-flipped.cs" --target "…/carrier/src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs"` |
+| ⑥ TRX＋`<Counters>` | `out/trx-R2` 数满＝`total=1 trx=1`：`24782_PHYTHLINK_2026-10-27_23_31_30.trx`；`total=759`／`executed=757`／`passed=756`／`failed=1`／`error=0`／`notExecuted=0`／其余全 0 |
+| ⑦ 红格 | 恰 1 枚＝`Pry.Core.Tests.BoundedAdvancementPrototypeTests.An_intent_resubmitted_at_the_instant_the_cooldown_window_closes_advances_again`。消息＝`Assert.Equal() Failure: Values differ` / `Expected: Advanced` / `Actual: DeferredByCooldown`（外沿那一瞬被算进窗口＝放行变成推迟）。TRX 红点行号照抄＝`…BoundedAdvancementPrototypeTests.cs:line 120`；源码 assert 文本行＝判据文件第 120 行 `Assert.Equal(AdvancementOutcome.Advanced, second.Outcome);` ⇒ 相同 |
+| ⑧ 还原命令 | `git -C <载体> cat-file blob HEAD:src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs > 同路径` |
+| ⑨ 还原后 `git status --short` 行数 | **0 行** |
+| ⑩ SHA-256 | 覆盖前＝`90947162…`（== HEAD blob True）；突变态＝`1ac7ad8e52a9f3080bf85329fb71aa26f9c0ea2e062ba3faeb00110c1ba86549`（== §三.0 R2 预合值）；还原后＝`90947162fed797f8de98bd5130a11dfacc25886bfa035182dccaf395b9d32b73`（== HEAD blob True）。判据仍 `1fd944f9…` |
+| ⑪ 当轮预检 | **P13**（`out/preflight-P13.txt`，23:31:25，`VERDICT=BUILD_OK`，`free_memory_gb=7.7`；距 P12 171 秒，非 HOLD 重跑） |
+
+P13 整段：
+
+```
+=== GAME PREFLIGHT v6 (v5 rule + unreadable-path hold + game window-class hold) ===
+  FOREGROUND: QQ pid=27508 class=Chrome_WidgetWin_1 style=0x14C70000 rect=-1746,242,1215x802 screen=1920x1080 covers=False borderless=False title=QQ
+  UNFOCUSED-BORDERLESS-FULLSCREEN (informational only): TextInputHost pid=21788, NVIDIA Overlay pid=18308, explorer pid=7404
+gpu_util=0% used=2259MB
+free_memory_gb=7.7
+VERDICT=BUILD_OK
+```
+
+- **与 §三.0 事前论证对照**：期望"恰 1 枚＝`An_intent_resubmitted_at_the_instant_the_cooldown_window_closes_advances_again`"，实测红集就是这一枚且只有这一枚（窗口内那格 `The_same_intent_resubmitted_inside_the_cooldown_window_…` 仍绿＝本来就期望推迟；§一.3 与 §一.4 那批第二次请求严格晚于上次生效时刻的格子不受 `>=` 影响）。⇒ **清洁红 1 枚，形状相符**。
+
+#### R3｜`AdvancementCoordinator.cs:78` 删掉静默推迟的登记行（定向额度 4/8）
+
+| 项 | 读数 |
+|---|---|
+| ① 文件:行 | `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs:78` |
+| ② 改前原文 | `            _deferrals.Add(new AdvancementDeferral(request.IntentKey, request.Kind, "quiet", quietEnd));` |
+| ③ 改后原文 | （该行被删除，改后无对应行；`git diff --stat`＝`1 file changed, 1 deletion(-)`） |
+| ④ `git diff --stat` | `AdvancementCoordinator.cs \| 1 -` → `1 file changed, 1 deletion(-)`（单 hunk，删 1 行无 `+`，与 §三.0 末段"R3 各删 1 行"一致） |
+| ⑤ 跑法整行 | `dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-R3" --logger trx`（工作目录＝载体；未带 `--no-build`）。发起＝`python .local-notes/wave29-1024/round.py R3 --probe "…/probe/R3-quiet-deferral-not-recorded.cs" --target "…/AdvancementCoordinator.cs"` |
+| ⑥ TRX＋`<Counters>` | `out/trx-R3` 数满＝`total=1 trx=1`：`24782_PHYTHLINK_2026-10-27_23_33_06.trx`；`total=759`／`executed=757`／`passed=756`／`failed=1`／`error=0`／`notExecuted=0`／其余全 0 |
+| ⑦ 红格 | 恰 1 枚＝`Pry.Core.Tests.BoundedAdvancementPrototypeTests.A_due_intent_inside_the_quiet_window_is_deferred_until_the_window_closes_and_stays_observable`。消息＝`Assert.Single() Failure: The collection was empty`（推迟变成悄悄不见，待观察清单读空）。TRX 红点行号照抄＝`…BoundedAdvancementPrototypeTests.cs:line 143`；源码该行文本＝判据文件第 143 行 `        var deferral = Assert.Single(coordinator.PendingDeferrals);` ⇒ 相同 |
+| ⑧ 还原命令 | `git -C <载体> cat-file blob HEAD:src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs > 同路径` |
+| ⑨ 还原后 `git status --short` 行数 | **0 行** |
+| ⑩ SHA-256 | 覆盖前＝`90947162…`（True）；突变态＝`9602e82e340c3a70227b4f152f5ebd34b68da27301f8d752e0da6bc0880abeee`（== §三.0 R3 预合值）；还原后＝`90947162…`（True）。判据仍 `1fd944f9…` |
+| ⑪ 当轮预检 | **P14**（`out/preflight-P14.txt`，23:33:02，`VERDICT=BUILD_OK`，`free_memory_gb=7.4`；距 P13 97 秒，非 HOLD 重跑） |
+
+P14 整段：
+
+```
+=== GAME PREFLIGHT v6 (v5 rule + unreadable-path hold + game window-class hold) ===
+  FOREGROUND: QQ pid=27508 class=Chrome_WidgetWin_1 style=0x14C70000 rect=-1746,242,1215x802 screen=1920x1080 covers=False borderless=False title=QQ
+  UNFOCUSED-BORDERLESS-FULLSCREEN (informational only): TextInputHost pid=21788, NVIDIA Overlay pid=18308, explorer pid=7404
+gpu_util=11% used=2254MB
+free_memory_gb=7.4
+VERDICT=BUILD_OK
+```
+
+- **与 §三.0 事前论证对照**：期望"恰 1 枚＝`A_due_intent_inside_the_quiet_window_…_stays_observable`（`Assert.Single(PendingDeferrals)` 读到空）"，实测正是这一枚、消息正是 `The collection was empty`；事前论证的第二句"`A_quiet_deferred_intent_advances_once_...` 断的是补推后离表，本来期望空 ⇒ 仍绿"也被本轮 `passed=756` 证实（该格未进红集）。⇒ **清洁红 1 枚，形状相符**。
+
+#### R4｜`AdvancementCoordinator.cs:85` 调用预算 `<`→`<=`（定向额度 5/8）
+
+| 项 | 读数 |
+|---|---|
+| ① 文件:行 | `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs:85` |
+| ② 改前原文 | `        if (remainingCalls < request.Budget.RequiredCallsPerAdvancement)` |
+| ③ 改后原文 | `        if (remainingCalls <= request.Budget.RequiredCallsPerAdvancement)` |
+| ④ `git diff --stat` | `AdvancementCoordinator.cs \| 2 +-` → `1 file changed, 1 insertion(+), 1 deletion(-)`（单 hunk；方向类突变，未新增任何数字门槛） |
+| ⑤ 跑法整行 | `dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-R4" --logger trx`（工作目录＝载体；未带 `--no-build`）。发起＝`python .local-notes/wave29-1024/round.py R4 --probe "…/probe/R4-call-budget-boundary-flipped.cs" --target "…/AdvancementCoordinator.cs"` |
+| ⑥ TRX＋`<Counters>` | `out/trx-R4` 数满＝`total=1 trx=1`：`24782_PHYTHLINK_2026-10-27_23_34_16.trx`；`total=759`／`executed=757`／`passed=756`／`failed=1`／`error=0`／`notExecuted=0`／其余全 0 |
+| ⑦ 红格 | 恰 1 枚＝`Pry.Core.Tests.BoundedAdvancementPrototypeTests.An_advancement_that_exactly_consumes_the_remaining_call_budget_is_allowed`。消息＝`Assert.Equal() Failure: Values differ` / `Expected: Advanced` / `Actual: StoppedByBudget`（恰好花完剩余预算被误判成耗尽）。TRX 红点行号照抄＝`…BoundedAdvancementPrototypeTests.cs:line 245`；源码该行文本＝判据文件第 245 行 `        Assert.Equal(AdvancementOutcome.Advanced, readout.Outcome);` ⇒ 相同 |
+| ⑧ 还原命令 | `git -C <载体> cat-file blob HEAD:src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs > 同路径` |
+| ⑨ 还原后 `git status --short` 行数 | **0 行** |
+| ⑩ SHA-256 | 覆盖前＝`90947162…`（True）；突变态＝`d08e4c644fdf21d91b39b1c6ddaf8051b7b26c669e6e1490b74b3b7a4dcf6a70`（== §三.0 R4 预合值）；还原后＝`90947162…`（True）。判据仍 `1fd944f9…` |
+| ⑪ 当轮预检 | **P15**（`out/preflight-P15.txt`，23:34:11，`VERDICT=BUILD_OK`，`free_memory_gb=7.3`；距 P14 69 秒，非 HOLD 重跑；前台窗已换成 `ChatGPT` 普通窗口，`covers=False borderless=False`） |
+
+P15 整段：
+
+```
+=== GAME PREFLIGHT v6 (v5 rule + unreadable-path hold + game window-class hold) ===
+  FOREGROUND: ChatGPT pid=16348 class=Chrome_WidgetWin_1 style=0x14C70000 rect=-1633,276,1285x811 screen=1920x1080 covers=False borderless=False title=ChatGPT
+  UNFOCUSED-BORDERLESS-FULLSCREEN (informational only): TextInputHost pid=21788, NVIDIA Overlay pid=18308, explorer pid=7404
+gpu_util=0% used=2147MB
+free_memory_gb=7.3
+VERDICT=BUILD_OK
+```
+
+- **与 §三.0 事前论证对照**：期望"恰 1 枚＝`An_advancement_that_exactly_consumes_the_remaining_call_budget_is_allowed`"，实测正是这一枚。事前论证另两句"零预算与耗尽两格期望的就是拦（`remainingCalls` 为 0 时 `<`/`<=` 同判）""费用维度走另一道比较不受影响"同时被证实：`An_exhausted_call_budget_stops_…`、`A_budget_that_is_zero_at_entry_…`、`A_cost_budget_running_out_…` 三枚都在 `passed=756` 内。⇒ **清洁红 1 枚，形状相符**。
+
+#### R5｜`DueIntentRegistry.cs:69` 补投顺序 `OrderBy`→`OrderByDescending`（定向额度 6/8）
+
+| 项 | 读数 |
+|---|---|
+| ① 文件:行 | `src/Pry.Core/Narrative/Advancement/DueIntentRegistry.cs:69` |
+| ② 改前原文 | `            .OrderBy(x => x.Registration.RegisteredSequence)` |
+| ③ 改后原文 | `            .OrderByDescending(x => x.Registration.RegisteredSequence)` |
+| ④ `git diff --stat` | `DueIntentRegistry.cs \| 2 +-` → `1 file changed, 1 insertion(+), 1 deletion(-)`（单 hunk；方向类突变） |
+| ⑤ 跑法整行 | `dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-R5" --logger trx`（工作目录＝载体；未带 `--no-build`）。发起＝`python .local-notes/wave29-1024/round.py R5 --probe "…/probe/R5-replay-order-flipped.cs" --target "…/DueIntentRegistry.cs"` |
+| ⑥ TRX＋`<Counters>` | `out/trx-R5` 数满＝`total=1 trx=1`：`24782_PHYTHLINK_2026-10-27_23_35_27.trx`；`total=759`／`executed=757`／`passed=756`／`failed=1`／`error=0`／`notExecuted=0`／其余全 0 |
+| ⑦ 红格 | 恰 1 枚＝`Pry.Core.Tests.BoundedAdvancementPrototypeTests.After_a_clock_forward_jump_due_intents_are_replayed_in_registration_order`。消息＝`Assert.Equal() Failure: Strings differ` / `Expected: "intent-first,intent-second,intent-third"` / `Actual: "intent-third,intent-second,intent-first"`（pos 7 起反向）。TRX 红点行号照抄＝`…BoundedAdvancementPrototypeTests.cs:line 266`；源码该行文本＝判据文件第 266 行 `        Assert.Equal("intent-first,intent-second,intent-third",`（断言文本起始行，跨两行书写）⇒ 相同 |
+| ⑧ 还原命令 | `git -C <载体> cat-file blob HEAD:src/Pry.Core/Narrative/Advancement/DueIntentRegistry.cs > 同路径` |
+| ⑨ 还原后 `git status --short` 行数 | **0 行** |
+| ⑩ SHA-256 | 覆盖前＝`9bf4dc31bd3d1c724a804f2dc01334806dada6a1c88861eb07f89fc0897ce5a1`（True）；突变态＝`32d41cf573b2c1a8f3a753f1f8982f09400feba19819e43af1309d19ab221156`（== §三.0 R5 预合值）；还原后＝`9bf4dc31…`（True，与 §八.0 本刀重取值相同）。判据仍 `1fd944f9…` |
+| ⑪ 当轮预检 | **P16**（`out/preflight-P16.txt`，23:35:22，`VERDICT=BUILD_OK`，`free_memory_gb=7.9`；距 P15 71 秒，非 HOLD 重跑） |
+
+P16 整段：
+
+```
+=== GAME PREFLIGHT v6 (v5 rule + unreadable-path hold + game window-class hold) ===
+  FOREGROUND: ChatGPT pid=16348 class=Chrome_WidgetWin_1 style=0x14C70000 rect=-1633,276,1285x811 screen=1920x1080 covers=False borderless=False title=ChatGPT
+  UNFOCUSED-BORDERLESS-FULLSCREEN (informational only): TextInputHost pid=21788, NVIDIA Overlay pid=18308, explorer pid=7404
+gpu_util=2% used=2135MB
+free_memory_gb=7.9
+VERDICT=BUILD_OK
+```
+
+- **与 §三.0 事前论证对照**：期望"恰 1 枚＝`After_a_clock_forward_jump_due_intents_are_replayed_in_registration_order`"，实测正是这一枚。这一轮同时**给上一把 `77a7d91` 那枚判据形状更正提供实测凭据**（§七.4 第 2 条与工单 §〇.4 说那处更正"是为了让 R5 的红只落一枚格"）：`Replay_delivers_each_due_intent_exactly_once_across_two_clock_jumps_and_loses_none` 本轮**没有红**（在 `passed=756` 内）＝那格的补投集合断言确实已与顺序无关；`StillPending` 只有一条、`Registrations` 用另一行 `OrderBy`（第 45/82 行未动）也一并证实。⇒ **清洁红 1 枚，形状相符，且上一把的形状更正被实测确认**。
+
+#### R6｜`AdvancementCoordinator.cs:50-51` 删掉来源缺失的观察日志登记（定向额度 7/8）
+
+| 项 | 读数 |
+|---|---|
+| ① 文件:行 | `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs:50-51`（同一条 `Add(…)` 语句的两个物理行） |
+| ② 改前原文 | `            _observations.Add(new AdvancementObservation(missing.Outcome, request.IntentKey,`<br>`                request.RequestId, missing.OutcomeReason));` |
+| ③ 改后原文 | （两行均被删除，改后无对应行；`git diff --stat`＝`1 file changed, 2 deletions(-)`） |
+| ④ `git diff --stat` | `AdvancementCoordinator.cs \| 2 --` → `1 file changed, 2 deletions(-)`（单 hunk，一条逻辑调用的 2 个物理行，与 §三.0 末段"R6 删的是同一条语句的 2 个物理行"逐字相符） |
+| ⑤ 跑法整行 | `dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-R6" --logger trx`（工作目录＝载体；未带 `--no-build`）。发起＝`python .local-notes/wave29-1024/round.py R6 --probe "…/probe/R6-missing-source-not-logged.cs" --target "…/AdvancementCoordinator.cs"` |
+| ⑥ TRX＋`<Counters>` | `out/trx-R6` 数满＝`total=1 trx=1`：`24782_PHYTHLINK_2026-10-27_23_36_45.trx`；`total=759`／`executed=757`／`passed=756`／`failed=1`／`error=0`／`notExecuted=0`／其余全 0 |
+| ⑦ 红格 | 恰 1 枚＝`Pry.Core.Tests.BoundedAdvancementPrototypeTests.An_advancement_whose_source_cannot_be_pointed_to_fails_with_a_named_reason_and_stays_in_the_log`。消息＝`Assert.Equal() Failure: Strings differ` / `Expected: "FailedForMissingSource:intent-nosrc\|FailedForMissi"···` / `Actual: ""`（结局仍然返回，但观察日志一行不剩＝"静默丢弃"的形状）。TRX 红点行号照抄＝`…BoundedAdvancementPrototypeTests.cs:line 353`；源码该行文本＝判据文件第 353 行 `        Assert.Equal("FailedForMissingSource:intent-nosrc\|FailedForMissingSource:intent-nosrc",`（断言文本起始行，跨两行书写）⇒ 相同 |
+| ⑧ 还原命令 | `git -C <载体> cat-file blob HEAD:src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs > 同路径` |
+| ⑨ 还原后 `git status --short` 行数 | **0 行** |
+| ⑩ SHA-256 | 覆盖前＝`90947162…`（True）；突变态＝`af66ff565013e806f31c76a213d0940371cd011a9721b17426c690fe9d33953c`（== §三.0 R6 预合值）；还原后＝`90947162…`（True）。判据仍 `1fd944f9…` |
+| ⑪ 当轮预检 | **P17**（`out/preflight-P17.txt`，23:36:41，`VERDICT=BUILD_OK`，`free_memory_gb=7.7`；距 P16 79 秒，非 HOLD 重跑） |
+
+P17 整段：
+
+```
+=== GAME PREFLIGHT v6 (v5 rule + unreadable-path hold + game window-class hold) ===
+  FOREGROUND: ChatGPT pid=16348 class=Chrome_WidgetWin_1 style=0x14C70000 rect=-1633,276,1285x811 screen=1920x1080 covers=False borderless=False title=ChatGPT
+  UNFOCUSED-BORDERLESS-FULLSCREEN (informational only): TextInputHost pid=21788, NVIDIA Overlay pid=18308, explorer pid=7404
+gpu_util=0% used=2107MB
+free_memory_gb=7.7
+VERDICT=BUILD_OK
+```
+
+- **与 §三.0 事前论证对照**：期望"恰 1 枚＝`An_advancement_whose_source_cannot_be_pointed_to…`（观察日志 joined 期望两行、实际空串）"，实测正是这一枚、消息正是 `Actual: ""`；事前论证那句"三条来源探针不判日志"也被证实——`Missing_source_is_refused_for_every_trigger_kind_…(asked: UserEvent/DueIntent/BackgroundScene)` 三枚都在 `passed=756` 内。⇒ **清洁红 1 枚，形状相符**。
+- 编号说明（照实登记，避免与上一把台账混淆）：本刀的预检按"每一枚 `dotnet` 前一枚"逐轮取，P10 起连续读到 `BUILD_OK`，因此 §〇.5 那 8 枚"HOLD 之后的重跑"额度**一枚都没动用**（0/8），台账编号只是沿上一把 P1–P9 之后继续排（R7 用 P18、收尾全量用 P19），并未另起 `P1` 一套。
+
+#### R7｜`DueIntentRegistry.cs:68` 补投筛选 `<=`→`<`（定向额度 8/8，额度用满）
+
+| 项 | 读数 |
+|---|---|
+| ① 文件:行 | `src/Pry.Core/Narrative/Advancement/DueIntentRegistry.cs:68` |
+| ② 改前原文 | `            .Where(x => x.Replayed is false && x.Registration.DueUtc <= jumpedToUtc)` |
+| ③ 改后原文 | `            .Where(x => x.Replayed is false && x.Registration.DueUtc < jumpedToUtc)` |
+| ④ `git diff --stat` | `DueIntentRegistry.cs \| 2 +-` → `1 file changed, 1 insertion(+), 1 deletion(-)`（单 hunk；方向类突变，`<=`↔`<` 同族于 R2／R4） |
+| ⑤ 跑法整行 | `dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-R7" --logger trx`（工作目录＝载体；未带 `--no-build`）。发起＝`python .local-notes/wave29-1024/round.py R7 --probe "…/probe/R7-due-instant-flipped.cs" --target "…/DueIntentRegistry.cs"` |
+| ⑥ TRX＋`<Counters>` | `out/trx-R7` 数满＝`total=1 trx=1`：`24782_PHYTHLINK_2026-10-27_23_37_54.trx`；`total=759`／`executed=757`／`passed=756`／`failed=1`／`error=0`／`notExecuted=0`／其余全 0 |
+| ⑦ 红格 | 恰 1 枚＝`Pry.Core.Tests.BoundedAdvancementPrototypeTests.A_due_intent_that_has_not_reached_its_due_instant_is_left_pending_and_still_reported`。消息＝`Assert.Single() Failure: The collection was empty`（跳到 `due` 那一瞬不再算"到点"，`atDue.Replayed` 读空）。TRX 红点行号照抄＝`…BoundedAdvancementPrototypeTests.cs:line 307`；源码该行文本＝判据文件第 307 行 `        var replayed = Assert.Single(atDue.Replayed);` ⇒ 相同 |
+| ⑧ 还原命令 | `git -C <载体> cat-file blob HEAD:src/Pry.Core/Narrative/Advancement/DueIntentRegistry.cs > 同路径` |
+| ⑨ 还原后 `git status --short` 行数 | **0 行** |
+| ⑩ SHA-256 | 覆盖前＝`9bf4dc31…`（True）；突变态＝`970d3628f4ee8481897b6c1f80dc893f2700f43f2978809398932fd167ad7bec`（== §三.0 R7 预合值，即上一把换法后那枚，非被推翻的 `cdd18e3f…`）；还原后＝`9bf4dc31…`（True）。判据仍 `1fd944f9…` |
+| ⑪ 当轮预检 | **P18**（`out/preflight-P18.txt`，23:37:49，`VERDICT=BUILD_OK`，`free_memory_gb=8.1`；距 P17 68 秒，非 HOLD 重跑） |
+
+P18 整段：
+
+```
+=== GAME PREFLIGHT v6 (v5 rule + unreadable-path hold + game window-class hold) ===
+  FOREGROUND: ChatGPT pid=16348 class=Chrome_WidgetWin_1 style=0x14C70000 rect=-1633,276,1285x811 screen=1920x1080 covers=False borderless=False title=ChatGPT
+  UNFOCUSED-BORDERLESS-FULLSCREEN (informational only): TextInputHost pid=21788, NVIDIA Overlay pid=18308, explorer pid=7404
+gpu_util=2% used=2105MB
+free_memory_gb=8.1
+VERDICT=BUILD_OK
+```
+
+- **与 §三.0 事前论证对照**：期望"恰 1 枚＝`A_due_intent_that_has_not_reached_its_due_instant_is_left_pending_and_still_reported`"，实测正是这一枚。事前论证里为那枚**未跑**突变（`cdd18e3f…`，删 `entry.Replayed = true;`）挡下的两枚连带格 `Replay_delivers_each_due_intent_exactly_once_…` 与 `After_a_clock_forward_jump_…` 本轮**都没红**（在 `passed=756` 内）⇒ R7 的"同族但单点"换法在实测上成立，上一把 §三.0 顶部那次事前更正**拿到了红证级的确认**。
+- 定向额度到此**用满 8/8**（G0＋R1–R7）。按工单 §一.1／§〇.7 本刀**没有第 9 枚定向额度**，故那枚"一次响 3 枚"的未档探针本刀不跑（工单 §一 末段的例外条件"因作废空出一枚额度"未发生：七枚轮次全部形状相符，无一作废）。
+
+#### F｜收尾解决方案级全量（全量额度 1/1 用满）
+
+| 项 | 读数 |
+|---|---|
+| ① 文件:行 | **本轮无突变覆盖**（收尾全量；四枚文件＝载体 HEAD 字节，R7 之后已还原并核过） |
+| ②③ 改前／改后原文 | N/A；`git diff --stat`＝**0 行**，`git status --short`＝**0 行**（轮前与轮后各数一次） |
+| ⑤ 跑法整行 | `dotnet test Pry.slnx -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-F" --logger trx`（工作目录＝载体；**未带** `--no-build`——上一轮 R7 把突变态 IL 留在盘上，按波 28 §七.3／§八.4.3 口径让它自行增量重建）。发起＝`python .local-notes/wave29-1024/round.py F --full` |
+| ⑥ TRX 数满后再逐份读 `<Counters>` | `ls` 数满＝`total=4 trx=4`（目录 `out/trx-F`）。逐份：`24782_PHYTHLINK_2026-10-27_23_39_08.trx`＝Client 面 `total=108`／`executed=108`／`passed=108`／`failed=0`；`…23_39_09.trx`＝Core 面 `total=759`／`executed=757`／`passed=757`／`failed=0`（同份内 `outcome="NotExecuted"` 两枚＝`LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key`、`CoreTests.Configured_sense_voice_model_can_run_offline`）；`…23_39_10.trx`＝App 面 `total=233`／`executed=233`／`passed=233`／`failed=0`；`…23_39_10[1].trx`＝Api 面 `total=280`／`executed=280`／`passed=280`／`failed=0`。四份归属由各份 `testName`／`className` 前缀逐字确认（`Pry.Client.Tests.*`／`Pry.Core.Tests.*`／`Pry.App.Tests.*`／`Pry.Api.Tests.*`） |
+| ⑦ 红格 | **零枚红**：四份 `failed=0`、`error=0`，`outcome="Failed"` 节点计数 0 |
+| ⑧ 还原命令 | 本轮无覆盖 ⇒ 无需还原；核对用命令＝`git -C <载体> cat-file blob HEAD:<path>` 与 `sha256sum <path>` 逐枚对 |
+| ⑨ `git status --short` 行数 | **0 行** |
+| ⑩ SHA-256（终态，四枚 HEAD blob 与盘上字节各取一次） | `AdvancementCoordinator.cs` `90947162fed797f8…`＝盘上同值；`DueIntentRegistry.cs` `9bf4dc31bd3d1c72…`＝盘上同值；`AdvancementContracts.cs` `259474dcccbfb1f0…`＝盘上同值；判据 `1fd944f94d399a8f…`＝盘上同值 ⇒ 四枚与 §八.0 入场重取值**逐字符相同**，本刀对判据字节零写入这条有终态凭据 |
+| ⑪ 当轮预检 | **P19**（`out/preflight-P19.txt`，23:39:04，`VERDICT=BUILD_OK`，`free_memory_gb=8`；距 P18 75 秒，非 HOLD 重跑） |
+
+P19 整段：
+
+```
+=== GAME PREFLIGHT v6 (v5 rule + unreadable-path hold + game window-class hold) ===
+  FOREGROUND: ChatGPT pid=16348 class=Chrome_WidgetWin_1 style=0x14C70000 rect=-1633,276,1285x811 screen=1920x1080 covers=False borderless=False title=ChatGPT
+  UNFOCUSED-BORDERLESS-FULLSCREEN (informational only): TextInputHost pid=21788, NVIDIA Overlay pid=18308, explorer pid=7404
+gpu_util=1% used=2118MB
+free_memory_gb=8
+VERDICT=BUILD_OK
+```
+
+- **出口读数（右端由上面四份原始 TRX 当场求和取出，不是 `1357＋23` 的减法预写）**：
+
+```
+在册（total）  ＝ 108 ＋ 759 ＋ 233 ＋ 280 ＝ 1380
+executed      ＝ 108 ＋ 757 ＋ 233 ＋ 280 ＝ 1378
+passed        ＝ 108 ＋ 757 ＋ 233 ＋ 280 ＝ 1378
+failed        ＝   0 ＋   0 ＋   0 ＋   0 ＝ 0
+跳过（按 outcome="NotExecuted" 点名）＝ 0 ＋ 2 ＋ 0 ＋ 0 ＝ 2 枚（同名同两枚，与波 28 §八.7 那两条逐字相同；`notExecuted` 计数器恒 0，不看）
+分项          ＝ Client 108／App 233／Api 280／Core 759（Core executed 757）
+```
+
+- 与起点对照（起点＝§八.0 从波 28 报告 §八.7 原文照抄的 1357／executed 1355／failed 0／跳过 2）：差值＝23 枚在册、23 枚 executed，唯一去处＝Core **736 → 759**（＋23），与 §二 顶账表那格"本刀新格数 N＝23"自洽。**本刀不据此自封在册基线，也不写状态词**（工单 §二：归位与顶账由守门人做）。
+- `measure-fixed-eval.ps1` 在四份 TRX 数满并取完读数**之后**才跑，且带 `-ResultsDirectory`（它向该目录写 `fixed-eval-coverage.json`）：整段输出＝`Catalog valid: 76 permanent scenarios. Mappings are partial evidence only.` ＋ `Passed=1378; Failed=0; Other=2.`，与上面求和逐字自洽（`Other=2`＝那两条同名跳过）；工作目录＝载体，`repoRoot` 因此解析到载体自己的 `docs/eval/scenarios.json` 与 `tests/**`，主树零写入。
+
+### 八.2 本刀终账（有红／无红逐格点名）
+
+**七枚突变的红格归属（逐枚点名到各自 TRX 的 `outcome="Failed"` 节点，七轮全部恰 1 枚红、无一形状不符）**：
+
+| 轮 | 突变（文件:行／改法） | 实测红格（TRX 逐字） | 消息要点 | TRX 红点行＝源码 assert 行 | 与 §三.0 事前论证 |
+|---|---|---|---|---|---|
+| R1 | `AdvancementCoordinator.cs:133` 背景场景臂→`DueIntentReference` | `Each_trigger_kind_enters_the_one_advancement_entry_and_names_its_own_reference(asked: BackgroundScene, expectedReference: "bg-1")` | Expected `"bg-1"`／Actual `"due-1"` | 63＝63 | 相符（恰 1） |
+| R2 | `:59` 冷却外沿 `>`→`>=` | `An_intent_resubmitted_at_the_instant_the_cooldown_window_closes_advances_again` | Expected `Advanced`／Actual `DeferredByCooldown` | 120＝120 | 相符（恰 1） |
+| R3 | `:78` 删静默推迟登记行 | `A_due_intent_inside_the_quiet_window_is_deferred_until_the_window_closes_and_stays_observable` | `Assert.Single() Failure: The collection was empty` | 143＝143 | 相符（恰 1） |
+| R4 | `:85` 调用预算 `<`→`<=` | `An_advancement_that_exactly_consumes_the_remaining_call_budget_is_allowed` | Expected `Advanced`／Actual `StoppedByBudget` | 245＝245 | 相符（恰 1） |
+| R5 | `DueIntentRegistry.cs:69` `OrderBy`→`OrderByDescending` | `After_a_clock_forward_jump_due_intents_are_replayed_in_registration_order` | `"intent-first,intent-second,intent-third"` → `"intent-third,intent-second,intent-first"` | 266＝266 | 相符（恰 1；`77a7d91` 的形状更正被实测确认） |
+| R6 | `:50-51` 删来源缺失观察日志 | `An_advancement_whose_source_cannot_be_pointed_to_fails_with_a_named_reason_and_stays_in_the_log` | Expected `"FailedForMissingSource:…\|…"`／Actual `""` | 353＝353 | 相符（恰 1） |
+| R7 | `DueIntentRegistry.cs:68` 到点判定 `<=`→`<` | `A_due_intent_that_has_not_reached_its_due_instant_is_left_pending_and_still_reported` | `Assert.Single() Failure: The collection was empty` | 307＝307 | 相符（恰 1；两枚连带格未红，换法成立） |
+
+**23 枚新格的覆盖终账（有清洁红 7 枚／无红 16 枚，无红逐格分类，不含"结构上够不着"这种未经穷举的说法）**：
+
+| 归类 | 枚数 | 格名逐字 |
+|---|---|---|
+| 清洁红（恰 1 枚红、单枚归因到一轮突变） | **7** | 上表 R1–R7 那七枚格名 |
+| 无红＝**定向额度用尽**（红方向已在 §三.0 事前论证点名，但额度只有 G0＋R1–R7＝8 枚，无复取位） | **1** | `A_late_advancement_carrying_a_superseded_effect_version_is_refused_and_writes_nothing`（红方向＝`request.ExpectedEffectVersion != _effectVersion` 改自比较，波 28 GK-R10 同族；§三.0 末段押给下一把或守门人，本刀照实登记，未挤占任何已排轮次） |
+| 无红＝**定向额度用尽**（同上；红方向＝往产品文件加一枚公开入口方法，属新增而非摘闸） | **1** | `The_advancement_coordinator_exposes_exactly_one_public_entry_method`（本刀绿基线在 G0 已取到该格 Passed 读数；反证轮无额度） |
+| 无红＝**本刀不自残产品码取红**（红方向＝往新文件塞旧链类型名／`static readonly` 默认值，正面撞上工单 §〇.7 与 §一.3 的零门槛约束） | **2** | `Advancement_prototype_sources_carry_no_legacy_chain_names_and_the_probe_proves_the_scan_bites`、`Advancement_prototype_declares_no_source_side_default_for_windows_or_budgets`（两格各带**阳性探针**，G0 实测该探针在跑：两枚均 Passed；§二 末段那句"扫描函数坏掉时探针先红"这一形状本刀未取反证读数，押下一把） |
+| 无红＝**已被同一轮连带覆盖、无需单独一轮**（同一条产品语句的另一个出口，本轮红集里没有它＝它守的是另一道闸） | **6** | `The_same_intent_resubmitted_inside_the_cooldown_window_is_deferred_and_names_the_earliest_next_instant`、`A_quiet_deferred_intent_advances_once_the_window_closes_and_leaves_the_pending_list`、`An_exhausted_call_budget_stops_advancement_and_names_consumed_remaining_and_the_dimension`、`A_budget_that_is_zero_at_entry_is_a_distinct_shape_from_one_that_ran_out`、`A_cost_budget_running_out_stops_advancement_while_calls_are_still_available`、`Replay_delivers_each_due_intent_exactly_once_across_two_clock_jumps_and_loses_none`——登记口径要如实：这六枚**不是"已证会响"**，它们在 R2／R3／R4／R5／R7 五轮里都保持绿＝只证明"那些改法不影响它们"，真正的红方向（各闸的独立摘除、以及 `entry.Replayed = true;` 那枚一次响三枚的突变）本刀**没有额度** |
+| 无红＝**探针面/引用面格，红方向未排进本刀七枚** | **6** | `Each_trigger_kind_enters_the_one_advancement_entry_and_names_its_own_reference(asked: UserEvent, …)`、`(asked: DueIntent, …)` 两枚（R1 只打掉 BackgroundScene 那条臂；另两条臂的突变各需单独一轮，无额度）、`Missing_source_is_refused_for_every_trigger_kind_with_the_same_named_failure(asked: UserEvent/DueIntent/BackgroundScene)` 三枚（同一道来源闸的三个入参形状；R6 打的是日志行不是拒绝本身，故三枚全程绿）、`A_successful_advancement_carries_the_source_reference_into_the_record_it_produces`（红方向＝成功路径不写入 `SourceId`/`SourceVersion`，无额度） |
+| **合计** | **7＋16＝23** | 与 §二 顶账的 N＝23 自洽 |
+
+- 一句话账（不代守门人判）：**G0 全绿 23/23、七枚突变七枚清洁红、F 求和 1380／1378／0／2**；上面 16 枚无红格**一枚都没有被本刀写成红**。
+- 未跑的那枚三响突变（`probe/unrun-replay-mark-removed.cs`，`cdd18e3f…`）本刀**未施加、未起跑**，盘上字节与 §三.0 登记值未变；工单 §一 末段的例外（"因作废空出一枚额度"）没发生——七轮全部形状相符，没有作废轮，所以也没有第 9 枚定向可用。
+
+### 八.3 未验证（照抄上一把 §五 那九条并逐条更新）
+
+0. **上一把的第 0 条在本刀已被替换**：它原写"本刀 23 枚新格全部零读数"。实测＝23 枚全部有 G0 读数（全 Passed），其中 7 枚有"改坏产品码之下响过"的红证（§八.2），其余 16 枚无红、原因逐格点名。**但这条的结论部分照旧有效**：本刀**不据此自封在册基线、不写归位**（工单 §二：归位与顶账由守门人做；§〇.4 起点 1357 只成立于波 28 那四份 TRX，本刀出口 1380 由本刀 §八.1 F 那四份 TRX 当场求和取出，两者之间的取舍不由本 lane 判）。
+1. **真实模型对照**：零读数，本刀没调过任何模型端点；要跑需作者一句"可以跑"。
+2. **生产接线**：本片仍**零生产调用方**（本刀未新增任何引用；§一 末段那三条 grep 形状本刀未重跑，因为零 `src/**` 写入，字节未变）。004 生命周期与 005 原子提交的编排面与端点一律没接；接线时机＝U-9 仍未拍。
+3. **UI 可见行为**：零读数，本刀未触碰任何界面文件。
+4. **生产库**：零接触。`%LOCALAPPDATA%\PryCompanion` 未被当过载体，无 SQLite 读写（F 那轮的 App/Api 面测试跑的是各自既有夹具，本刀未新增落库面）。
+5. **待标定参数权威值**：冷却时长／静默窗口／预算默认值全部未定；本刀**没有"顺手补个数"**——七枚突变里四枚是方向类（`>`→`>=`、`<`→`<=`、`OrderBy`→`OrderByDescending`、`<=`→`<`）、两枚删行、一枚改引用臂，全部零新增数字门槛。
+6. **落库／幂等／崩溃恢复／并发两枚 `Advance`**：仍零读数（`List` 非线程安全这条从未取过读数，本刀没跑并发轮）。
+7. **旧链删除片与"构建时不把旧链打进包"那道门**：**未开始**，本刀未碰。三句话照旧不许出现：新链已接线／旧链可删／不进包已做到。
+8. **本刀新格的换人复采**：本刀正是波 29 那 23 枚格的第一双执行手（判据由上一把写、红由本刀取），所以**第二换手仍押在下一把复采刀**；旧欠 75 格照旧不减。**换人复采与"红证"是两件事**：本刀的红证满足的是工单 §二 的归位凭据面，不构成换手凭据。
+9. **`measure-fixed-eval.ps1` 覆盖率**：本刀**已跑**（F 之后、带 `-ResultsDirectory`），读数 `Catalog 76／Passed 1378／Failed 0／Other 2`，与四份 TRX 求和自洽；它只证"映射到的断言"，映射本身是 partial evidence（脚本自己那句话），不证产品行为正确。
+10. **（本刀新增一条）焦点闸的资源面**：本刀 10 枚预检的 `free_memory_gb` 落在 6.7–8.2 区间（低于上一把台账的 10.7–11.1），仪器全部判 `BUILD_OK`；本刀逐轮核过 `failed`／`error` 计数与日志形态，**未出现** SQLite `disk I/O`／`out of memory` 那类读数，所以没有需要作废的轮次。这条登记为"读数形状"，不登记为"机器状态结论"。
+
+### 八.4 交付面与归位边界（本 lane 只备材料）
+
+- 本刀在共享主树的**唯一**写入＝本报告（工单 §〇.4 ①）；`src`／`tests`／`scripts`／`Pry.slnx`／`Directory.Build.props` 一字未写；主树 `git status --short --branch` 行数从入场 9 行变到 10 行＝**只多了本报告这一枚 ` M`**，他人那两枚 `M ` 暂存项与五枚 `??` 未跟踪资产本刀未读内容、未改、未提交、未 `stash`／`clean`／`rm`；` M docs/plans/PROJECT_PLAN.md` 是在飞的他人改动，本刀对它**零写入**（只按工单 §〇.1 读过 §4.2 的 HDS-007 行与 §9 最新两条，区分登记见 §八.5）。
+- 主树零 `git` 写操作（无 `commit`／`add`／`checkout`／`reset`／`cherry-pick`／`merge`／`tag`／`push`／`apply`）；载体也零提交（本刀只在载体工作树上做临时覆盖与逐字节还原，载体线尾仍是 `663d2c9`）。
+- 载体终态＝`git status --short` **0 行**、`git diff --stat` 0 行、四枚 HEAD blob 与盘上字节逐枚相同（§八.1 F 行 ⑩）。
+- 仪器与全部原始凭据＝`.local-notes/wave29-1024/`（gitignored）：`out/preflight-P10.txt`…`P19.txt` 十枚、`out/build-B1.txt`、`out/run-G0.txt`／`run-R1..R7.txt`／`run-F.txt`、`out/w30-round-R*.txt`／`w30-round-F.txt`（runner 原始打印）、12 枚 `.trx`（G0 1＋R1–R7 7＋F 4）、`out/trx-F/fixed-eval-coverage.json`；本刀自写的取数脚本＝`out/w30-cells.js`、`out/w30-failmsg.js`、`out/w30-roundinfo.js`（上一把的 `round.py` 一字未改）。
+- 交给守门人核的 §二 四件事的落点：① 红格归属＝§八.2 表（逐枚点名到 TRX 节点，七轮均恰 1 枚红，无批次红署名）；② 常绿门——本刀的实测就是这一件：**没有一枚常绿门被实测揭穿**（七枚突变各自只打掉一枚格，且 G0 23/23 绿；两枚源码扫描格带阳性探针、本轮读数 Passed）；③ 收尾四份 TRX 先数后读＋求和式＝§八.1 F 行与那段求和；④ §一 五条是否每条都拿到会响的格＝**五条全拿到**：§一.1→R1、§一.2→R2 与 R3（冷却／静默各一枚）、§一.3→R4、§一.4→R5 与 R7（补投顺序／到点判定）、§一.5→R6（来源缺失留行）。
+- `dotnet` 实际调用次数＝**10 次**（B1 构建 1／定向 8／收尾全量 1，正好用满工单 §〇.7 的 ≤1／≤8／≤1），另有 `measure-fixed-eval.ps1` 一次（PowerShell，非 `dotnet`）；焦点预检 10 枚全部 `BUILD_OK`、`HOLD` 0 枚、"HOLD 之后重跑"额度 0/8。
+
+### 八.5 文件面自证与盘上凭据清点（23:42 当场）
+
+- **§〇–§七 原文一字不改的凭据**：`git diff --numstat -- docs/eval/reports/2026-10-24-hds007-bounded-advancement-prototype.md` 的**删除列恒为 0**（23:42 首测＝`498  0`，本节字段写完后的复测＝`507  0`；0 删除⇒ 上一把 §〇–§六 与守门人 §七 的既有行没有任何一行被改、重排或"顺手更正"，本刀全部是文件末尾追加。新增列随本刀继续落盘而增长，故这里给的是两次实测值而不是终值）。
+- 主树 `git status --short --branch`＝**10 行**（入场 9 行 ＋ 本刀的这枚 ` M` 报告）；他人那两枚 `M ` 暂存项（`docs/dispatch-tip1020-02-memory-group-judgment.md`、`tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs`）与五枚 `??` 未跟踪资产本刀**未读内容**、未改、未提交、未 `stash`／`clean`／`rm`；` M docs/plans/PROJECT_PLAN.md` 是他人（守门人一线）的在飞改动，本刀**只按工单 §〇.1 读过它的 §4.2 HDS-007 行与 §9 最新两条**（这是必读面），对它零写入——终核凭据＝`git diff --name-only` 里属于本刀的只有本报告一枚（另一枚 ` M` 是 PROJECT_PLAN，本刀没动过一个字节，本刀对它的唯一动作是 Read/Grep 指定行段）。
+- 盘上凭据清点（`git ls-files` 之外的仪器面）：`.trx` **12 枚**＝`trx-G0` 1 ＋ `trx-R1`…`trx-R7` 各 1 ＋ `trx-F` 4；结果目录 **9 个**（各轮独立、无复用，无 `trx-B1`，因 B1 是构建）；`dotnet` 日志 10 份＝`build-B1.txt` ＋ `run-G0.txt`／`run-R1.txt`…`run-R7.txt`／`run-F.txt`；预检 **10 枚**＝`preflight-P10.txt`…`preflight-P19.txt`；runner 原始打印 8 份＝`w30-round-R1.txt`…`w30-round-R7.txt` ＋ `w30-round-F.txt`；`out/trx-F/fixed-eval-coverage.json` 1 份（`measure-fixed-eval.ps1` 写在结果目录内）。
+- 载体终态（23:40:17 当场）：HEAD 仍＝`663d2c9d78d7f607137f10cd2af09069b0a4f841`（本刀零提交、零 ref 写），`git status --short`＝**0 行**，`git diff --stat`＝0 行，四枚文件"盘上字节＝HEAD blob"逐枚相同（`90947162…`／`9bf4dc31…`／`259474dc…`／`1fd944f9…`）⇒ **没有任何一枚突变残留在树上**，判据字节全程未被写入。
+- 本刀没有做的（照实登记，不写成做过）：未新建产品文件或判据文件；未追押下的 4 枚无红格（`The_advancement_coordinator_exposes_exactly_one_public_entry_method`、`A_late_advancement_carrying_a_superseded_effect_version_…`、两枚源码扫描格）；未跑那枚三响探针；未接生产；未碰旧链删除片；未碰 UI；未碰 `%LOCALAPPDATA%\PryCompanion`；未在 §9/§4.2 登记状态（那是守门人的账）；未跑 `git diff --check`／未提交（工作规则第 9 条那三步属归位那一手，且本刀的文件面只有本报告一枚，不自行提交）。
+
+## 九 守门人划账（签名 `eval-QA-WAVE30-GK-1024`，2026-10-27 23:5x 当场，零 `dotnet`）
+
+本节由守门人写。§〇–§六 是第二十九波 lane 原文、§七 是上一把守门人划账、§八 是第三十波 lane 原文，**三处一字未改**；本节只追加，并且下面每个读数都是我自己从盘上取的，不是对 lane 自述的复述。
+
+### 九.0 时点更正（本刀与上一把都欠着的一条）
+
+工单 `HDS-WAVE30-1024` 的出闸日写在文件名与正文里（2026-10-24 17:1x），lane 的起跑与交付在 **2026-10-27 23:20–23:42**，`date` 与全部 12 枚 TRX 的文件名时间戳、10 枚预检的 `LastWriteTime` 三处互相对上 ⇒ 跨了三天不是异常，是这把在队列里等了三天。本报告文件名仍叫 `2026-10-24-…`（§〇–§六 的落盘日），守门人此后所有登记一律按 **2026-10-27** 写日期，不再沿用出闸日。
+
+### 九.1 工单 §二 那四件事，逐件用盘上凭据核
+
+**核法**：我自己写了取数脚本 `.local-notes/wave29-1024/out/gk30-count.js`（只读 `.trx`），口径＝**只数 `<UnitTestResult` 开标签里带 `outcome="Failed"` 的那一枚**，并与同份的 `<Counters failed>` 对账；`<ResultSummary outcome="Failed">` 是文件级汇总、不是失败用例，不算数（这条是我自己先踩出来的，见 §九.4）。
+
+1. **① 红格归属逐枚点名到 TRX 节点＝成立。** 七轮每轮 1 枚 TRX，`failedUnits=1` 且 `<Counters failed="1">` 同值（两侧独立）；七枚红格名逐字如下，与 lane §八.2 表**逐字符相同**，也与**上一把已提交的 §三.0 事前论证**（HEAD 版报告第 320–326 行）逐字符相同 ⇒ 归属是**先档后跑**，不是事后署名：
+
+| 轮 | 我核到的红格（TRX `testName` 逐字） | 我核到的红点行 | `<Counters>` |
+|---|---|---|---|
+| R1 | `Each_trigger_kind_enters_the_one_advancement_entry_and_names_its_own_reference(asked: BackgroundScene, expectedReference: "bg-1")` | `:line 63` | 759／757／756／1 |
+| R2 | `An_intent_resubmitted_at_the_instant_the_cooldown_window_closes_advances_again` | `:line 120` | 759／757／756／1 |
+| R3 | `A_due_intent_inside_the_quiet_window_is_deferred_until_the_window_closes_and_stays_observable` | `:line 143` | 759／757／756／1 |
+| R4 | `An_advancement_that_exactly_consumes_the_remaining_call_budget_is_allowed` | `:line 245` | 759／757／756／1 |
+| R5 | `After_a_clock_forward_jump_due_intents_are_replayed_in_registration_order` | `:line 266` | 759／757／756／1 |
+| R6 | `An_advancement_whose_source_cannot_be_pointed_to_fails_with_a_named_reason_and_stays_in_the_log` | `:line 353` | 759／757／756／1 |
+| R7 | `A_due_intent_that_has_not_reached_its_due_instant_is_left_pending_and_still_reported` | `:line 307` | 759／757／756／1 |
+
+  七轮全是**恰 1 枚红**、无批次红署给单枚突变；G0 同径核得 `failedUnits=0`、`passed=757`（23 枚新格全绿）；R7 那两枚连带格（`Replay_delivers_each_due_intent_exactly_once_…`／`After_a_clock_forward_jump_…`）在我数的 756 枚绿里，**没有**被算进红集 ⇒ lane §八.1 R7 那条"同族单点换法成立"是有盘面凭据的。
+2. **② 有没有常绿门＝没有，而且这一件我自己验了最可疑的那两格。** 两枚源码扫描格（`Advancement_prototype_sources_carry_no_legacy_chain_names_and_the_probe_proves_the_scan_bites`／`Advancement_prototype_declares_no_source_side_default_for_windows_or_budgets`）的形状是"扫描三枚产品文件＋自带阳性探针"，这种写法最容易写成空转门，所以我读了判据里那三处夹具（`BoundedAdvancementPrototypeTests.cs:39-42`／`:476-493`）：`PrototypeFiles` 是**写死的三枚文件名**（非空列表，循环必跑）；`PrototypeSource()` 在 `File.Exists` 上有 `Assert.True`，`RepositoryRoot()` 从 `AppContext.BaseDirectory` 上溯找 `Pry.slnx`、找不到也 `Assert.True` 红掉 ⇒ **路径或清单坏掉时这两格会红，不会绿**，不构成常绿门；两格各自的探针把五个旧链类型名与 `const`／`static readonly` 两种源侧默认值都点名断言了返回值形状，属真阳性对照。**仍欠的那一半**（把扫描函数本身弄坏、看探针是否先红）lane 自己登记没跑，押下一把（§九.5）。
+3. **③ 收尾四份 TRX 先数后读＋求和式＝成立，我复算同值。** `out/trx-F/` 我 `ls` 数满 4 份，逐份 `<Counters>`＝108/108/108/0、759/757/757/0、233/233/233/0、280/280/280/0；求和 108＋759＋233＋280＝**1380**，executed 108＋757＋233＋280＝**1378**，failed **0**，跳过＝按 `outcome="NotExecuted"` 点名 **2 枚**（`LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key`、`CoreTests.Configured_sense_voice_model_can_run_offline`，与波 28 §八.7 那两条同名同枚；`notExecuted` 计数器恒 0，不看）。`measure-fixed-eval.ps1` 落盘的 `out/trx-F/fixed-eval-coverage.json` 我也读了：`suiteVersion 1.4.0`／`passed 1378`／`failed 0`／`other 2`／`evidenceDirectory` 指向 `trx-F`，与求和自洽；`Other=2` 就是那两条跳过，不是第三处来源。
+4. **④ §一 五条是否每条都拿到会响的格＝五条全拿到**，并且我按"改动那一行是否真是该条范围的守门语句"对了一遍：三类触发同入口→R1（引用臂改写实测 Expected `bg-1`／Actual `due-1`）；冷却与静默各自可观察→R2（外沿 `>`→`>=`，Advanced→DeferredByCooldown）＋R3（删登记行，`Assert.Single()` 集合空）；费用-调用预算从入参传入→R4（`<`→`<=`，Advanced→StoppedByBudget，且七枚突变**零新增数字门槛**）；长离线恢复按时钟前跳补投不重复→R5（`OrderBy`→`OrderByDescending`）＋R7（到点判定 `<=`→`<`）；006 最小来源约束→R6（删来源缺失的观察日志登记行，Expected 那串 `FailedForMissingSource:…`／Actual 空）。
+
+**签账资格（波 24／27／28 立的那条）**：取红那只手既不是判据字节的作者、也没改过一个判据字节。我这把的证明＝载体 `git log --oneline -- tests/Pry.Core.Tests/BoundedAdvancementPrototypeTests.cs` 三枚提交全属上一把（`ed7995c`／`77a7d91`／`663d2c9`）、**第三十波零新提交**（线尾仍 `663d2c9d78d7f607137f10cd2af09069b0a4f841`、`status --short` 0 行）、判据 SHA `1fd944f94d399a8f…` 入场自取值与 §八.1 F 行⑩终态值两侧同值。⇒ 资格成立。
+
+### 九.2 归位裁定＝**归位**（与第二十九波那把的"不归位"正是同一条判据的两面）
+
+第二十九波我扣住的唯一理由是"23 枚格一次都没跑过、七枚突变一枚都没响过"。这一把我自己数的 12 枚 TRX 把这个理由消掉了：**G0 全绿 23/23＋七枚单放突变七枚清洁红＋F 全量零红**，凭据面齐（§九.1）。字节写完不等于可归位；**在改坏产品码之下响过**才等于。
+
+通道按工单 §二 原文（**没有**写 `merge --ff-only`，载体提交的父是 `8e9c13d`、线尾当时已 `9ac4396`，FF 数学上必被拒）：
+
+```
+git checkout 663d2c9d78d7f607137f10cd2af09069b0a4f841 -- src/Pry.Core/Narrative/Advancement tests/Pry.Core.Tests/BoundedAdvancementPrototypeTests.cs
+git commit --only -m "feat(HDS-007,wave30): …" -- <那四枚路径>
+```
+
+落地后当场自证（全部 2026-10-27 23:5x 实测）：
+
+- 提交＝`ba79ef1`，`4 files changed, 900 insertions(+)`，四枚全是 `create mode`。
+- 四枚**盘上 SHA-256 与基准逐字符相同**：`AdvancementContracts.cs` `259474dcccbfb1f0…`／`AdvancementCoordinator.cs` `90947162fed797f8…`／`DueIntentRegistry.cs` `9bf4dc31bd3d1c72…`／判据 `1fd944f94d399a8f…`。
+- **不为顶账另起构建的合法性证明**＝`git diff --stat 663d2c9d… HEAD -- src tests scripts Pry.slnx Directory.Build.props`＝**0 行** ⇒ 落地树与产出 1380 那棵树在这五面上逐字节相同（波 28 那条口径的第二次使用）。
+
+### 九.3 顶账（三本，全部当场实测，不用加法预写）
+
+1. **门槛基线（在册）自此＝1380／executed 1378／failed 0／跳过 2**。分项＝Client 108／App 233／Api 280／Core **759**（Core executed **757**）；等式＝上一在册 1357＋本刀 23 枚新格，唯一去处 Core 736→759。旧值 **1357／1339／1333／1321／1275／1179／1146／988 全部过期**，别再引用。两条同名跳过照旧按 `outcome="NotExecuted"` 点名，`notExecuted` 计数器不看。
+2. **文件面条数**：4 枚新文件入库并暂存后当场实测 `git ls-files | wc -l`＝**621**（上一把 617；链 614→615→617→**621**，这一格的涨幅来自四枚产品/判据文件，不是文档）。catalog 仍 **76** 未动。
+3. **换手账（这条必须跟基线一起说）**：这 23 枚第一次有**非判据作者的手**跑过（G0 23/23 有读数），其中 **7 枚**由那只手在改坏产品码之下取到清洁红 ⇒ 按 §九.1 末段资格判据，**这 7 枚的"另一双手"与"红证"两样同时结清**；lane 在 §八.3.8 写的"第二换手仍押在下一把复采刀"我这里改判一句：**7 枚已结，16 枚欠的不是换手、是红证**（无红＝没人把它在改坏码之下逼响过，逐格分类采信 lane §八.2 那张表：额度用尽 2＋不自残取红 2＋同轮未响 6＋红方向未排进额度 6，一枚也没被写成红）。**旧欠 75 格（波 13 余 47＋波 20 余 28）照旧不减**，拆法原文照旧 **46／45／1＝W2**。
+
+### 九.4 仪器面三条登记（两处是我的错，一处是上一把留的坑）
+
+1. **我自己的假阳性（不涂改原文，在这里点名）**：第一版取数脚本 `gk30-reds.js` 用 `indexOf('outcome="Failed"')` 找红例，命中了**文件级** `<ResultSummary outcome="Failed">`，又把全文最后一个 `<UnitTestResult` 当成那一枚失败用例 ⇒ 七轮全部报成"2 枚红"，第二枚名字是随文件顺序漂移的无关绿格（`CharacterIntelligenceTests.Unreliable_affect_readings_…` 那类）。改成"只数 `<UnitTestResult` 开标签内的 `outcome` 属性并与 `<Counters failed>` 对账"后＝每轮 1 枚、与 `<Counters>` 一致。**口径升级**：数红只认 `<UnitTestResult … outcome="Failed"…>` 这一个形状；`ResultSummary` 与 `<Output>` 里的错误文本都不算用例数；报告"恰 N 枚红"之前必须让 N 同时等于开标签计数与 `<Counters failed>`。
+2. **上一把留下的 `round.py` 在 Python 3.14 下会抛 `SyntaxError`**（打印失败消息那一段），崩溃点落在**覆盖→跑→还原→核 SHA 与 status→数 TRX→读 `<Counters>` 全部完成之后**，所以七轮的还原与 SHA 凭据没受影响；lane 未改它一个字节、自写 `w30-failmsg.js`／`w30-roundinfo.js` 取消息，**零额外 `dotnet`**。这个处置是对的（改仪器不改判据）。登记为仪器缺陷：**下一把若还复用这棵载体，先修 `round.py` 的消息打印段，别在跑完七轮之后才发现消息取不到。**
+3. **焦点闸这一把的形状**：10 枚预检（`P10`–`P19`）全部 `BUILD_OK`、`HOLD` 0 枚 ⇒ 8 枚"HOLD 之后重跑"额度 **0/8 未动用**；相邻预检间隔 68–184 秒（都不是 HOLD 重跑，5 分钟口径无适用点，间隔照实登记，与上一把那两处 9 秒／15 秒的自报不同）。`free_memory_gb` 落 6.7–8.2、比上一把台账的 10.7–11.1 低，但我逐轮核过 `failed`／`error` 计数与日志形态，**未出现** SQLite `disk I/O`／`out of memory`，故**没有一轮作废**——这条登记为读数形状，不登记为机器状态结论。守门人这一把**零 `dotnet`**（只跑只读命令与我自己的 `.trx` 解析脚本），作者机器没被打断。
+
+### 九.5 押下一把（不撤回、不扩大，逐条点名）
+
+1. 那 16 枚无红格按 lane §八.2 的分类接：**先追两枚"红方向已事前点名、只缺定向额度"的**（`A_late_advancement_carrying_a_superseded_effect_version_is_refused_and_writes_nothing`＝把 `request.ExpectedEffectVersion != _effectVersion` 改自比较，波 28 GK-R10 同族配方现成；`The_advancement_coordinator_exposes_exactly_one_public_entry_method`＝往产品文件加一枚公开入口方法，属**新增**而非摘闸）。
+2. 两枚源码扫描格的**反面**：把 `LegacyChainNamesFoundIn`／`SourceSideDefaultsFoundIn` 自身弄坏（例如让它恒返空），看同格探针那句 `Assert.Equal` 是否先红——不红＝探针不咬、那格仍是常绿门，红＝这把才算把 §二 第②件事补完。
+3. 那枚一次响 3 枚的未档探针 `probe/unrun-replay-mark-removed.cs`（`cdd18e3f…`，字节仍在盘、两把都没施加）：**跑它必须事前点名三枚格名**，批次红不许署给单枚突变（上一把立的口径）。
+4. 波 28 押下的数值锁格（`The_prototype_applies_no_retrieval_floor_…`）仍押——反证方向只能新增数字门槛，而零门槛是作者定的，不许为凑红造门槛。
+5. 两套并行的身份/类型命名债：四枚产品类型带 `Hds006` 工单号前缀（波 28 §八 已登记）、三身份枚举与契约 §7.2 的 `CognitionKind`／`CognitionOrigin` 并行——都属接线刀，不属证据刀。
+
+### 九.6 归位不解除的未验证面（照抄 §八.3 那十条，一条不许并成"已完成"）
+
+真实模型对照（零读数，需作者一句"可以跑"）；**生产接线**（这 23 枚至今**零生产调用方**，要接的是 004 生命周期与 005 原子提交的编排面与端点，一律没接，接线时机＝U-9 仍未拍）；UI 可见行为（零读数）；生产库与 `%LOCALAPPDATA%\PryCompanion`（零接触）；待标定参数权威值（冷却时长／静默窗口／预算默认值全部未定，原型内**一处数字门槛都没有**，这条是特性不是缺陷）；落库／幂等／崩溃恢复／并发两枚 `Advance`（`List` 非线程安全，从未取过读数）；旧链删除片与"构建时不把旧链打进包"那道门（**未开始**）；新格的第二双手已在 §九.3 结清 7 枚、其余按 §九.5 追。**三句话照旧不许出现在任何页面**：新链已接线／旧链可删／不进包已做到。
+
+### 九.7 文件面与分刀边界
+
+本刀主树写入面＝本报告（§九 追加）＋`docs/plans/PROJECT_PLAN.md`（§4.2 HDS-007 行＋§9 一条，**hunk 手术**：那枚未暂存的 ` M` 18/0 是在飞的他人改动＝2026-10-27 的 `RES-RETC-001`／`RES-SURF-001` 两条研究登记，我没提交、没读进自己的改动集、提交后复测仍 18/0 原样）＋`docs/full-scope-sprint.md` §0／§3；代码刀 `ba79ef1` 与文档刀分开，`git diff --cached --numstat` 复测他人两枚 `M ` 暂存项仍为 `1 1`／`63 0` 且**未进我的提交**；五枚 `??` 未跟踪资产未读内容、未改、未 `stash`／`clean`／`rm`。lane §八.5 那句"对本刀文件面外那枚 ` M` 零写入"我核过＝成立（它只 Read/Grep 过指定行段）。main 仍只挪 ref、零 `tag`／零 `push`／零打包。
