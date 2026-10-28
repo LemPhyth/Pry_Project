@@ -1375,3 +1375,354 @@ $ git -C C:/Users/24782/Desktop/Pry_Project diff --stat 663d2c9d78d7f607137f10cd
 - `PROJECT_PLAN` 的他人 18 行研究登记（两枚 `RES-*` 表格行＋两枚 §9 entry）不进本把提交：本把**先把我的内容铺在 HEAD 上提交，再把他人那 18 行原样铺回"提交后的新版本"**，与 `b263d7b` 那把的做法不同（差别就是 §十一.4 第 1 条）。自证＝提交后 `git diff --numstat -- docs/plans/PROJECT_PLAN.md` 必须读到 **18 0**（不再是 18/11），且他人两枚 `M ` 暂存项（`1 1`／`63 0`）与五枚 `??` 未跟踪资产一字未动。
 - 交付复核（写完本节与上一节之后当场重跑）：`git diff --numstat -- 本报告` **删除列＝0**；`git diff --check` 对本报告零输出；`ls out/trx-M*`＝8 个目录各 1 份 `.trx`、`out/trx-F31`＝4 份；`git -C 载体 status --short`＝0 行；§十一.2 那四枚 SHA 全值终态复核逐字符相符。
 - 报告号自此＝`eval-QA-WAVE31-GK-1028`（守门人划账），与 lane 的 `HDS-WAVE31-1028` 同场并存：**lane 的原文（§十）一字未改，我的复核（§十一）只追加**。
+
+## 十二 第三十二波轮次记录（HDS-WAVE32-1028）
+
+本节由第三十二号冷启动 lane（纯证据刀，零落地、零提交）在文件末尾追加。§〇–§十一 是别人的原文与前三把的账，本刀一字未改（自证＝本节写完后 `git diff --numstat` 对本报告删除列 0）。所有时间按盘上时间写（起跑 `date` ＝ 2026-10-28 13:27，与后续 TRX／预检文件名时间戳对账）。
+
+### 十二.0 起跑自证（含五枚预合 SHA 与 §〇.6 仪器自证）
+
+**〇.1 载体形状**（2026-10-28 13:27 当场）：
+
+```
+$ git -C C:/Users/24782/Desktop/Pry_Project/.local-notes/qa-wave29-1024/carrier rev-parse HEAD
+663d2c9d78d7f607137f10cd2af09069b0a4f841
+$ git -C C:/Users/24782/Desktop/Pry_Project/.local-notes/qa-wave29-1024/carrier status --short
+（0 行）
+```
+
+`rev-parse` 逐字符等于工单 §〇.1 给定值；`status --short` ＝ **0 行** ⇒ 可起跑（第三十一波跑完全部逐字节还原且零提交，形状与工单预期一致）。本刀未新建 worktree，复用的就是这一棵。
+
+**〇.2 载体字节＝线尾**（命令与右侧实参全部当场取，未照抄工单里任何一枚 SHA）：
+
+```
+$ cd C:/Users/24782/Desktop/Pry_Project
+$ git rev-parse HEAD
+bf53924f4e4e512d82ab15ae06e16fc84ac80d50
+$ git diff --stat 663d2c9d78d7f607137f10cd2af09069b0a4f841 $(git rev-parse HEAD) -- src tests scripts Pry.slnx Directory.Build.props
+（0 行）
+```
+
+右侧现取的线尾全值＝**`bf53924f4e4e512d82ab15ae06e16fc84ac80d50`**（分支 `codex/ui-main-window-redesign`；工单出闸时点之后线尾被派发刀挪过一格，本刀按 §〇.2 与上一把 §十一.4 第 2 条的口径对**当前线尾**复核）。差式子实测 **0 行** ⇒ 23 枚格所依赖的 `src`／`tests`／`scripts`／`Pry.slnx`／`Directory.Build.props` 五面自 `663d2c9` 起字节未变，**本刀合法跳过绿基线轮 G0**，定向 6 枚额度全部留给计划轮 L1–L5 与机动位 L6。主工作树 `git status --short` 当场 ＝ 8 行（他人名下的暂存项、未跟踪资产与 `docs/plans/PROJECT_PLAN.md` 那枚在飞项），本刀一律不读内容、不改、不 `stash`／`clean`／`rm`。
+
+**〇.3 起点在册基线（从盘上取，不从工单抄）**：出处＝本报告 §十一.3 第 2 条原文，现值＝**1380／executed 1378／failed 0／跳过 2**，分项 Client 108／App 233／Api 280／Core total 759（executed 757）。本刀另用自写仪器对第三十一波盘上 `out/trx-F31` 四份 TRX 当场重求和（`out/w32-instrument-selfproof.txt`）＝`total=108+759+280+233=1380／executed=108+757+280+233=1378／passed=1378／failed=0`，四份逐份 `reconcile=OK`、两条同名跳过各出现一次——与在册值同值。**本刀不移动这个数**（工单 §二＝零顶账）。
+
+**〇.4 还原基准 SHA（三处对照全部取自载体基点 `git -C <载体> cat-file blob HEAD:<路径>` 管道 `sha256sum`，不是抄线尾、不是抄工单；2026-10-28 13:28 当场自取）**：
+
+| 文件（载体相对） | 当场自取 SHA-256 全值 | 与工单 §〇.4 前缀 | 本刀是否写入 |
+|---|---|---|---|
+| `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs` | `90947162fed797f8de98bd5130a11dfacc25886bfa035182dccaf395b9d32b73` | 相符（`90947162fed797f8…`） | 是（L1／L2／L3／L4／L5 临时突变；机动位 L6 同文件） |
+| `src/Pry.Core/Narrative/Advancement/DueIntentRegistry.cs` | `9bf4dc31bd3d1c724a804f2dc01334806dada6a1c88861eb07f89fc0897ce5a1` | 相符（`9bf4dc31bd3d1c72…`） | 否（仅形状对照） |
+| `src/Pry.Core/Narrative/Advancement/AdvancementContracts.cs` | `259474dcccbfb1f0327d92ba5c49e1e8ee35280c16abf6761088332695976ac0` | 相符（`259474dcccbfb1f0…`） | 否（仅形状对照） |
+| `tests/Pry.Core.Tests/BoundedAdvancementPrototypeTests.cs` | `1fd944f94d399a8f742482c1f724f8afec150eac865cf06cdfa149d4926a200b` | 相符（`1fd944f94d399a8f…`） | **否，一个字节都不许改**（本刀无 §一.3 那种例外） |
+
+载体基点 blob 与工作副本逐字节相同（`out/w32-mutations/base-AdvancementCoordinator.cs` 副本 SHA 复算＝`90947162fed797f8…`，见 `out/w32-mutation-manifest.txt` 首行）。判据文件字节零写入 ⇒ 工单 §〇.4 那条形状差（"五轮全在产品文件里，每轮『取红手不是判据作者』天然成立"）成立，本刀不另证。
+
+**〇.5 编号**：焦点预检自 **P30** 起编号（P1–P29 属前三把，一枚不覆盖），归档＝`out/preflight-P<nn>.txt`；`HOLD` 重跑额度 ≤8 枚按刀计，本刀尚未用到第一枚。
+
+**〇.6 仪器自证（先于任何 `dotnet` 完成，零 `dotnet`）**：自写取数仪器＝`out/w32-count.js`（node v24.20.0；口径逐字照工单 §〇.6 第 3 条＝只数 `<UnitTestResult … outcome="Failed">` 开标签，`<ResultSummary outcome="Failed">` 与 `<Output>` 错误文本不计；报"恰 N 枚"前 N 必须同时等于开标签数与同份 `<Counters failed>`；跳过只按 `outcome="NotExecuted"` 点名，`notExecuted` 计数器不看）。自证读数归档＝`out/w32-instrument-selfproof.txt`，三份盘上已知样本逐一对上：
+
+| 样本 | 工单 §〇.6 第 2 条预期 | 本刀仪器实测 | 判定 |
+|---|---|---|---|
+| `out/trx-M1` | 1 份 `.trx`，total 759／executed 757／failed 1，红格名 `A_late_advancement_carrying_a_superseded_effect_version_is_refused_and_writes_nothing` | `trx=1`、`total=759 executed=757 passed=756 countersFailed=1 openTagFailed=1 reconcile=OK`，RED 行逐字符同名，红点 `BoundedAdvancementPrototypeTests.cs:line 322`，消息 `Expected: RejectedForStaleEffect／Actual: Advanced` | 相符 |
+| `out/trx-M5` | 同份形状，failed＝3，三枚格名 `A_due_intent_that_has_not_reached_its_due_instant_is_left_pending_and_still_reported`／`Replay_delivers_each_due_intent_exactly_once_across_two_clock_jumps_and_loses_none`／`After_a_clock_forward_jump_due_intents_are_replayed_in_registration_order` | `countersFailed=3 openTagFailed=3 reconcile=OK`，三枚 RED 逐字符命中，红点 309／287／271 | 相符 |
+| `out/trx-F31` | 4 份 `.trx`，逐份 total 108／759／280／233，failed 全 0，两条同名跳过各出现一次 | `trx=4`，逐份 `total=108／759／280／233`、`countersFailed=0 openTagFailed=0 reconcile=OK`；NotExecuted 点名＝`Pry.Core.Tests.LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key` 与 `Pry.Core.Tests.CoreTests.Configured_sense_voice_model_can_run_offline`，各出现一次（都在 Core 那份里） | 相符 |
+
+同一批样本另用守门人那把尺（`out/gk31-count.js`，**只读未改**）当场跑一遍，输出与本刀 `w32-count.js` 逐枚一致（`.trx` 份数、四值计数器、开标签数、RED／SKIP 点名全同）⇒ 取数与打印两面自证成立。工单 §〇.6 第 1 条（`round.py` 那条前置已作废）照单接受：本刀不修它、不当阻塞项、也不依赖它。
+
+**五枚计划轮＋机动位的突变态预合 SHA-256（零 `dotnet`；合成器＝`out/w32-mutate.js`，产物＝`out/w32-mutations/L<n>.cs`，清单＝`out/w32-mutation-manifest.txt`；每枚施加前对 base 的锚点唯一性与整行字节都先校验，任一行不逐字符相等即 throw）**：
+
+| 轮 | 目标（载体相对） | 改法 | 预合 SHA-256 全值 |
+|---|---|---|---|
+| L1 | `AdvancementCoordinator.cs` | `:88` 字面量 `required_calls` → `required_amount`（`:97` 费用那句不动） | `59be4e80bed4ec1a78c3bc6eb5f182948008131dd7e207cd5eab3cba5e748033` |
+| L2 | `AdvancementCoordinator.cs` | 删 `:94`–`:101` 整块费用闸（含花括号；不写 `if (false && …)`，避开 CS0162） | `4fdbf81bd53ebaa8cb2a98a266e94edb31fd4f6ee5f47097008a7e91c60371da` |
+| L3 | `AdvancementCoordinator.cs` | 删 `:120` 整行 `_deferrals.RemoveAll(x => x.IntentKey == request.IntentKey);` | `d722086768d8a37ef1485de246c7c3120990ecc4d71d68734421ef3f6ec9eab6` |
+| L4 | `AdvancementCoordinator.cs` | `:85` 调用闸加合取 `&& request.Budget.TotalCalls > 0` | `ddff8ad1c2ad24586743f8ff3a38a702d4ce6389e7f22175cb10fd8e4c416a53` |
+| L5 | `AdvancementCoordinator.cs` | 删 `:119` 整行 `_lastAdvancedByIntent[request.IntentKey] = request.Window.NowUtc;` | `390890784e0eaa9c62892e3d7de5a7f42865d14eff0899401eb59531092d5ca0` |
+| L6（机动位） | `AdvancementCoordinator.cs` | `:59` 冷却闸方向翻转 `cooldownEnd > request.Window.NowUtc` → `cooldownEnd < request.Window.NowUtc` | `7dffa0e906d94e47d5cda7676701c9148a2d5730b2e75904a971e33be16a2ae9` |
+
+> 机动位 L6 的预合值与第三十一波 §十.0 表内 M8 那枚（同文件、同改法、不同两只手的两把脚本）逐字符相同＝`7dffa0e9…`——这同时是本刀合成器字节保真度的一处旁证。
+
+**格名与行号逐字符预核（工单 §三 末注第 ① 条要求的零 `dotnet` 一步；本 lane 当场按载体 HEAD blob 的判据副本 `out/w32-mutations/base-tests.cs`（494 行版）逐行复述）**：`:99` `Assert.Equal(AdvancementOutcome.DeferredByCooldown, second.Outcome);`（格 `The_same_intent_resubmitted_inside_the_cooldown_window_is_deferred_and_names_the_earliest_next_instant`，`:89`）／`:143` `var deferral = Assert.Single(coordinator.PendingDeferrals);`（格 `A_due_intent_inside_the_quiet_window_is_deferred_until_the_window_closes_and_stays_observable`）／`:170` `Assert.Empty(coordinator.PendingDeferrals);`＋同格 `:172` 观察日志断言（格 `A_quiet_deferred_intent_advances_once_the_window_closes_and_leaves_the_pending_list`，`:152`）／`:188` `StoppedByBudget`＋`:189` `Assert.Equal("remaining_calls_below_required_calls", stopped.OutcomeReason);`＋`:195` 观察日志（格 `An_exhausted_call_budget_stops_advancement_and_names_consumed_remaining_and_the_dimension`，`:178`）／`:204` 与 `:207`＝全文件仅有的两处 `AdvancementBudget(0, 0, 0m, 0m, 1, 0.25m)`＋`:209` `StoppedByBudget`＋`:210` `Assert.Equal("calls", first.StoppedBudgetDimension);`（格 `A_budget_that_is_zero_at_entry_is_a_distinct_shape_from_one_that_ran_out`，`:199`）／`:225` `AdvancementBudget(10, 0, 1.00m, 0.80m, 1, 0.25m)`＋`:227` `Assert.Equal(AdvancementOutcome.StoppedByBudget, stopped.Outcome);`（格 `A_cost_budget_running_out_stops_advancement_while_calls_are_still_available`，`:220`）。产品侧锚点同法复述：`:59` 冷却闸条件、`:85` 调用闸条件、`:88` 调用维度 reason 字面量（全文件仅 1 处）、`:94`–`:101` 费用闸整块、`:119` 冷却表写入、`:120` `_deferrals.RemoveAll`——与工单 §三 表逐条相符，**格名与行号无一枚需要改正报告**。
+
+**独享性复算（工单 §一.3 那五条，本 lane 按盘上原文独立数一遍消费点，零 `dotnet`）**：① `"remaining_calls_below_required_calls"` 在判据里只被 `:189` 断言一处（`:215`／`:234` 只断 `Outcome:IntentKey` 串，不看 reason 文本）⇒ L1 单响。② 费用闸只在 `remainingCost < RequiredCostPerAdvancement` 时触发：判据里 6 处显式 `AdvancementBudget(` 加 `GenerousBudget`（剩余 10m）中，仅 `:225`（剩余 0.20m < 0.25m）走到；`:204`／`:207` 先被调用闸拦下、`:243` 与其余格剩余 10m ⇒ L2 单响。③ `PendingDeferrals` 全文件只被 `:143`（`Assert.Single`，该格其后没有成功推进，走不到 `:120`）与 `:170`（`Assert.Empty`）两处读，删 `RemoveAll` 只让后者红 ⇒ L3 单响。④ 加 `TotalCalls > 0` 只让 `TotalCalls = 0` 的 `:204`／`:207` 绕过调用闸；`An_exhausted_call_budget…`（`TotalCalls = 3`）与 `An_advancement_that_exactly_consumes…`（`TotalCalls = 3`）不成立合取后半 ⇒ L4 单响。⑤ `_lastAdvancedByIntent` 的写入只有"同一意图第二次进来"才可能被 `:59` 读到：`The_same_intent_resubmitted…`（`cooldownMinutes: 30`，第二次 12:10）是全文件唯一期望被冷却拦下的格；`:110` 外沿格两侧相等本就期望放行、`:178` 那格 `cooldownMinutes` 缺省＝零（`Noon > 12:05` 本就不成立，第二次仍停调用闸）、`:199`／`:313`／`:335`／`:363`／`:380` 无"同意图两次成功推进"形状 ⇒ L5 单响。
+
+**预算与停止条件登记（工单 §五）**：`dotnet` ≤8＝构建 B1 一次（载体内，兼取"0 警告"读数）＋定向 ≤6（L1–L5 计划 5 枚＋机动位 1 枚，均不带 `--no-build`）＋收尾全量 F 一次；本轮无 G0（§〇.2 合法跳过）；焦点预检每次 `dotnet` 前一枚、自 P30 起；`measure-fixed-eval.ps1` 只在 F 后跑一次且带 `-ResultsDirectory` 指向 `out/trx-F32`；`HOLD` 重跑额度 ≤8 枚按刀计；lane 零 git 提交、零 `stash`／`clean`／`reset`／`push`／`tag`；所有 `dotnet` 一律在载体里跑，主工作树零 `dotnet`。
+
+### 十二.1 逐轮记录（L1…）
+
+**轮 L1（2026-10-28 18:26–18:27 盘上时间；TRX 文件名时间戳 `18_26_58` 与 `date` 对得上）**
+
+| 字段 | 读数 |
+|---|---|
+| ① 轮名与目标文件 | `L1` → 载体 `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs` |
+| ② 预检 | `out/preflight-P31.txt`，`VERDICT=BUILD_OK`（当场 FOREGROUND＝PureRef pid=51312，`covers=False borderless=False`） |
+| ③ 改动原文 | 前：`                "remaining_calls_below_required_calls", triggerReference, remainingCalls, remainingCost, "calls");` → 后：`                "remaining_calls_below_required_amount", triggerReference, remainingCalls, remainingCost, "calls");`（只改 `:88` 这一枚字面量；`:97` 费用那句 `"remaining_cost_below_required_cost"` 逐字节未动，`diff -u` 单 hunk 见 `out/w32-mutation-manifest.txt` 附表） |
+| ④ `git diff --stat` | `1 file changed, 1 insertion(+), 1 deletion(-)`（`out/w32-round-L1-prep.txt`） |
+| ⑤ 跑法 | 工作目录＝载体 `C:/Users/24782/Desktop/Pry_Project/.local-notes/qa-wave29-1024/carrier`；`dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-L1" --logger trx`（**无** `--no-build`；stdout＝`out/w32-run-L1.txt`，exit=1＝测试失败的非零码；该日志 `grep -ci warning`＝0） |
+| ⑥ TRX | `trx-L1/24782_PHYTHLINK_2026-10-28_18_26_58.trx`，枚数＝**1 份文件**（先 `ls` 数满再读） |
+| ⑦ `<Counters>` 四值原文 | `total="759" executed="757" passed="756" failed="1"`（error/timeout/aborted/notExecuted 均 0） |
+| ⑧ 红格 testName 逐字 | `Pry.Core.Tests.BoundedAdvancementPrototypeTests.An_exhausted_call_budget_stops_advancement_and_names_consumed_remaining_and_the_dimension`（`[Fact]` 形状，无 Theory 实例参数） |
+| ⑨ 红点与消息原文 | 红点＝判据 `:189`；消息＝`Assert.Equal() Failure: Strings differ`／`↓ (pos 31)`／`Expected: "remaining_calls_below_required_calls"`／`Actual:   "remaining_calls_below_required_amount"`／`↑ (pos 31)` |
+| ⑩ SHA-256 三态 | 覆盖前自取 `90947162fed797f8de98bd5130a11dfacc25886bfa035182dccaf395b9d32b73`（＝HEAD blob＝§〇.4 基准，且与工作副本逐字节相同）；突变态 `59be4e80bed4ec1a78c3bc6eb5f182948008131dd7e207cd5eab3cba5e748033` ＝ §十二.0 预合值**逐字符相符**；还原后 `90947162fed797f8de98bd5130a11dfacc25886bfa035182dccaf395b9d32b73` 相符；还原后载体 `status --short` ＝ **0 行**、`git diff --stat` 0 行（`out/w32-round-L1-prep.txt`／`out/w32-round-L1-restore.txt`） |
+| ⑪ 本轮结论 | **相符**——恰 1 枚、格名逐字符、红点 `:189`、Expected/Actual 两侧文本与 §三 L1 行预论证全部一致 ⇒ 新增凭证 **1 枚**；身份按 §三 明写＝**文本面（诊断文本）突变**，不冒充行为面突变 |
+
+数红两侧对账：开标签计数 **1** ＝ `<Counters failed>` **1**（`reconcile=OK`；另用守门人那把尺 `out/gk31-count.js` 对同一份 TRX 独立跑一遍，`openTagFailed=1 / countersFailed=1 / RED 同名`，两把尺同值）。跳过 2 枚按 `outcome="NotExecuted"` 点名（`Pry.Core.Tests.CoreTests.Configured_sense_voice_model_can_run_offline`／`Pry.Core.Tests.LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key`），不计红。
+
+一处如实登记（不改 §三 预期、不影响本轮判定）：工单 §三 L1 行写"`:188` 的 `StoppedByBudget` 与 `:195` 的观察日志保持绿"。盘上实测＝同一枚格子在 `:189` 抛出即中止，`:188` 在其之前**确实先通过**，而 `:195` 在该格本轮**根本不再执行**（既不是绿也不是红，是未执行）——这句预论证的措辞比盘上事实强，本刀按实测登记，不据此判作废（枚数／格名／红点／消息四项逐字符相符，且 `:195` 是同一格内的后续断言、不是另一枚格）。
+
+**轮 L2（2026-10-28 18:28–18:29 盘上时间；TRX 时间戳 `18_28_32`）**
+
+| 字段 | 读数 |
+|---|---|
+| ① 轮名与目标文件 | `L2` → 载体 `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs` |
+| ② 预检 | `out/preflight-P32.txt`，`VERDICT=BUILD_OK`（FOREGROUND＝PureRef pid=51312，`covers=False borderless=False`） |
+| ③ 改动原文 | 删除 `:94`–`:101` 整块费用闸（八行，含 `if (remainingCost < request.Budget.RequiredCostPerAdvancement)` 与整个花括号块）：`        if (remainingCost < request.Budget.RequiredCostPerAdvancement)`／`        {`／`            var stopped = BuildReadout(request, AdvancementOutcome.StoppedByBudget,`／`                "remaining_cost_below_required_cost", triggerReference, remainingCalls, remainingCost, "cost");`／`            _observations.Add(new AdvancementObservation(stopped.Outcome, request.IntentKey,`／`                request.RequestId, stopped.OutcomeReason));`／`            return stopped;`／`        }` → 全部删除。**没有写 `if (false && …)`**（按 §一.2.11 避开 CS0162 不可达形状），也没有新增任何数字门槛 |
+| ④ `git diff --stat` | `1 file changed, 8 deletions(-)`（`out/w32-round-L2-prep.txt`；单 hunk 原文见 `out/w32-mutation-manifest.txt` 附表） |
+| ⑤ 跑法 | 工作目录＝载体；`dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-L2" --logger trx`（**无** `--no-build`；stdout＝`out/w32-run-L2.txt`，exit=1；`grep -ci warning`＝0） |
+| ⑥ TRX | `trx-L2/24782_PHYTHLINK_2026-10-28_18_28_32.trx`，枚数＝**1 份文件** |
+| ⑦ `<Counters>` 四值原文 | `total="759" executed="757" passed="756" failed="1"`（error/timeout/aborted/notExecuted 均 0） |
+| ⑧ 红格 testName 逐字 | `Pry.Core.Tests.BoundedAdvancementPrototypeTests.A_cost_budget_running_out_stops_advancement_while_calls_are_still_available`（`[Fact]`） |
+| ⑨ 红点与消息原文 | 红点＝判据 `:227`；消息＝`Assert.Equal() Failure: Values differ`／`Expected: StoppedByBudget`／`Actual:   Advanced`（与 §三 预言"remainingCost＝0.20m 不再被拦，代次 0 相等 ⇒ 直接产记录"一致） |
+| ⑩ SHA-256 三态 | 覆盖前自取 `90947162fed797f8…`（＝HEAD blob＝§〇.4 基准）；突变态 `4fdbf81bd53ebaa8cb2a98a266e94edb31fd4f6ee5f47097008a7e91c60371da` ＝ §十二.0 预合值**逐字符相符**；还原后 `90947162fed797f8…` 相符；载体 `status --short` **0 行**、`git diff --stat` 0 行（`out/w32-round-L2-prep.txt`／`-restore.txt`） |
+| ⑪ 本轮结论 | **相符**——恰 1 枚、格名逐字符、红点 `:227`、消息形状与 §三 L2 行预论证一致 ⇒ 新增凭证 **1 枚**；行为面突变（摘闸）。§三 同格那半句"`A_budget_that_is_zero_at_entry…` 先被调用闸拦下故不经过这步、保持绿"也在读数里成立：本轮 `failed` 只有这一枚，`:199` 那格仍 Passed |
+
+数红两侧对账：开标签 **1** ＝ `<Counters failed>` **1**（`reconcile=OK`；`out/gk31-count.js` 同份独立跑亦为 `openTagFailed=1 / countersFailed=1 / RED 同名`）。跳过 2 枚按 NotExecuted 点名，同前两把那两条，不计红。
+
+**轮 L3（2026-10-28 18:29–18:30 盘上时间；TRX 时间戳 `18_29_45`）**
+
+| 字段 | 读数 |
+|---|---|
+| ① 轮名与目标文件 | `L3` → 载体 `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs` |
+| ② 预检 | `out/preflight-P33.txt`，`VERDICT=BUILD_OK`（FOREGROUND＝PureRef pid=51312） |
+| ③ 改动原文 | 删除 `:120` 整行：`        _deferrals.RemoveAll(x => x.IntentKey == request.IntentKey);` → （该行消失，成功推进不再把该意图从待观察清单移除） |
+| ④ `git diff --stat` | `1 file changed, 1 deletion(-)`（`out/w32-round-L3-prep.txt`） |
+| ⑤ 跑法 | 工作目录＝载体；`dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-L3" --logger trx`（**无** `--no-build`；stdout＝`out/w32-run-L3.txt`，exit=1；`grep -ci warning`＝0） |
+| ⑥ TRX | `trx-L3/24782_PHYTHLINK_2026-10-28_18_29_45.trx`，枚数＝**1 份文件** |
+| ⑦ `<Counters>` 四值原文 | `total="759" executed="757" passed="756" failed="1"`（error/timeout/aborted/notExecuted 均 0） |
+| ⑧ 红格 testName 逐字 | `Pry.Core.Tests.BoundedAdvancementPrototypeTests.A_quiet_deferred_intent_advances_once_the_window_closes_and_leaves_the_pending_list`（`[Fact]`） |
+| ⑨ 红点与消息原文 | 红点＝判据 `:170`；消息＝`Assert.Empty() Failure: Collection was not empty`／`Collection: [AdvancementDeferral { IntentKey = intent-window, Kind = DueIntent, DeferredBy = quiet, EarliestNextAdvanceUtc = 2026/10/24 19:00:00 }]`——正是 §三 预言的那一条静默遗留登记，红点也没落到别处 |
+| ⑩ SHA-256 三态 | 覆盖前自取 `90947162fed797f8…`（＝HEAD blob）；突变态 `d722086768d8a37ef1485de246c7c3120990ecc4d71d68734421ef3f6ec9eab6` ＝ §十二.0 预合值**逐字符相符**；还原后 `90947162fed797f8…` 相符；载体 `status --short` **0 行**（`out/w32-round-L3-prep.txt`／`-restore.txt`） |
+| ⑪ 本轮结论 | **相符**——恰 1 枚、格名逐字符、红点 `:170`、消息形状与 §三 L3 行预论证一致 ⇒ 新增凭证 **1 枚**；行为面突变（删清单移除那一步）。§三 同格那半句"另一处 `PendingDeferrals` 断言是 `Assert.Single`（`:143`，该格其后没有成功推进）⇒ 保持绿"也在读数里成立：本轮 `failed` 只有这一枚，`:128` 那格仍 Passed。`:172` 的观察日志断言在同一枚格子里位于 `:170` 之后，本轮因 `:170` 先抛出而**未执行**（既非绿也非红），照实登记 |
+
+数红两侧对账：开标签 **1** ＝ `<Counters failed>` **1**（`reconcile=OK`；`gk31-count.js` 同份独立跑亦为 1＝1、RED 同名）。跳过 2 枚按 NotExecuted 点名（同那两条），不计红。
+
+**轮 L4（2026-10-28 18:30–18:31 盘上时间；TRX 时间戳 `18_30_54`）**
+
+| 字段 | 读数 |
+|---|---|
+| ① 轮名与目标文件 | `L4` → 载体 `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs` |
+| ② 预检 | `out/preflight-P34.txt`，`VERDICT=BUILD_OK`（FOREGROUND＝PureRef pid=51312） |
+| ③ 改动原文 | 前：`        if (remainingCalls < request.Budget.RequiredCallsPerAdvancement)` → 后：`        if (remainingCalls < request.Budget.RequiredCallsPerAdvancement && request.Budget.TotalCalls > 0)`（＝把"入参即零"当成"不设限"，与"跑光"合流；改的是**分支条件的合取形状**，`RequiredCallsPerAdvancement`／`TotalCalls` 两处取数口径一字未动，没有新增任何数字门槛） |
+| ④ `git diff --stat` | `1 file changed, 1 insertion(+), 1 deletion(-)`（`out/w32-round-L4-prep.txt`） |
+| ⑤ 跑法 | 工作目录＝载体；`dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-L4" --logger trx`（**无** `--no-build`；stdout＝`out/w32-run-L4.txt`，exit=1；`grep -ci warning`＝0） |
+| ⑥ TRX | `trx-L4/24782_PHYTHLINK_2026-10-28_18_30_54.trx`，枚数＝**1 份文件** |
+| ⑦ `<Counters>` 四值原文 | `total="759" executed="757" passed="756" failed="1"`（error/timeout/aborted/notExecuted 均 0） |
+| ⑧ 红格 testName 逐字 | `Pry.Core.Tests.BoundedAdvancementPrototypeTests.A_budget_that_is_zero_at_entry_is_a_distinct_shape_from_one_that_ran_out`（`[Fact]`） |
+| ⑨ 红点与消息原文 | 红点＝判据 `:210`；消息＝`Assert.Equal() Failure: Strings differ`／`↓ (pos 1)`／`Expected: "calls"`／`Actual:   "cost"`／`↑ (pos 1)`——与 §三 预言"调用闸被绕过之后落到费用闸，那里 remainingCost＝0m < 0.25m"逐字符一致（`:209` 的 `StoppedByBudget` 在其之前仍通过，所以拦下这件事还在、错的只是维度） |
+| ⑩ SHA-256 三态 | 覆盖前自取 `90947162fed797f8…`（＝HEAD blob）；突变态 `ddff8ad1c2ad24586743f8ff3a38a702d4ce6389e7f22175cb10fd8e4c416a53` ＝ §十二.0 预合值**逐字符相符**；还原后 `90947162fed797f8…` 相符；载体 `status --short` **0 行**（`out/w32-round-L4-prep.txt`／`-restore.txt`） |
+| ⑪ 本轮结论 | **相符**——恰 1 枚、格名逐字符、红点 `:210`、消息形状与 §三 L4 行预论证一致 ⇒ 新增凭证 **1 枚**；行为面突变（分支条件合取）。§三 另两句预判同样在读数里成立：`An_exhausted_call_budget…`（`TotalCalls = 3`，不成立新增那半句合取）与 `An_advancement_that_exactly_consumes…`（`TotalCalls = 3`）**都保持绿**——本轮 `failed` 只有这一枚，那两格仍在 756 枚通过里 |
+
+数红两侧对账：开标签 **1** ＝ `<Counters failed>` **1**（`reconcile=OK`；`gk31-count.js` 同份独立跑亦为 1＝1、RED 同名）。跳过 2 枚按 NotExecuted 点名（同那两条），不计红。
+
+**轮 L5（2026-10-28 18:32 盘上时间；TRX 时间戳 `18_32_02`）**
+
+| 字段 | 读数 |
+|---|---|
+| ① 轮名与目标文件 | `L5` → 载体 `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs` |
+| ② 预检 | `out/preflight-P35.txt`，`VERDICT=BUILD_OK`（FOREGROUND＝PureRef pid=51312） |
+| ③ 改动原文 | 删除 `:119` 整行：`        _lastAdvancedByIntent[request.IntentKey] = request.Window.NowUtc;` → （该行消失＝冷却表从未记住"上一次生效在何时"；`:120` 的 `_deferrals.RemoveAll` 与 `:121` 起的观察日志逐字节未动） |
+| ④ `git diff --stat` | `1 file changed, 1 deletion(-)`（`out/w32-round-L5-prep.txt`） |
+| ⑤ 跑法 | 工作目录＝载体；`dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-L5" --logger trx`（**无** `--no-build`；stdout＝`out/w32-run-L5.txt`，exit=1；`grep -ci warning`＝0） |
+| ⑥ TRX | `trx-L5/24782_PHYTHLINK_2026-10-28_18_32_02.trx`，枚数＝**1 份文件** |
+| ⑦ `<Counters>` 四值原文 | `total="759" executed="757" passed="756" failed="1"`（error/timeout/aborted/notExecuted 均 0） |
+| ⑧ 红格 testName 逐字 | `Pry.Core.Tests.BoundedAdvancementPrototypeTests.The_same_intent_resubmitted_inside_the_cooldown_window_is_deferred_and_names_the_earliest_next_instant`（`[Fact]`） |
+| ⑨ 红点与消息原文 | 红点＝判据 `:99`；消息＝`Assert.Equal() Failure: Values differ`／`Expected: DeferredByCooldown`／`Actual:   Advanced`——与 §三 预言"表里没有条目 ⇒ `:59` 那道闸永远不成立"逐字符一致 |
+| ⑩ SHA-256 三态 | 覆盖前自取 `90947162fed797f8…`（＝HEAD blob）；突变态 `390890784e0eaa9c62892e3d7de5a7f42865d14eff0899401eb59531092d5ca0` ＝ §十二.0 预合值**逐字符相符**；还原后 `90947162fed797f8…` 相符；载体 `status --short` **0 行**（`out/w32-round-L5-prep.txt`／`-restore.txt`） |
+| ⑪ 本轮结论 | **相符**——恰 1 枚、格名逐字符、红点 `:99`、消息形状与 §三 L5 行预论证一致 ⇒ 新增凭证 **1 枚**；行为面突变（删冷却表写入）。§三 另两句预判同样在读数里成立：外沿那格 `An_intent_resubmitted_at_the_instant_the_cooldown_window_closes_advances_again`（期望本来就是放行）**保持绿**；`An_exhausted_call_budget…` 第二次进来先跳过冷却、仍在调用闸停住故**保持绿**——本轮 `failed` 只有这一枚。**计划五轮 L1–L5 至此全部相符 ⇒ 按 §五.2 机动位只允许用于"跑一次 L6 批次"这一种用途。** |
+
+数红两侧对账：开标签 **1** ＝ `<Counters failed>` **1**（`reconcile=OK`；`gk31-count.js` 同份独立跑亦为 1＝1、RED 同名）。跳过 2 枚按 NotExecuted 点名（同那两条），不计红。
+
+**轮 L6（机动位；2026-10-28 18:33 盘上时间；TRX 时间戳 `18_33_19`）——批次红，跑前复述（§一.2.4）**：本枚预期一次响 **恰 2 枚**（该实测枚数不是猜的，出处＝第三十一波 `out/trx-M8` 盘上已量过一次同改法＝`failed=2`，本刀 §三 L6 行照此写成"恰 2 枚"），预点名格名逐字复述＝`The_same_intent_resubmitted_inside_the_cooldown_window_is_deferred_and_names_the_earliest_next_instant`（预期红点 `:99`，Expected `DeferredByCooldown`／Actual `Advanced`）＋`An_exhausted_call_budget_stops_advancement_and_names_consumed_remaining_and_the_dimension`（预期红点 `:188`，Expected `StoppedByBudget`／Actual `DeferredByCooldown`），另预期外沿那格 `An_intent_resubmitted_at_the_instant_the_cooldown_window_closes_advances_again` 因两侧相等不成立而保持绿。复述与预点名集核对相同后才起跑。
+
+| 字段 | 读数 |
+|---|---|
+| ① 轮名与目标文件 | `L6`（机动位）→ 载体 `src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs`；机动位本刀只用于这一处（§五.2 二选一的另一支＝复取作废轮，因 L1–L5 全相符而不存在作废轮，故未用于复取） |
+| ② 预检 | `out/preflight-P36.txt`，`VERDICT=BUILD_OK`（FOREGROUND＝PureRef pid=51312） |
+| ③ 改动原文 | 前：`        if (cooldownOpensAt is { } cooldownEnd && cooldownEnd > request.Window.NowUtc)` → 后：`        if (cooldownOpensAt is { } cooldownEnd && cooldownEnd < request.Window.NowUtc)`（冷却闸方向翻转；未新增门槛、未改取数口径） |
+| ④ `git diff --stat` | `1 file changed, 1 insertion(+), 1 deletion(-)`（`out/w32-round-L6-prep.txt`） |
+| ⑤ 跑法 | 工作目录＝载体；`dotnet test tests/Pry.Core.Tests -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-L6" --logger trx`（**无** `--no-build`；stdout＝`out/w32-run-L6.txt`，exit=1；`grep -ci warning`＝0） |
+| ⑥ TRX | `trx-L6/24782_PHYTHLINK_2026-10-28_18_33_19.trx`，枚数＝**1 份文件** |
+| ⑦ `<Counters>` 四值原文 | `total="759" executed="757" passed="755" failed="2"`（error/timeout/aborted/notExecuted 均 0） |
+| ⑧ 红格 testName 逐字（2 枚，全部命中预点名集，顺序照 TRX 原样） | `Pry.Core.Tests.BoundedAdvancementPrototypeTests.An_exhausted_call_budget_stops_advancement_and_names_consumed_remaining_and_the_dimension`／`Pry.Core.Tests.BoundedAdvancementPrototypeTests.The_same_intent_resubmitted_inside_the_cooldown_window_is_deferred_and_names_the_earliest_next_instant`（两枚都是 `[Fact]` 形状，无 Theory 实例参数） |
+| ⑨ 红点与消息原文 | 前者红点＝判据 `:188`，消息＝`Assert.Equal() Failure: Values differ`／`Expected: StoppedByBudget`／`Actual:   DeferredByCooldown`；后者红点＝判据 `:99`，消息＝`Assert.Equal() Failure: Values differ`／`Expected: DeferredByCooldown`／`Actual:   Advanced`——两枚红点与消息形状逐字符等于 §三 L6 行 |
+| ⑩ SHA-256 三态 | 覆盖前自取 `90947162fed797f8…`（＝HEAD blob）；突变态 `7dffa0e906d94e47d5cda7676701c9148a2d5730b2e75904a971e33be16a2ae9` ＝ §十二.0 预合值**逐字符相符**（且逐字符等于第三十一波 §十.0 表内 M8 那枚同改法的预合值）；还原后 `90947162fed797f8…` 相符；载体 `status --short` **0 行**（`out/w32-round-L6-prep.txt`／`-restore.txt`） |
+| ⑪ 本轮结论 | **相符（批次红按 §一.2.4 署给本枚突变，新增凭证 0 枚）**——恰 2 枚、逐枚格名与预点名集逐字符对上、两枚红点与消息形状相符，外沿格 `An_intent_resubmitted_at_the_instant_the_cooldown_window_closes_advances_again` 本轮保持绿（`passed=755` 内含它）。这两枚都在同一把里已各领过清洁凭证（`:99` 那格＝本刀 L5；`:188` 那格＝本刀 L1），故本枚只登记为它们的**行为面第二条因**，不重复领凭证、不撤销原归属（与波 31 M8 的区别＝那一把 §三 把枚数预论证写成"恰 1 枚"因而整轮作废；本刀 §三 依盘上 `trx-M8` 实测把枚数写成"恰 2 枚"，实测相符） |
+
+数红两侧对账：开标签 **2** ＝ `<Counters failed>` **2**（`reconcile=OK`；`gk31-count.js` 同份独立跑亦为 2＝2、RED 同名两枚）。跳过 2 枚按 NotExecuted 点名，不计红。
+
+**轮 F（收尾全量；2026-10-28 18:34–18:35 盘上时间）**
+
+| 字段 | 读数 |
+|---|---|
+| ① 轮名与范围 | `F`＝`dotnet test Pry.slnx` 全解决方案，工作目录＝载体；前面是 L6 突变态的逐字节还原（起跑该轮时载体 `git status --short` ＝ **0 行**），按 §一.2.5 **不带 `--no-build`**，让它自行增量重建 |
+| ② 预检 | `out/preflight-P37.txt`，`VERDICT=BUILD_OK` |
+| ③ 改动原文 | 无——六轮突变全部还原完毕 |
+| ④ `git diff --stat` | 0 行（载体无任何未还原文件） |
+| ⑤ 跑法 | 工作目录＝载体；`dotnet test Pry.slnx -c Release --results-directory "C:/Users/24782/Desktop/Pry_Project/.local-notes/wave29-1024/out/trx-F32" --logger trx`（**无** `--no-build`；stdout＝`out/w32-run-F32.txt`，exit=0；`grep -c "失败!"`＝0） |
+| ⑥ TRX | 先 `ls` 数满 **4 份**再逐份读：`24782_PHYTHLINK_2026-10-28_18_34_30.trx`／`18_34_30[1].trx`（Client 与 Core 同秒收尾，VSTest 自动加 `[1]` 后缀，两枚都在盘）／`18_34_39.trx`／`18_34_45.trx`；程序集归属按份内 `testName` 前缀逐份点名＝`18_34_30`→Client、`18_34_30[1]`→Core、`18_34_39`→Api、`18_34_45`→App |
+| ⑦ `<Counters>` 逐份原文 | Client `total="108" executed="108" passed="108" failed="0"`；Core `total="759" executed="757" passed="757" failed="0"`（notExecuted 属性仍 0，两条跳过按 NotExecuted 点名）；Api `total="280" executed="280" passed="280" failed="0"`；App `total="233" executed="233" passed="233" failed="0"`。逐份 `reconcile=OK`（开标签数＝`failed` 属性，四份皆 0）。**求和式：total 108＋759＋280＋233＝1380；executed 108＋757＋280＋233＝1378；passed 108＋757＋280＋233＝1378；failed 0＋0＋0＋0＝0；跳过按 `<UnitTestResult outcome="NotExecuted">` 点名 2 枚＝`Pry.Core.Tests.LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key`／`Pry.Core.Tests.CoreTests.Configured_sense_voice_model_can_run_offline`（与 §九.3／§十一.1 同名同枚）** |
+| ⑧ 红格 | 无（四份 `openTagFailed=0`） |
+| ⑨ 红点 | 无 |
+| ⑩ 收尾 SHA 与形状 | 载体四枚文件**盘上工作副本** SHA 逐字符等于 §〇.4 自取基准：`90947162fed797f8de98bd5130a11dfacc25886bfa035182dccaf395b9d32b73`／`9bf4dc31bd3d1c724a804f2dc01334806dada6a1c88861eb07f89fc0897ce5a1`／`259474dcccbfb1f0327d92ba5c49e1e8ee35280c16abf6761088332695976ac0`／`1fd944f94d399a8f742482c1f724f8afec150eac865cf06cdfa149d4926a200b`；同一枚逐一再对一次载体 `HEAD` blob（两条管道同值）；`git -C 载体 status --short`＝**0 行**；`git -C 载体 log --oneline 663d2c9..HEAD`＝**0 行**（本刀零提交）——归档＝`out/w32-final-carrier-proof.txt` |
+| ⑪ 结论 | 门禁重新全绿＝这一把的六只手没留下任何漂移；**1380 自此多一份由另一双手在同一棵树上取到的同值复采读数**（按 §二 登记为"同值复采"，**不改写在册数**）。`measure-fixed-eval.ps1` 只跑这一次、带 `-ResultsDirectory` 指向 `trx-F32`：`Catalog valid: 76 permanent scenarios`／`Passed=1378; Failed=0; Other=2`，`fixed-eval-coverage.json` 落在该目录内（`suiteVersion 1.4.0`、`passed 1378`／`failed 0`／`other 2`、`failedTests: []`、`releaseAcceptance: NotEvaluated`），与四份 TRX 求和自洽（`out/w32-measure-F32.txt`）；catalog 仍 **76**，未动 |
+
+数红两侧对账（F）：四份开标签合计 **0** ＝ 四份 `<Counters failed>` 合计 **0**（`reconcile=OK`；`gk31-count.js` 对同四份独立跑亦为逐份 0＝0）。
+
+### 十二.2 终账（新增红证与剩余无红格逐格点名）
+
+**新增红证＝5 枚**（与工单 §三.1 预写形状相同：五轮各响 1 枚、每枚都是它自己那一格的清洁凭证，无批次、无第二因；本轮次无作废轮）：
+
+| 轮 | 格名（逐字符，去程序集前缀） | 红点 | 消息原文 | 突变面 |
+|---|---|---|---|---|
+| L1 | `An_exhausted_call_budget_stops_advancement_and_names_consumed_remaining_and_the_dimension` | 判据 `:189` | `Expected: "remaining_calls_below_required_calls"／Actual: "remaining_calls_below_required_amount"` | **文本面**（诊断文本字面量，按 §三 明写这个身份，不冒充行为突变） |
+| L2 | `A_cost_budget_running_out_stops_advancement_while_calls_are_still_available` | `:227` | `Expected: StoppedByBudget／Actual: Advanced` | 行为面（摘费用闸 `:94`–`:101`） |
+| L3 | `A_quiet_deferred_intent_advances_once_the_window_closes_and_leaves_the_pending_list` | `:170` | `Assert.Empty() Failure: Collection was not empty`／`Collection: [AdvancementDeferral { IntentKey = intent-window, Kind = DueIntent, DeferredBy = quiet, EarliestNextAdvanceUtc = 2026/10/24 19:00:00 }]` | 行为面（删 `:120` 清单移除） |
+| L4 | `A_budget_that_is_zero_at_entry_is_a_distinct_shape_from_one_that_ran_out` | `:210` | `Expected: "calls"／Actual: "cost"` | 行为面（改 `:85` 分支条件合取形状，零新增门槛） |
+| L5 | `The_same_intent_resubmitted_inside_the_cooldown_window_is_deferred_and_names_the_earliest_next_instant` | `:99` | `Expected: DeferredByCooldown／Actual: Advanced` | 行为面（删 `:119` 冷却表写入） |
+
+**作废轮＝0 枚**：五枚计划轮的实测枚数、格名、红点行与消息形状全部逐字符等于 §三 预论证，机动位因此按其另一支合法用途跑了 L6 那次批次。
+
+**机动位 L6＝批次红一枚响两格，新增凭证 0 枚**：实测 `failed=2`＝§三 L6 行事前点名的那两枚（`The_same_intent_resubmitted…` 红于 `:99`、`An_exhausted_call_budget…` 红于 `:188`），两格都在本把已各领过清洁凭证（L5／L1），故 L6 只登记为它们的**行为面第二条因**，不重复领凭证、不撤销原归属；外沿那格 `An_intent_resubmitted_at_the_instant_the_cooldown_window_closes_advances_again` 保持绿。与波 31 M8 的差别只在"枚数事先写对"——那一把写"恰 1 枚"故整轮作废，本把依盘上 `trx-M8` 实测写"恰 2 枚"故相符。
+
+**第三十一波 §十一.5 押下来的那 5 枚无红格：本刀结清 5 枚、剩余 0 枚**，逐格对照（押账队列 → 本刀哪一轮兑现）：
+
+1. `A_cost_budget_running_out_stops_advancement_while_calls_are_still_available`（队列第 1 条＝费用闸单摘 `:94`）→ **L2 兑现**。
+2. `An_exhausted_call_budget_stops_advancement_and_names_consumed_remaining_and_the_dimension`（队列第 2 条＝它自己的独立方向，M8 那次连带红随作废轮不算）→ **L1 兑现**（文本面：`OutcomeReason` 字面量，`:189` 是全文件唯一断言处）；另 L6 追加一枚行为面第二因。
+3. `A_budget_that_is_zero_at_entry_is_a_distinct_shape_from_one_that_ran_out`（队列第 3 条＝"入参即零"与"跑光"合流那半句）→ **L4 兑现**。
+4. `A_quiet_deferred_intent_advances_once_the_window_closes_and_leaves_the_pending_list`（队列第 4 条＝`_deferrals.RemoveAll` 单点摘除）→ **L3 兑现**。
+5. `The_same_intent_resubmitted_inside_the_cooldown_window_is_deferred_and_names_the_earliest_next_instant`（队列第 5 条＝"只能用两响批次配方，预论证必须写恰 2 枚"）→ **L5 以单响方向兑现**（删 `:119` 写入只响它自己一格，比队列预期的批次配方更干净），队列那条批次配方另由 **L6 兑现**并登记为第二因。
+
+**本刀不宣布任何"全部结清／覆盖度"结论**：这把之后 HDS-007 第一片那 23 枚格的总覆盖度怎么算（含波 28 类账与旧欠 75 格）由守门人裁。**照旧不动、本刀一枚没碰的账**＝波 28 那枚数值锁格 `The_prototype_applies_no_retrieval_floor_…`（反证方向只能新增数字门槛，零门槛是作者定的特性，本刀一枚门槛都没造）；两套并行命名债（属接线刀不属证据刀）；HDS-010 删除片与"不进包"那道门；旧欠 75 格（波 13 余 47＋波 20 余 28）。在册 **1380／executed 1378／failed 0／跳过 2** 不因本刀移动。
+
+### 十二.3 未验证与押下一把
+
+- **未验证面一条不减**（§十一.5 那七条原文有效，本刀是证据刀、没有触到任何一条）：真实模型对照零读数（需作者一句"可以跑"）；生产接线零调用方；UI 零读数；真实数据与 `%LOCALAPPDATA%\PryCompanion` 零接触；参数未标定＝特性不是缺陷（冷却时长／静默窗口／预算默认值全部未定，原型内至今一处数字门槛都没有）；并发两枚 `Advance` 与断电恢复零读数；旧链删除片与"不进包"那道门未开始。
+- **工单 §八 与 §十一.5 那三条禁令照旧**＝本刀没有在任何位置写下那三句被禁的断言，也不做任何"可删／已接／已不进包"的表态；本刀连一个字的产品码都没落地，载体净写入 0 字节。
+- **本刀自身新增的两条"未执行≠绿"登记**（不是缺陷，是读数边界，写清免得下一把误读）：L1 那格在 `:189` 抛出后，同格 `:195` 的观察日志断言本轮**未被执行**；L3 那格在 `:170` 抛出后，同格 `:172` 同样**未被执行**。这两处不能被转述成"验证过为绿"；要证它们各自也得红一次，得另配方向（本刀未做，也未占额度）。
+- **押下一把（本刀不裁优先级）**：① 上述 `:195`／`:172` 两处"后续观察日志断言"各自的独立方向**本刀没有做过穷举，也没有跑过**，因此这里只登记为"待找方向"而不是"已够不着"（按 §一.2.2，登记够不着之前必须先穷举方向翻转／删赋值／删登记三类并写过程）。本刀能给的只有取数事实：观察日志的追加共四处（`:50` 来源缺失、`:65` 冷却、`:79` 静默、`:121` 成功），而判据侧断言 `Observations(...)` 的格共 9 处、分属 9 枚不同的格（`:106`／`:124`／`:148`／`:172`／`:195`／`:215`／`:234`／`:329`／`:354`）⇒ 前三处都是多格共用，只有"成功那行写什么"可能藏单响方向，但要真跑就得逐枚事前点名批次枚数；本把定向 6 枚额度已用满（L1–L5＋L6），故未排进本轮，也不当作前置派给下一把。② L1 是**文本面**凭证——若要把"调用维度耗尽"这格也拿到一枚纯行为面凭证，可用的候选方向是把 `:88` 那次的维度实参 `"calls"` 写错，但按本刀 §十二.0 的消费点复算，`AdvancementCoordinator.cs:88` 传出的 `"calls"` 同时被判据 `:190`（L1 那格）与 `:210`（L4 那格）断言 ⇒ 单放必然是一次**两响批次**，两枚格名要事前逐字点名、预论证枚数必须写"恰 2 枚"（照 L6 这次的经验，写"恰 1 枚"就会作废）；本把定向额度已用满，此方向未跑，也不当作前置派给下一把（无盘上实测支撑）；③ 归位／顶账／换手三本账本刀零动作（无新字节可落，出口结论＝**零落地、只结证据账**）。
+- **`HOLD` 重跑额度使用＝0/8**：八枚焦点预检 P30–P37 全部一次读到 `VERDICT=BUILD_OK`，没有一枚 `HOLD`，没有重跑。
+
+### 十二.4 本刀文件面
+
+- **主工作树写入＝仅本报告 §十二 一节**（追加在文末；§〇–§十一 一字未改，自证＝当场 `git diff --numstat -- 本报告` 删除列 **0**、`git diff --check` 零输出）。除此之外主树零写入、零 `dotnet`。
+- **零 git 写**：无 commit／add／stash／clean／reset／push／tag。主工作树上他人名下的两枚 `M ` 暂存项（`docs/dispatch-tip1020-02-memory-group-judgment.md`／`tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs`）、五枚 `??` 未跟踪资产（`.qoder/`、`docs/character-learning-safety.patch`、`docs/research/HDS_INTERLUDE.md`、`docs/research/HDS_QQ_RESEARCH_INDEX.md`、`docs/research/QQ_BRIDGE.md`）与 `docs/plans/PROJECT_PLAN.md` 那枚 ` M` 在飞项一律未读内容、未改；收尾时主树 `git status --short` ＝ 9 行＝入场那 8 行＋本报告这 1 行。
+- **载体**＝`.local-notes/qa-wave29-1024/carrier`（detached `663d2c9d78d7f607137f10cd2af09069b0a4f841`，复用未新建）：唯一临时覆盖对象＝`src/Pry.Core/Narrative/Advancement/AdvancementCoordinator.cs`，六轮全部 `git cat-file blob HEAD:<path>` 逐字节还原；终态 `status --short` **0 行**、`log 663d2c9..HEAD` **0 行**、§〇.4 四枚 SHA（含本刀没改的那三枚）逐字符复核相符（`out/w32-final-carrier-proof.txt`）。判据文件与另两枚产品文件**零写入**（本把与波 31 的唯一形状差）。bin/obj 为构建产物，git 不跟踪。
+- **`out/` 新增（全部新文件名，未覆盖任何既有文件；`gk31-count.js` 只读未改，sha256 终态复核＝`7becb84f671025c13a525822ee7db25d2a08611231addf1490a0735419076d0e`，与入场读取同值）**：`preflight-P30.txt`…`preflight-P37.txt`（8 枚）；`w32-build-B1.txt`；`w32-run-L1.txt`…`w32-run-L6.txt`、`w32-run-F32.txt`；`trx-L1`…`trx-L6`（各 1 份 `.trx`）、`trx-F32`（4 份 `.trx`＋`fixed-eval-coverage.json`）；`w32-count.js`／`w32-mutate.js`／`w32-round.js`／`w32-append.js`（四枚自写仪器）；`w32-mutations/`（1 枚 base 判据副本＋1 枚 base 产品副本＋6 枚突变副本 `L1.cs`…`L6.cs`）；`w32-mutation-manifest.txt`；`w32-instrument-selfproof.txt`；`w32-trxparse-L1.txt`…`w32-trxparse-L6.txt`、`w32-trxparse-F32.txt`；`w32-round-L<n>-prep.txt`／`-restore.txt`（12 份）；`w32-final-carrier-proof.txt`；`w32-measure-F32.txt`；`w32-report-section-*.md`（各节落盘前的片段副本，留作追加证据）。
+- **预算总账（当场数盘，不做加法预写）**：`dotnet`＝**8/8**（B1 构建 1＋定向 6＝L1…L6＋全量 F 1；无 G0——§〇.2 对当前线尾 `bf53924f…` 实测 0 行合法跳过）；本刀新增 `.trx`＝**10 枚**（6＋4）；新增结果目录＝**7 个**互不重复（`trx-L1`…`trx-L6`、`trx-F32`）；焦点预检＝**8 枚**（P30–P37，全部 `BUILD_OK`）；`HOLD` 重跑＝**0/8**；`measure-fixed-eval.ps1`＝1 次（带 `-ResultsDirectory` 指向 `trx-F32`）。
+- **交付复核（写完上面各行后当场重跑）**：`git diff --numstat -- 本报告`＝**删除列 0**；`git diff --check` 对本报告零输出；`ls` 数盘＝7 个新目录、10 份新 `.trx`；`git -C 载体 status --short`＝**0 行**；四枚 SHA 终态逐字符复核相符（`out/w32-final-carrier-proof.txt`）。
+
+## 十三 守门人划账（第三十二波，`eval-QA-WAVE32-GK-1028`）
+
+本节由守门人追加在文末；§〇–§十二 是 lane 的原文与上一把的账，**一字未改**（自证＝写完上面各行后当场 `git diff --numstat -- 本报告` 删除列 **0**、`git diff --check` 对本报告零输出）。本节同样零 `dotnet`：所有读数都是把 lane 落在盘上的产物**用守门人自己的取数脚本重新逐份打开**取得的，没有复跑任何一轮构建或测试。起跑时间按盘上顺序登记，不做事后补写。
+
+### 十三.0 入场数盘（2026-10-28，零 `dotnet`）
+
+| 项 | 入场读数 |
+|---|---|
+| 主工作树线尾 | `bf53924`（＝第三十二波派发刀），`main` 与线尾差 **0** 行（`git rev-list --count main..HEAD`） |
+| 跟踪文件条数 | `git ls-files` ＝ **623**（与 §十三.9 的顶账同源，本把不涨） |
+| 主树 `git status --short` | **9 行**＝他人两枚 `M ` 暂存项 ＋ 他人那枚 ` M` 的 `docs/plans/PROJECT_PLAN.md` ＋ 五枚 `??` 未跟踪资产 ＋ 本报告这枚 ` M`（§十二 已由 lane 追加） |
+| 报告当时形状 | `git diff --numstat -- 本报告` ＝ **246/0**（lane 的 §十二 追加量），文件尾字节以 `e380 820a`（`。。` ＋ 换行）结束 ⇒ 追加不会改动最后一行，删除列可保持 0 |
+| 载体 | `.local-notes/qa-wave29-1024/carrier`，`rev-parse HEAD` ＝ `663d2c9d78d7f607137f10cd2af09069b0a4f841`（detached，复用未新建） |
+| 外来 `dotnet` 进程 | 入场即数：无（本把全程也没有起过任何一条） |
+
+### 十三.1 独立复采（守门人的尺＝`out/gk32-count.js`，不是 lane 的 `out/w32-count.js`）
+
+取数口径与波 30／波 31 立下的那条一字未变：**红只数 `<UnitTestResult … outcome="Failed">` 开标签**，并必须与同份 `<Counters failed>` 属性同值才允许报数；跳过只按 `outcome="NotExecuted"` 点名（`notExecuted` 计数器恒 0，不看它）；`<ResultSummary>` 与 `<Output>` 段落不算用例。这份脚本在起跑前先用三份盘上已知读数自证过（`trx-M1`＝恰 1 枚、`trx-M5`＝恰 3 枚、`trx-F31`＝4 份 108／759／280／233 且 `failed` 全 0），自证明细见 §十三.7 第 1 条。
+
+| 轮 | TRX 文件名 | `total/executed/passed/failed` | 开标签红数 | 对账 | 红格名（去 `Pry.Core.Tests.BoundedAdvancementPrototypeTests.` 前缀） | 红点 | 新增凭证 |
+|---|---|---|---|---|---|---|---|
+| L1 | `24782_PHYTHLINK_2026-10-28_18_26_58.trx` | 759／757／756／**1** | 1 | `reconcile=OK` | `An_exhausted_call_budget_stops_advancement_and_names_consumed_remaining_and_the_dimension` | 判据 `:189` | **1** |
+| L2 | `…_18_28_32.trx` | 759／757／756／**1** | 1 | `OK` | `A_cost_budget_running_out_stops_advancement_while_calls_are_still_available` | `:227` | **1** |
+| L3 | `…_18_29_45.trx` | 759／757／756／**1** | 1 | `OK` | `A_quiet_deferred_intent_advances_once_the_window_closes_and_leaves_the_pending_list` | `:170` | **1** |
+| L4 | `…_18_30_54.trx` | 759／757／756／**1** | 1 | `OK` | `A_budget_that_is_zero_at_entry_is_a_distinct_shape_from_one_that_ran_out` | `:210` | **1** |
+| L5 | `…_18_32_02.trx` | 759／757／756／**1** | 1 | `OK` | `The_same_intent_resubmitted_inside_the_cooldown_window_is_deferred_and_names_the_earliest_next_instant` | `:99` | **1** |
+| L6（机动位） | `…_18_33_19.trx` | 759／757／755／**2** | 2 | `OK` | `An_exhausted_call_budget…`（`:188`）＋ `The_same_intent_resubmitted…`（`:99`） | 见 §十三.4 | **0** |
+| F（收尾全量） | 4 份：`…_18_34_30.trx`／`…_18_34_30[1].trx`／`…_18_34_39.trx`／`…_18_34_45.trx` | 108／759／280／233，逐份 `failed=0` | 0 | 四份均 `OK` | 无红；跳过 2 枚逐份点名＝`LlamaServerSecurityTests.Configured_llama_server_requires_the_child_environment_key` ＋ `CoreTests.Configured_sense_voice_model_can_run_offline` | — | — |
+
+逐枚消息形状我同样从 TRX 里读回来了，与 §三 L1–L6 行的事前论证逐字符相符：L1＝`Assert.Equal() Failure: Strings differ`／`Expected: "remaining_calls_below_required_calls"`／`Actual: "remaining_calls_below_required_amount"`；L2＝`Expected: StoppedByBudget / Actual: Advanced`；L3＝`Assert.Empty() Failure: Collection was not empty`／`Collection: [AdvancementDeferral { IntentKey = intent-window, Kind = DueIntent, DeferredBy = quiet, EarliestNextAdvanceUtc = 2026/10/24 19:00:00 }]`；L4＝`Expected: "calls" / Actual: "cost"`；L5＝`Expected: DeferredByCooldown / Actual: Advanced`；L6 两枚＝`Expected: StoppedByBudget / Actual: DeferredByCooldown` 与 `Expected: DeferredByCooldown / Actual: Advanced`。
+
+七轮里**没有一枚**出现"数量对但内容不对"的形状——这一点不是白送的：计数走的是开标签过滤，而每条红的 `file/line/message` 走的是另一条解析通道，两条通道要同时不坏才报得出上面这张表（§十三.7 第 1 条登记了我在这件事上自己踩的那次）。
+
+外围读数复核：八枚焦点预检 `preflight-P30.txt`…`P37.txt` 全部 `VERDICT=BUILD_OK`、`HOLD` **0** 枚 ⇒ 按刀计的 8 枚重跑额度 **0/8** 未动用；`w32-build-B1.txt` 的 `warning`／`error` 计数各 **0**（本仓门禁＝构建零警告，这条正面兑现了工单 §一.3 那句"不许引入告警形状"）；`.trx` 枚数＝定向 6 份 ＋ 全量 4 份 ＝ **10** 份，结果目录 **7** 个互不重复，与 §十二.4 自述一致；`trx-F32/fixed-eval-coverage.json` ＝ `suiteVersion 1.4.0`／`passed 1378`／`failed 0`／`other 2`／`failedTests: []`／catalog **76**，与同目录四份 TRX 求和自洽。
+
+### 十三.2 归位资格四证（本把判"零落地"而不是"扣住"，差别全在这四条上）
+
+1. **载体干净**：`git -C 载体 status --short` ＝ **0 行**，`git -C 载体 log --oneline 663d2c9..HEAD` ＝ **0 行**（lane 提交数 0，符合工单 §七"lane 一律不做提交"）。
+2. **四枚文件盘上 SHA 全值终态**逐字符等于 §〇.4 基准，且各自再对一次载体 `HEAD` blob（两条管道同值）＝`90947162fed797f8de98bd5130a11dfacc25886bfa035182dccaf395b9d32b73`（协调器）／`9bf4dc31bd3d1c724a804f2dc01334806dada6a1c88861eb07f89fc0897ce5a1`（`DueIntentRegistry.cs`）／`259474dcccbfb1f0327d92ba5c49e1e8ee35280c16abf6761088332695976ac0`（契约）／`1fd944f94d399a8f742482c1f724f8afec150eac865cf06cdfa149d4926a200b`（判据）；凭据＝`out/w32-final-carrier-proof.txt`。换句话：六轮突变全部逐字节还原完毕，本刀对盘上产品码与判据码**净写入 0 字节**。
+3. **签账资格**（第三次把这条判据用成动作）＝取红那只手既不是判据字节的作者、也没改过一个判据字节。载体侧 `git log --oneline -- tests/Pry.Core.Tests/BoundedAdvancementPrototypeTests.cs` ＝ `663d2c9`／`77a7d91`／`ed7995c` 三枚全属上一把（2026-10-24），本把那轮 lane 从未对 `tests/**` 写入；另加一条更硬的形状证明＝本把唯一被临时覆盖的对象是产品文件，判据文件的载体 blob SHA-256 与盘上工作副本同值（第 2 条已列）。主树侧那四处路径的 last-touch 是 `ba79ef1`（2026-10-27 那把纯按路径落地的代码刀，它不生产内容），这一点如实列出以免被读成"守门人自己写过判据"。
+4. **跳绿基线轮的合法性**＝那条 0 行式子第四次使用，右侧一律现取：`git diff --stat 663d2c9d… $(git rev-parse HEAD) -- src tests scripts Pry.slnx Directory.Build.props` 在派发刀 `bf53924` 之后当场 **0 行**，即"落地树与产出 1380 那棵树逐字节相同"。这条式子是本刀允许不跑 G0 的唯一凭据；它不成立就得先跑一轮全绿基线，没有第三种绕法。
+
+**裁决＝零落地、零顶账、基线不动。** 与第二十九波那次"扣住不归位"不是同一种情形：那次是**字节写完但从没在改坏产品码之下响过**，所以扣；这次是**跑完了但根本没有新字节可落**，"归位"在这上面是空转。F 轮那份 1380 登记为**同值复采**（在册数不因复采移动，也不为顶账另起构建——这两条是常驻纪律）。
+
+### 十三.3 五枚新红证逐格签账
+
+| 轮 | 格名（逐字符，去程序集前缀） | 红点 | 突变面身份 | 签 |
+|---|---|---|---|---|
+| L1 | `An_exhausted_call_budget_stops_advancement_and_names_consumed_remaining_and_the_dimension` | `:189` | **文本面**＝协调器 `:88` 那句诊断 `reason` 字面量被改写；工单 §一.3 与 §十二.2 都明写这个身份，本节照实签、**不冒充行为突变** | 1 |
+| L2 | `A_cost_budget_running_out_stops_advancement_while_calls_are_still_available` | `:227` | 行为面＝整块摘掉费用闸 `:94`–`:101` | 1 |
+| L3 | `A_quiet_deferred_intent_advances_once_the_window_closes_and_leaves_the_pending_list` | `:170` | 行为面＝删 `_deferrals.RemoveAll` 那行（`:120`） | 1 |
+| L4 | `A_budget_that_is_zero_at_entry_is_a_distinct_shape_from_one_that_ran_out` | `:210` | 行为面＝调用闸分支条件的合取形状（把"入参即零"当成"不设限"），**零新增数字门槛** | 1 |
+| L5 | `The_same_intent_resubmitted_inside_the_cooldown_window_is_deferred_and_names_the_earliest_next_instant` | `:99` | 行为面＝删冷却表写入那行（`:119`） | 1 |
+
+合计**新增红证 5 枚**、**作废轮 0 枚**、机动位 L6 新增 **0 枚**。这五枚与工单 §三.1 预写形状相同＝五轮各响恰 1 枚、每枚都是它自己那一格的第一枚清洁凭证。
+
+### 十三.4 L6（机动位）＝批次红按 §一.2.4 署给本枚突变，不重复领凭证
+
+冷却闸比较方向翻转（`>` → `<`）实测 `failed=2`，两枚格名逐字符等于工单 §一.2.4 事前点名的那一组，且这两枚都在同一把里已各领过清洁凭证（`:99`＝L5，`:188`＝L1），故 L6 只登记为它们的**行为面第二条因**，不重复领凭证、不撤销原归属；外沿那格 `An_intent_resubmitted_at_the_instant_the_cooldown_window_closes_advances_again` 本轮保持绿（`passed=755` 内含它）。
+
+这里要留一句区别，免得下一个人把两把搞混：**波 31 的 M8 整轮作废、波 32 的 L6 有效，改的同一处字节**。差别只在事前论证的枚数——那一把写"恰 1 枚"而盘上 2 枚 ⇒ 形状不符即两枚红都不署；这一把的"恰 2 枚"是**带盘上凭证下发**的（`out/trx-M8` 实测 `failed=2`），故相符。可复用形式＝批次红不是不能跑，是不能**没算过就跑**。
+
+### 十三.5 覆盖度陈述（守门人视角，只说红证账，不说验收账）
+
+第二十九波那 **23** 枚新格自此**每一枚都有"在改坏产品码之下响过一次"的清洁凭证**，拆法＝波 30 的 7 ＋波 31 的 11 ＋波 32 的 5 ＝ 23，与波 30 那句"16 枚欠的是红证不是换手"、波 31 那句"剩 5"、本把那句"结清 5／剩余 0"三处对平。三句必须同时说清才算这条结论成立：
+
+- 这**不**是"23 枚全部验证过行为正确"。红证只证明"这格真的会响"，绿灯只证明"这一轮没有别的格被顺带弄坏"。
+- 波 31 那 11 枚里**有 2 枚是反面探针类**（`M3`／`M4`，施加它的那只手在这一轮动过判据字节），按 §一.3 第 2 条只结"门在咬"这一半、**不签第二换手**；这一条口径不因本把全绿而松动。本把 L1–L6 六只手里没有判据字节写入，所以五枚全是可签的第二换手＋红证双结。
+- 这 23 枚格**至今零生产调用方**：协调器没有任何调用方，界面与对话今天零变化。所以本节不解除 §十三.8 那七条未验证面里的任何一条，更不写那三句被禁的断言。
+
+### 十三.6 另立一笔子账：两处"同格后续断言未被执行"（不是常绿门，也不是格欠）
+
+L1 那格在 `:189` 抛出后，同格 `:195` 的观察日志断言本轮**未被执行**；L3 那格在 `:170` 抛出后，同格 `:172` 同样**未被执行**。这两处的准确身份要这样写才不误导下一把：
+
+- **不是一枚常绿门**：它们在清洁轮（G0／F）里被执行并通过，也随整格红过——只是从没被**单独**逼红过。
+- **不是格欠**：所在的两枚格在 §十三.3 已各领清洁凭证。
+- **是一笔断言级的子账，现值 2 条**：要证"这一行也在守东西"，各自还得红一次。
+- 本把**没有对这两处做过方向穷举**，因此按 §一.2.2 那条口径登记为**待找方向**而不是"够不着"。我能给的只有取数事实，不排优先级：观察日志的追加共四处（`:50` 来源缺失／`:65` 冷却／`:79` 静默／`:121` 成功），判据侧断言 `Observations(...)` 的格共 9 处；前三处是多格共用 ⇒ 单放必然是批次，要跑就得事前逐枚点名格名与枚数；另有一条候选方向（把协调器 `:88` 传出的维度实参 `"calls"` 写错）按消费点复算同时被判据 `:190` 与 `:210` 断言 ⇒ **一次响 2 枚**，配方必须事前写"恰 2 枚"。本把定向 6 枚额度已用满（L1–L6 正好排满），这两向都没排进本轮，**也不当作前置派给下一把**。
+
+### 十三.7 两处登记（一处是我自己的错，一处是事前复核的正面事实）
+
+1. **我的取数仪器第一次交回"红数对、红内容全空"的假象**（2026-10-28，已就地修好并留档）。第一版 `gk32-count.js` 用 `<UnitTestResult\b([^>]*)>([\s\S]*?)</UnitTestResult>` 这种"开标签—闭合标签配对"的正文抽每条红的 `file:line` 与 `<Message>` ⇒ 七轮的 `openTagFailed` 计数全对（计数走的是开标签过滤，不受影响），但每条红的行号与消息一律打印 `(not found)`，形状看起来完全像"证据里没有锚点"。根因＝Core 那 759 枚结果结点里 **756 枚是自闭合 `…/>`**（通过项不展开子树），配对正则会把自闭合的通过项与下一个闭合结点错配成一块。修法三条＝**逐枚 occurrence 走、先判 `/>`**、按 outcome 过滤、并加一条**双走自校验**（同一份文件用两条独立通道各数一次红名集合，不一致就打印 `SELF-CHECK MISMATCH` 而不是静默给答案）。自证明细：修好后对 `trx-M1` 打印 1 枚红点 `:322`、对 `trx-M5` 打印 3 枚 `:309`／`:287`／`:271`、对 `trx-F31` 打印 4 份 108／759／280／233 且 `failed` 全 0，三份已知读数内容与数量同时相符才允许它跑本刀。**这条进可复用口径：仪器的"红数对上了"不证明"红内容对上了"。**
+2. **事前复核与盘上读数相符，本把因此零作废轮**。lane 起跑前我从干净主树读了协调器与判据，独立复算了工单 §一.3 那六条方向的消费点：调用闸 `:85` 被三格共用 ⇒ 不许单摘；费用闸 `:94` 只有 `:225` 那格走到；`_deferrals.RemoveAll` `:120` 只有 `Assert.Empty`（`:170`）读；冷却表写入 `:119` 只有 `:99` 那格期望被拦；`:88` 那句诊断文本字面量只在判据 `:189` 被断言（⇒ L1 身份是文本面）；冷却闸方向翻转外沿那格两侧都不成立（⇒ 必然两响）。六条全部与 §十三.1 的实测逐字符对上，**没有一条需要事后更正**。这是波 31 那次作废换来的做法第一次被执行到位：反证的枚数由"数被改那一行的消费点"得出，不从上一份汇总做加减。
+
+### 十三.8 照旧不动的账（一字不减）
+
+- **旧欠 75 格**＝波 13 余 47 ＋波 20 余 28；**不许把"余 75"读成"剩下不需要复采"**。
+- **拆法原文那本**＝分母 46／已付 45／欠 1＝**W2**（性质照旧＝有 12 出口表＋恒等式而仍无实测红；没有配方就不派跑，也不写成"不需要拆"）。
+- **catalog＝76**，本把未动；`§9`／`§4.2` 的登记在 PROJECT_PLAN，不在本节。
+- **三本押账照旧**＝① 波 28 那枚数值锁格 `The_prototype_applies_no_retrieval_floor_…`（反证方向只能靠新增数字门槛，而零门槛是作者定的特性，本把一枚门槛都没造）；② 两套并行命名债（四枚产品类型带工单号前缀、三身份枚举与契约 §7.2 的 `CognitionKind`／`CognitionOrigin` 并存）＝**属接线刀不属证据刀**；③ HDS-010 删除片与"不进包"那道门＝"替代"没拿到实测前不可起跑，不删码就没有机制。
+- **七条未验证面一条不减**＝真实模型对照零读数（需作者一句"可以跑"）；生产接线零调用方；UI 零读数；真实数据与 `%LOCALAPPDATA%\PryCompanion` 零接触；参数未标定＝特性不是缺陷（冷却时长／静默窗口／预算默认值全部未定，原型内至今一处数字门槛都没有）；并发两枚 `Advance` 与断电恢复零读数；旧链删除片与"不进包"那道门未开始。
+- **三句话照旧不许写**＝"新链已接线"／"旧链可删"／"不进包已做到"。
+
+### 十三.9 本把文件面与顶账
+
+- **主工作树写入＝报告本节 ＋ `docs/plans/PROJECT_PLAN.md`（§4.2 的 HDS-007 行一处状态 ＋ §9 一条 entry）＋ `docs/full-scope-sprint.md`（§0 那两条事实句 ＋ §3 一条密行）**。三处全是既有跟踪文件 ⇒ **零新增跟踪文件**，顶账照入场实测 **623**（不做加法预写；落盘与暂存之后再当场取一次并写明是否移动）。
+- **PROJECT_PLAN 用 hunk 手术**（§4.2 行 ＋ §9 一条），他人那 18 行两条研究登记不进本把提交；还原目标按波 31 §十一.4 那条更正执行＝**"提交后的新内容 ＋ 他人 18 行"**，不是"提交前的备份原样"（后者会让工作树看起来在 revert 我自己的提交）。提交后原样还回并复测 `git diff --numstat -- docs/plans/PROJECT_PLAN.md` ＝ **18/0**。
+- **零 git 危险动作**：无 `add -A`／`stash`／`clean`／`reset`／`push`／`tag`／打包；提交用 `git commit --only -- <点名路径>`，索引里他人两枚 `M ` 暂存项（`docs/dispatch-tip1020-02-memory-group-judgment.md` 的 1/1、`tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs` 的 63/0）跑前跑后仍那两行，内容未读；五枚 `??` 未跟踪资产一字未动。
+- **守门人新增产物（全部新文件名，不覆盖 lane 的任何产物）**：`out/gk32-count.js`（本节 §十三.1 那把尺）、`out/gk32-report-section-13.md`（本节落盘前的片段副本，留作追加凭据）、追加器 `.local-notes/wave32gk-append.mjs`（自证＝写完后 `after.startsWith(before)`，即前 1623 行逐字节未动）、五枚登记片段 `out/gk32-frag-plan-row.txt`／`gk32-frag-plan-entry.md`／`gk32-frag-sprint-15.txt`／`gk32-frag-sprint-16.txt`／`gk32-frag-sprint-3.md` 与分刀器 `.local-notes/wave32gk-docs.mjs`（PROJECT_PLAN 那两版"同一处编辑施加到两版"的做法由它执行并留断言：锚点在 HEAD 版与工作版各命中恰 1 次）。lane 名下的 `gk31-count.js` 只读未改，终态复核仍＝`7becb84f671025c13a525822ee7db25d2a08611231addf1490a0735419076d0e`，与入场读取同值。
+- **交付复核（写完本节与三处登记后当场重跑）**：`git diff --numstat -- 本报告` 删除列 **0**；`git diff --check` 对本报告零输出；`git -C 载体 status --short` ＝ **0 行**；`main` 只挪 ref（`git fetch --no-tags . codex/ui-main-window-redesign:refs/heads/main`），先 `merge-base --is-ancestor` 确认是 fast-forward，全程不 switch／不 checkout 工作树。
+
+### 十三.10 出口
+
+本把**在飞归零**（`HDS-WAVE32-1028` 收口）。HDS-007 第一片的**证据账已经结清**：那 23 枚格每一枚都有清洁红证，且没有任何新字节欠归位。下一把我裁的方向**不再是证据刀**——剩下的三条欠账里，只有"两套并行命名债"与"生产接线零调用方"这一件能同时推进 HDS-007 的第二片（第一个真实调用方）与 HDS-010 的前置（"替代"要拿到实测才有删除片的资格），而它的产物是**代码**，所以必须按 §二 那条老口径走"红证先于落地、归位由守门人按路径做"。范围与预算由下一把派发刀写，不在本节里预写。
