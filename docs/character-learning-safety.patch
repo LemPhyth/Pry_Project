@@ -1,0 +1,785 @@
+diff --git a/src/Pry.Core/Intelligence/BehaviorPattern.cs b/src/Pry.Core/Intelligence/BehaviorPattern.cs
+index c40cff5..a9786ae 100644
+--- a/src/Pry.Core/Intelligence/BehaviorPattern.cs
++++ b/src/Pry.Core/Intelligence/BehaviorPattern.cs
+@@ -1,4 +1,5 @@
+ using Pry.Core.Abstractions;
++using System.Runtime.CompilerServices;
+ 
+ namespace Pry.Core.Intelligence;
+ 
+@@ -22,7 +23,10 @@ public sealed record BehaviorPattern
+     public DateTimeOffset UpdatedAt { get; set; }
+     public DateTimeOffset? LastUsedAt { get; set; }
+ 
+-    public bool HasEvidence => UsageCount >= MinimumObservationsToInfluence;
++    public bool HasEvidence => SuccessCount + FailureCount >= MinimumObservationsToInfluence;
++
++    /// <summary>Scoped turn keys already folded; persistence must retain these on reload.</summary>
++    public IReadOnlyList<string> EvaluatedTurnKeys { get; init; } = [];
+ 
+     /// <summary>Below this many observations a pattern is reference only, not influence.</summary>
+     public const int MinimumObservationsToInfluence = 3;
+@@ -37,7 +41,11 @@ public sealed record BehaviorExperience(
+     ResponseIntent Intent,
+     InteractionOutcome Outcome,
+     DateTimeOffset ObservedAt,
+-    string? FollowUpEvidence = null);
++    string? FollowUpEvidence = null)
++{
++    /// <summary>True only for feedback explicitly about this behavior, never inferred engagement.</summary>
++    public bool FeedbackIsExplicit { get; init; }
++}
+ 
+ public enum InteractionOutcome
+ {
+@@ -55,12 +63,9 @@ public static class InteractionOutcomeSignals
+     /// <summary>Absent or ambiguous feedback deliberately contributes nothing.</summary>
+     public static double? Signal(this InteractionOutcome outcome) => outcome switch
+     {
+-        InteractionOutcome.Continued => 0.5,
+         InteractionOutcome.PositiveReaction => 1.0,
+-        InteractionOutcome.TopicShiftedAway => -0.3,
+         InteractionOutcome.Corrected => -0.8,
+         InteractionOutcome.Rejected => -1.0,
+-        InteractionOutcome.Silenced => -0.2,
+         _ => null
+     };
+ }
+@@ -86,8 +91,8 @@ public sealed class BehaviorPatternRetriever
+ }
+ 
+ /// <summary>
+-/// Turns experiences into patterns. The step is intentionally small and rate-limited: a single
+-/// bad night must not be able to rewrite how a character behaves.
++/// Folds explicit feedback into patterns once per scoped turn. A small bounded step keeps
++/// a single abnormal interaction from rewriting the character's behavior.
+ /// </summary>
+ public sealed class BehaviorPatternUpdater
+ {
+@@ -98,6 +103,7 @@ public sealed class BehaviorPatternUpdater
+ 
+     private readonly IBehaviorPatternRepository _repository;
+     private readonly Func<DateTimeOffset> _clock;
++    private static readonly ConditionalWeakTable<IBehaviorPatternRepository, SemaphoreSlim> Gates = new();
+ 
+     public BehaviorPatternUpdater(IBehaviorPatternRepository repository, Func<DateTimeOffset>? clock = null)
+     {
+@@ -108,10 +114,24 @@ public sealed class BehaviorPatternUpdater
+     public async Task<BehaviorPattern?> RecordAsync(BehaviorExperience experience,
+         CancellationToken cancellationToken = default)
+     {
+-        var signal = experience.Outcome.Signal();
++        var gate = Gates.GetValue(_repository, _ => new SemaphoreSlim(1, 1));
++        await gate.WaitAsync(cancellationToken);
++        try { return await RecordCoreAsync(experience, cancellationToken); }
++        finally { gate.Release(); }
++    }
++
++    private async Task<BehaviorPattern?> RecordCoreAsync(BehaviorExperience experience,
++        CancellationToken cancellationToken)
++    {
++        var signal = experience.FeedbackIsExplicit && !string.IsNullOrWhiteSpace(experience.FollowUpEvidence)
++            ? experience.Outcome.Signal() : null;
+         var existing = await _repository.FindAsync(
+             PatternId(experience.CharacterInstanceId, experience.Scenario, experience.Intent), cancellationToken);
+         var now = _clock();
++        // Ambiguous observations stay in the experience log, including when a pattern exists.
++        if (signal is null) return existing;
++        var turnKey = $"{experience.ConversationId.Length}:{experience.ConversationId}{experience.TurnId}";
++        if (existing?.EvaluatedTurnKeys.Contains(turnKey, StringComparer.Ordinal) == true) return existing;
+ 
+         if (existing is null)
+         {
+@@ -129,12 +149,14 @@ public sealed class BehaviorPatternUpdater
+                 OutcomeAverage = signal.Value,
+                 CreatedAt = now,
+                 UpdatedAt = now,
+-                LastUsedAt = now
++                LastUsedAt = now,
++                EvaluatedTurnKeys = [turnKey]
+             };
+             await _repository.SaveAsync(created, cancellationToken);
+             return created;
+         }
+ 
++        existing = existing with { EvaluatedTurnKeys = [.. existing.EvaluatedTurnKeys, turnKey] };
+         existing.UsageCount++;
+         existing.LastUsedAt = now;
+         existing.UpdatedAt = now;
+diff --git a/src/Pry.Core/Intelligence/CharacterIntelligenceService.cs b/src/Pry.Core/Intelligence/CharacterIntelligenceService.cs
+index 073c825..3b41830 100644
+--- a/src/Pry.Core/Intelligence/CharacterIntelligenceService.cs
++++ b/src/Pry.Core/Intelligence/CharacterIntelligenceService.cs
+@@ -18,6 +18,11 @@ public sealed record TurnOutcome(
+     public bool DeliveredToUser { get; init; } = true;
+     public MoodSignal? MoodEffect { get; init; }
+     public double SharedContextDelta { get; init; }
++    public string? FollowUpEvidence { get; init; }
++    public bool FeedbackIsExplicit { get; init; }
++    public string? ExpressionFeedbackId { get; init; }
++    public IReadOnlyList<string> AcceptedExpressionStyles { get; init; } = [];
++    public IReadOnlyList<string> RejectedExpressionStyles { get; init; } = [];
+ }
+ 
+ /// <summary>
+@@ -90,11 +95,34 @@ public sealed class CharacterIntelligenceService : ICharacterIntelligence
+             await RecordExperienceAsync(outcome, cancellationToken);
+ 
+         await _expressions.NoteUsedAsync(outcome.UsedHints, now, cancellationToken);
+-        _expressions.Learner.TryEnqueue(new DeliveredTurn(
+-            outcome.Situation.ConversationId, outcome.Situation.TurnId, now,
++        _ = EnqueueExpressionObservation(outcome);
++    }
++
++    /// <summary>
++    /// Reports later user feedback about an already delivered turn. Does not count another
++    /// exchange, change mood/relationship, or mark an expression as used again.
++    /// Hosts must not replay CompleteTurnAsync merely to attach a user follow-up.
++    /// </summary>
++    /// <returns>False if no delivered turn was supplied or the expression queue is full.</returns>
++    public async Task<bool> ObserveFeedbackAsync(TurnOutcome outcome, CancellationToken cancellationToken = default)
++    {
++        if (!outcome.DeliveredToUser) return false;
++        if (outcome.Decision.Intent != ResponseIntent.DoNothing)
++            await RecordExperienceAsync(outcome, cancellationToken);
++        return EnqueueExpressionObservation(outcome);
++    }
++
++    private bool EnqueueExpressionObservation(TurnOutcome outcome)
++    {
++        return _expressions.Learner.TryEnqueue(new DeliveredTurn(
++            outcome.Situation.ConversationId, outcome.Situation.TurnId, outcome.CompletedAt,
+             outcome.Situation.UserInput, outcome.DeliveredAssistantText,
+-            UserAskedToStopTalkingLikeThat: outcome.Outcome == InteractionOutcome.Corrected
+-                && outcome.UsedHints.Count > 0));
++            UserAskedToStopTalkingLikeThat: false)
++        {
++            FeedbackEvidenceId = outcome.ExpressionFeedbackId,
++            AcceptedStyles = outcome.AcceptedExpressionStyles,
++            RejectedStyles = outcome.RejectedExpressionStyles
++        });
+     }
+ 
+     private async Task RecordExperienceAsync(TurnOutcome outcome, CancellationToken cancellationToken)
+@@ -102,8 +130,8 @@ public sealed class CharacterIntelligenceService : ICharacterIntelligence
+         var experience = new BehaviorExperience(
+             outcome.Situation.CharacterInstanceId, outcome.Situation.ConversationId, outcome.Situation.TurnId,
+             outcome.Decision.ScenarioTag, outcome.Decision.Intent, outcome.Outcome, outcome.CompletedAt,
+-            FollowUpEvidence: outcome.DeliveredAssistantText.Length > 24
+-                ? outcome.DeliveredAssistantText[..24] : outcome.DeliveredAssistantText);
++            FollowUpEvidence: outcome.FollowUpEvidence)
++        { FeedbackIsExplicit = outcome.FeedbackIsExplicit };
+         await _experiences.AppendAsync(experience, cancellationToken);
+         await new BehaviorPatternUpdater(_patterns, () => outcome.CompletedAt)
+             .RecordAsync(experience, cancellationToken);
+diff --git a/src/Pry.Core/Expression/ExpressionPattern.cs b/src/Pry.Core/Expression/ExpressionPattern.cs
+index b38151c..c0fc25d 100644
+--- a/src/Pry.Core/Expression/ExpressionPattern.cs
++++ b/src/Pry.Core/Expression/ExpressionPattern.cs
+@@ -30,6 +30,9 @@ public sealed record ExpressionPattern
+     public DateTimeOffset? LastUsedAt { get; set; }
+     public ExpressionPatternSource Source { get; init; } = ExpressionPatternSource.Learned;
+     public bool Suppressed { get; set; }
++    /// <summary>Distinct explicit feedback references; assistant repetition is not evidence.</summary>
++    public IReadOnlyList<string> AcceptedEvidenceIds { get; init; } = [];
++    public IReadOnlyList<string> AcceptedTurnKeys { get; init; } = [];
+ 
+     public string DedupKey => $"{Tone}|{ExpressionGuard.Normalize(Style)}";
+ }
+diff --git a/src/Pry.Core/Expression/ExpressionLearner.cs b/src/Pry.Core/Expression/ExpressionLearner.cs
+index 50d76b7..3008a91 100644
+--- a/src/Pry.Core/Expression/ExpressionLearner.cs
++++ b/src/Pry.Core/Expression/ExpressionLearner.cs
+@@ -15,7 +15,13 @@ public sealed record DeliveredTurn(
+     DateTimeOffset DeliveredAt,
+     string UserInput,
+     string DeliveredAssistantText,
+-    bool UserAskedToStopTalkingLikeThat = false);
++    bool UserAskedToStopTalkingLikeThat = false)
++{
++    /// <summary>Stable reference to explicit user feedback about the listed styles.</summary>
++    public string? FeedbackEvidenceId { get; init; }
++    public IReadOnlyList<string> AcceptedStyles { get; init; } = [];
++    public IReadOnlyList<string> RejectedStyles { get; init; } = [];
++}
+ 
+ public enum LearningOutcome
+ {
+@@ -29,14 +35,16 @@ public enum LearningOutcome
+     RejectedUserEcho,
+     RejectedPersonaConflict,
+     RejectedExplicitCorrection,
+-    DroppedQueueFull
++    DroppedQueueFull,
++    RejectedUnconfirmed,
++    Unchanged
+ }
+ 
+ public sealed record LearningResult(string Style, LearningOutcome Outcome, long EvidenceCount);
+ 
+ /// <summary>
+-/// Background-only. Enqueue never blocks and never throws on a full queue; extraction runs when
+-/// the host drains, so a slow store cannot delay a visible reply.
++/// Background-only. Enqueue uses only a short local lock and rejects a full queue; extraction
++/// runs when the host drains, so a slow store cannot delay a visible reply.
+ /// </summary>
+ public sealed class ExpressionLearner
+ {
+@@ -51,6 +59,8 @@ public sealed class ExpressionLearner
+         ["啊这", "不是", "好好好", "行吧", "得嘞", "笑不活", "我嘞个", "咱就是说"];
+ 
+     private readonly ConcurrentQueue<DeliveredTurn> _queue = new();
++    private readonly object _queueGate = new();
++    private readonly SemaphoreSlim _drainGate = new(1, 1);
+     private readonly ConcurrentDictionary<string, ShapeEvidence> _shapes = new(StringComparer.Ordinal);
+     private readonly IExpressionPatternRepository _store;
+     private readonly string _instanceId;
+@@ -70,22 +80,38 @@ public sealed class ExpressionLearner
+ 
+     public bool TryEnqueue(DeliveredTurn turn)
+     {
+-        if (_queue.Count >= QueueCapacity)
++        lock (_queueGate)
+         {
+-            Interlocked.Increment(ref _dropped);
+-            return false;
++            if (_queue.Count >= QueueCapacity)
++            {
++                Interlocked.Increment(ref _dropped);
++                return false;
++            }
++            // Do not retain caller-owned mutable lists in background work.
++            _queue.Enqueue(turn with
++            {
++                AcceptedStyles = turn.AcceptedStyles.ToArray(),
++                RejectedStyles = turn.RejectedStyles.ToArray()
++            });
++            return true;
+         }
+-        _queue.Enqueue(turn);
+-        return true;
+     }
+ 
+     public async Task<IReadOnlyList<LearningResult>> DrainAsync(CancellationToken cancellationToken = default)
++    {
++        await _drainGate.WaitAsync(cancellationToken);
++        try { return await DrainCoreAsync(cancellationToken); }
++        finally { _drainGate.Release(); }
++    }
++
++    private async Task<IReadOnlyList<LearningResult>> DrainCoreAsync(CancellationToken cancellationToken)
+     {
+         var batch = new List<DeliveredTurn>();
+-        while (batch.Count < QueueCapacity && _queue.TryDequeue(out var turn)) batch.Add(turn);
+-        if (batch.Count == 0) return [];
++        lock (_queueGate)
++            while (batch.Count < QueueCapacity && _queue.TryDequeue(out var turn)) batch.Add(turn);
+ 
+         foreach (var turn in batch) Observe(turn);
++        if (!_shapes.Values.Any(x => x.Dirty)) return [];
+ 
+         var stored = await _store.ListForCharacterAsync(_instanceId, cancellationToken);
+         var byKey = stored.GroupBy(x => x.DedupKey, StringComparer.Ordinal)
+@@ -95,8 +121,8 @@ public sealed class ExpressionLearner
+         foreach (var evidence in _shapes.Values)
+         {
+             if (!evidence.Dirty) continue;
+-            evidence.Dirty = false;
+             var (outcome, count) = await CommitAsync(evidence, byKey, cancellationToken);
++            evidence.Dirty = false;
+             results.Add(new LearningResult(evidence.Shape, outcome, count));
+         }
+         return results;
+@@ -104,21 +130,35 @@ public sealed class ExpressionLearner
+ 
+     private void Observe(DeliveredTurn turn)
+     {
+-        foreach (var shape in ExtractShapes(turn.DeliveredAssistantText))
++        var extracted = ExtractShapes(turn.DeliveredAssistantText).Distinct(StringComparer.Ordinal).ToArray();
++        // A correction may arrive when the next delivered reply no longer contains the habit.
++        foreach (var shape in extracted.Concat(turn.RejectedStyles).Distinct(StringComparer.Ordinal))
+         {
++            if (string.IsNullOrWhiteSpace(shape) || ExpressionGuard.IsTooLong(shape)) continue;
+             var evidence = _shapes.GetOrAdd(shape, key => new ShapeEvidence(key));
++            if (turn.RejectedStyles.Contains(shape, StringComparer.Ordinal)
++                || (turn.UserAskedToStopTalkingLikeThat && extracted.Contains(shape, StringComparer.Ordinal)))
++            {
++                evidence.Rejected = true;
++                evidence.Dirty = true;
++            }
+             var echoedByUser = turn.UserInput.Contains(shape, StringComparison.Ordinal);
+             if (echoedByUser) evidence.UserSaidIt = true;
+-            if (!evidence.Turns.Add(turn.TurnId)) continue;
+-
++            // Delivery replay can carry later feedback, but cannot manufacture another occurrence.
++            var turnKey = $"{turn.ConversationId.Length}:{turn.ConversationId}{turn.TurnId}";
+             evidence.Dirty = true;
+             if (evidence.FirstSeenAt == default) evidence.FirstSeenAt = turn.DeliveredAt;
+             if (!echoedByUser)
+             {
+-                evidence.IndependentTurns.Add(turn.TurnId);
+-                evidence.Conversations.Add(turn.ConversationId);
++                evidence.IndependentTurns.Add(turnKey);
++                if (extracted.Contains(shape, StringComparer.Ordinal)
++                    && turn.AcceptedStyles.Contains(shape, StringComparer.Ordinal)
++                    && !string.IsNullOrWhiteSpace(turn.FeedbackEvidenceId))
++                {
++                    evidence.AcceptedIds.Add(turn.FeedbackEvidenceId);
++                    evidence.AcceptedTurnKeys.Add(turnKey);
++                }
+             }
+-            if (turn.UserAskedToStopTalkingLikeThat) evidence.Rejected = true;
+         }
+     }
+ 
+@@ -126,7 +166,31 @@ public sealed class ExpressionLearner
+         Dictionary<string, ExpressionPattern> byKey, CancellationToken cancellationToken)
+     {
+         var supported = evidence.IndependentTurns.Count;
+-        if (evidence.Rejected) return (LearningOutcome.RejectedExplicitCorrection, supported);
++        var tone = InferTone(evidence.Shape);
++        var key = $"{tone}|{ExpressionGuard.Normalize(evidence.Shape)}";
++        byKey.TryGetValue(key, out var existing);
++        if (evidence.Rejected || existing?.Suppressed == true)
++        {
++            foreach (var variant in byKey.Values.Where(x =>
++                ExpressionGuard.Normalize(x.Style) == ExpressionGuard.Normalize(evidence.Shape)).ToArray())
++            {
++                var blocked = variant with { Suppressed = true, UpdatedAt = _clock() };
++                await _store.SaveAsync(blocked, cancellationToken);
++                byKey[blocked.DedupKey] = blocked;
++            }
++            // Keep the suppression in the store so a new learner cannot resurrect this habit.
++            var suppressed = existing is null ? new ExpressionPattern
++            {
++                Id = $"ep:{_instanceId}:{StableCode(evidence.Shape)}",
++                CharacterInstanceId = _instanceId, Situation = DescribeSituation(tone),
++                Style = evidence.Shape, Tone = tone, Confidence = 0, CreatedAt = _clock()
++            } : existing with { };
++            suppressed.Suppressed = true;
++            suppressed.UpdatedAt = _clock();
++            await _store.SaveAsync(suppressed, cancellationToken);
++            byKey[key] = suppressed;
++            return (LearningOutcome.RejectedExplicitCorrection, supported);
++        }
+         if (ExpressionGuard.IsTooLong(evidence.Shape)) return (LearningOutcome.RejectedTooLong, supported);
+         if (ExpressionGuard.IsCrude(evidence.Shape)) return (LearningOutcome.RejectedCrude, supported);
+         if (ExpressionGuard.LooksLikeAssistance(evidence.Shape)) return (LearningOutcome.RejectedBoilerplate, supported);
+@@ -136,16 +200,26 @@ public sealed class ExpressionLearner
+         // A habit the user themselves keeps saying is theirs, not ours; require one more
+         // independent occurrence before it is treated as the character's own.
+         if (evidence.UserSaidIt && supported < MinimumEvidence + 1) return (LearningOutcome.RejectedUserEcho, supported);
+-
+-        var tone = InferTone(evidence.Shape);
+-        var key = $"{tone}|{ExpressionGuard.Normalize(evidence.Shape)}";
+-        if (byKey.TryGetValue(key, out var existing))
++        var acceptedIds = (existing?.AcceptedEvidenceIds ?? []).Concat(evidence.AcceptedIds)
++            .Distinct(StringComparer.Ordinal).ToArray();
++        var acceptedTurns = (existing?.AcceptedTurnKeys ?? []).Concat(evidence.AcceptedTurnKeys)
++            .Distinct(StringComparer.Ordinal).ToArray();
++        var acceptedCount = Math.Min(acceptedIds.Length, acceptedTurns.Length);
++        if (acceptedCount < MinimumEvidence) return (LearningOutcome.RejectedUnconfirmed, acceptedCount);
++        if (existing is not null)
+         {
+-            existing.EvidenceCount = supported;
+-            existing.Confidence = Math.Clamp(existing.Confidence + 0.03, 0, 0.8);
+-            existing.UpdatedAt = _clock();
+-            await _store.SaveAsync(existing, cancellationToken);
+-            return (LearningOutcome.Merged, existing.EvidenceCount);
++            if (acceptedIds.Length == existing.AcceptedEvidenceIds.Count
++                && acceptedTurns.Length == existing.AcceptedTurnKeys.Count)
++                return (LearningOutcome.Unchanged, existing.EvidenceCount);
++            var merged = existing with { AcceptedEvidenceIds = acceptedIds, AcceptedTurnKeys = acceptedTurns };
++            merged.EvidenceCount = acceptedCount;
++            // Confidence depends on independent feedback, never the number of drain/retry calls.
++            if (merged.Source == ExpressionPatternSource.Learned)
++                merged.Confidence = Math.Clamp(0.35 + 0.03 * (acceptedCount - MinimumEvidence), 0.35, 0.8);
++            merged.UpdatedAt = _clock();
++            await _store.SaveAsync(merged, cancellationToken);
++            byKey[key] = merged;
++            return (LearningOutcome.Merged, merged.EvidenceCount);
+         }
+ 
+         var created = new ExpressionPattern
+@@ -156,8 +230,10 @@ public sealed class ExpressionLearner
+             Style = evidence.Shape,
+             Tone = tone,
+             Source = ExpressionPatternSource.Learned,
+-            Confidence = Math.Clamp(0.35 + 0.1 * (supported - MinimumEvidence), 0.2, 0.7),
+-            EvidenceCount = supported,
++            Confidence = Math.Clamp(0.35 + 0.03 * (acceptedCount - MinimumEvidence), 0.35, 0.8),
++            EvidenceCount = acceptedCount,
++            AcceptedEvidenceIds = acceptedIds,
++            AcceptedTurnKeys = acceptedTurns,
+             CreatedAt = evidence.FirstSeenAt == default ? _clock() : evidence.FirstSeenAt,
+             UpdatedAt = _clock()
+         };
+@@ -207,9 +283,9 @@ public sealed class ExpressionLearner
+     private sealed class ShapeEvidence(string shape)
+     {
+         public string Shape { get; } = shape;
+-        public HashSet<string> Turns { get; } = new(StringComparer.Ordinal);
+         public HashSet<string> IndependentTurns { get; } = new(StringComparer.Ordinal);
+-        public HashSet<string> Conversations { get; } = new(StringComparer.Ordinal);
++        public HashSet<string> AcceptedIds { get; } = new(StringComparer.Ordinal);
++        public HashSet<string> AcceptedTurnKeys { get; } = new(StringComparer.Ordinal);
+         public bool UserSaidIt { get; set; }
+         public bool Rejected { get; set; }
+         public bool Dirty { get; set; }
+diff --git a/tests/Pry.Core.Tests/CharacterIntelligenceTests.cs b/tests/Pry.Core.Tests/CharacterIntelligenceTests.cs
+index 79b7aa3..dfa11ad 100644
+--- a/tests/Pry.Core.Tests/CharacterIntelligenceTests.cs
++++ b/tests/Pry.Core.Tests/CharacterIntelligenceTests.cs
+@@ -278,7 +278,7 @@ public sealed class CharacterIntelligenceTests
+     {
+         var pattern = await new BehaviorPatternUpdater(new InMemoryBehaviorPatternRepository(), () => T)
+             .RecordAsync(new BehaviorExperience("author-character", "conv-1", "t1", "TopicContinuation",
+-                ResponseIntent.Tease, InteractionOutcome.Rejected, T));
++                ResponseIntent.Tease, InteractionOutcome.Rejected, T, "feedback-1") { FeedbackIsExplicit = true });
+ 
+         Assert.NotNull(pattern);
+         CloseTo(0.45, pattern!.Confidence);
+@@ -293,7 +293,8 @@ public sealed class CharacterIntelligenceTests
+         BehaviorPattern? pattern = null;
+         for (var i = 0; i < 40; i++)
+             pattern = await updater.RecordAsync(new BehaviorExperience("author-character", "conv-1", $"t{i}",
+-                "TopicContinuation", ResponseIntent.Tease, InteractionOutcome.Rejected, T.AddMinutes(i)));
++                "TopicContinuation", ResponseIntent.Tease, InteractionOutcome.Rejected, T.AddMinutes(i), $"feedback-{i}")
++                { FeedbackIsExplicit = true });
+ 
+         Assert.NotNull(pattern);
+         Assert.True(pattern!.Confidence >= 0.05);
+@@ -323,7 +324,7 @@ public sealed class CharacterIntelligenceTests
+         Assert.Equal(ResponseIntent.Acknowledge, decision.Intent);
+         Assert.Contains("relationship:tease_locked", decision.Gates);
+         Assert.False(thin.HasEvidence);
+-        Assert.True(thin with { UsageCount = BehaviorPattern.MinimumObservationsToInfluence } is { HasEvidence: true });
++        Assert.True(thin with { SuccessCount = BehaviorPattern.MinimumObservationsToInfluence } is { HasEvidence: true });
+         Assert.Empty(new BehaviorPatternRetriever().Retrieve([thin], "LowContent"));
+         Assert.Single(new BehaviorPatternRetriever().Retrieve([thin], "PlayfulProvoke"));
+     }
+@@ -334,7 +335,7 @@ public sealed class CharacterIntelligenceTests
+         var pattern = new BehaviorPattern
+         {
+             BehaviorPatternId = "bp-2", CharacterInstanceId = "author-character", Scenario = "Unknown",
+-            Strategy = ResponseIntent.Share, UsageCount = 6, Confidence = 0.7
++            Strategy = ResponseIntent.Share, UsageCount = 6, SuccessCount = 6, Confidence = 0.7
+         };
+         var decision = new BehaviorPlanner().Plan(At("就那样"), In(Familiar()), [pattern]);
+         Assert.Equal(ResponseIntent.Share, decision.Intent);
+@@ -368,7 +369,8 @@ public sealed class CharacterIntelligenceTests
+ 
+         await service.CompleteTurnAsync(new TurnOutcome(situation, state, context.Decision,
+             [new ExpressionHint("ep-x", "轻微吐槽", "我嘞个", ExpressionTone.Playful, 0.5)],
+-            InteractionOutcome.PositiveReaction, "我嘞个，居然活过来了", T));
++            InteractionOutcome.PositiveReaction, "我嘞个，居然活过来了", T)
++            { FeedbackIsExplicit = true, FollowUpEvidence = "explicit-feedback-1" });
+ 
+         Assert.Equal(1, expressions.Learner.PendingCount);
+         Assert.Single(await experiences.ListForCharacterAsync("author-character", 10));
+diff --git a/tests/Pry.Core.Tests/ExpressionSystemTests.cs b/tests/Pry.Core.Tests/ExpressionSystemTests.cs
+index a136272..610ccfd 100644
+--- a/tests/Pry.Core.Tests/ExpressionSystemTests.cs
++++ b/tests/Pry.Core.Tests/ExpressionSystemTests.cs
+@@ -255,7 +255,7 @@ public sealed class ExpressionSystemTests
+ 
+         Assert.Equal(LearningOutcome.RejectedExplicitCorrection,
+             (await learner.DrainAsync()).Single(r => r.Style == "我嘞个").Outcome);
+-        Assert.Empty(await store.ListForCharacterAsync("author-character"));
++        Assert.All(await store.ListForCharacterAsync("author-character"), x => Assert.True(x.Suppressed));
+     }
+ 
+     [Fact]
+@@ -291,7 +291,11 @@ public sealed class ExpressionSystemTests
+     }
+ 
+     private static DeliveredTurn Turn(string turnId, string userInput, string assistantText, bool corrected = false) =>
+-        new("conv-1", turnId, T, userInput, assistantText, corrected);
++        new("conv-1", turnId, T, userInput, assistantText, corrected)
++        {
++            // These fixtures model independent, explicit user acceptance; delivery alone does not teach.
++            FeedbackEvidenceId = $"feedback-{turnId}", AcceptedStyles = ["我嘞个"]
++        };
+ 
+     private static ChatMessage Said(string text, ChatRole role = ChatRole.Assistant, int minutesAgo = 0) =>
+         new(1, "conv-1", role, text, T.AddMinutes(-minutesAgo));
+diff --git a/tests/Pry.Core.Tests/LearningSafetyTests.cs b/tests/Pry.Core.Tests/LearningSafetyTests.cs
+new file mode 100644
+--- /dev/null
++++ b/tests/Pry.Core.Tests/LearningSafetyTests.cs
+@@ -0,0 +1,274 @@
++using Pry.Core.Abstractions;
++using Pry.Core.Expression;
++using Pry.Core.Intelligence;
++using Xunit;
++
++namespace Pry.Core.Tests;
++
++public sealed class LearningSafetyTests
++{
++    private static readonly DateTimeOffset Now = new(2026, 9, 20, 0, 0, 0, TimeSpan.Zero);
++    private static CancellationToken Token => TestContext.Current.CancellationToken;
++
++    private static DeliveredTurn Turn(string id, bool accepted = false) =>
++        new("conversation", id, Now, "聊阳台的植物", "我嘞个，居然活过来了")
++        {
++            FeedbackEvidenceId = accepted ? $"feedback-{id}" : null,
++            AcceptedStyles = accepted ? ["我嘞个"] : []
++        };
++
++    private static BehaviorExperience Experience(string id, InteractionOutcome outcome, bool explicitFeedback = true) =>
++        new("instance", "conversation", id, "topic", ResponseIntent.ContinueTopic, outcome, Now, $"feedback-{id}")
++        { FeedbackIsExplicit = explicitFeedback };
++
++    [Theory]
++    [InlineData(InteractionOutcome.Continued)]
++    [InlineData(InteractionOutcome.TopicShiftedAway)]
++    [InlineData(InteractionOutcome.Silenced)]
++    [InlineData(InteractionOutcome.Unknown)]
++    public async Task Ambiguous_outcomes_do_not_create_or_reinforce_patterns(InteractionOutcome outcome)
++    {
++        var store = new InMemoryBehaviorPatternRepository();
++        var updater = new BehaviorPatternUpdater(store, () => Now);
++        Assert.Null(await updater.RecordAsync(Experience("empty", outcome), Token));
++        var initial = await updater.RecordAsync(Experience("first", InteractionOutcome.PositiveReaction), Token);
++        for (var i = 0; i < 20; i++)
++            await updater.RecordAsync(Experience($"t-{i}", outcome), Token);
++        var result = Assert.Single(await store.ListForCharacterAsync("instance", Token));
++        Assert.Equal(initial!.Confidence, result.Confidence);
++        Assert.Equal(1, result.SuccessCount);
++        Assert.False(result.HasEvidence);
++    }
++
++    [Fact]
++    public async Task A_label_without_explicit_follow_up_does_not_teach_behavior()
++    {
++        var updater = new BehaviorPatternUpdater(new InMemoryBehaviorPatternRepository());
++        Assert.Null(await updater.RecordAsync(Experience("t", InteractionOutcome.PositiveReaction, false), Token));
++        Assert.Null(await updater.RecordAsync(Experience("t", InteractionOutcome.Rejected) with
++            { FollowUpEvidence = null }, Token));
++    }
++
++    [Fact]
++    public async Task Replayed_feedback_is_folded_once_even_with_concurrent_updaters()
++    {
++        var store = new InMemoryBehaviorPatternRepository();
++        var feedback = Experience("t", InteractionOutcome.PositiveReaction);
++        await Task.WhenAll(Enumerable.Range(0, 20).Select(_ =>
++            new BehaviorPatternUpdater(store).RecordAsync(feedback, Token)));
++        var result = Assert.Single(await store.ListForCharacterAsync("instance", Token));
++        Assert.Equal(1, result.SuccessCount);
++        Assert.Equal(1, result.UsageCount);
++        Assert.Single(result.EvaluatedTurnKeys);
++        Assert.Equal(0.55, result.Confidence, 5);
++    }
++
++    [Fact]
++    public async Task Three_explicit_independent_outcomes_can_inform_the_planner()
++    {
++        var store = new InMemoryBehaviorPatternRepository();
++        var updater = new BehaviorPatternUpdater(store);
++        for (var i = 0; i < 3; i++)
++            await updater.RecordAsync(Experience($"t-{i}", InteractionOutcome.PositiveReaction), Token);
++        Assert.True(Assert.Single(await store.ListForCharacterAsync("instance", Token)).HasEvidence);
++    }
++
++    [Fact]
++    public async Task Model_repetition_alone_never_becomes_a_habit()
++    {
++        var store = new InMemoryExpressionPatternRepository();
++        var learner = new ExpressionLearner(store, "instance");
++        for (var i = 0; i < 40; i++) learner.TryEnqueue(Turn($"t-{i}"));
++        Assert.Contains(await learner.DrainAsync(Token), x => x.Outcome == LearningOutcome.RejectedUnconfirmed);
++        Assert.Empty(await store.ListForCharacterAsync("instance", Token));
++    }
++
++    [Fact]
++    public async Task One_feedback_reference_cannot_confirm_multiple_turns()
++    {
++        var store = new InMemoryExpressionPatternRepository();
++        var learner = new ExpressionLearner(store, "instance");
++        learner.TryEnqueue(Turn("t1", true));
++        learner.TryEnqueue(Turn("t2", true) with { FeedbackEvidenceId = "feedback-t1" });
++        await learner.DrainAsync(Token);
++        Assert.Empty(await store.ListForCharacterAsync("instance", Token));
++    }
++
++    [Fact]
++    public async Task Multiple_feedback_events_for_one_turn_are_not_independent_turns()
++    {
++        var store = new InMemoryExpressionPatternRepository();
++        var learner = new ExpressionLearner(store, "instance");
++        learner.TryEnqueue(Turn("t1", true));
++        learner.TryEnqueue(Turn("t1", true) with { FeedbackEvidenceId = "other-feedback" });
++        learner.TryEnqueue(Turn("unconfirmed"));
++        await learner.DrainAsync(Token);
++        Assert.Empty(await store.ListForCharacterAsync("instance", Token));
++    }
++
++    [Fact]
++    public async Task Explicit_feedback_is_idempotent_across_learner_recreation()
++    {
++        var store = new InMemoryExpressionPatternRepository();
++        var learner = new ExpressionLearner(store, "instance");
++        learner.TryEnqueue(Turn("t1", true));
++        learner.TryEnqueue(Turn("t2", true));
++        await learner.DrainAsync(Token);
++        var before = Assert.Single(await store.ListForCharacterAsync("instance", Token));
++        learner = new ExpressionLearner(store, "instance");
++        learner.TryEnqueue(Turn("t1", true));
++        learner.TryEnqueue(Turn("t2", true));
++        Assert.Equal(LearningOutcome.Unchanged, Assert.Single(await learner.DrainAsync(Token)).Outcome);
++        var after = Assert.Single(await store.ListForCharacterAsync("instance", Token));
++        Assert.Equal(before.Confidence, after.Confidence);
++        Assert.Equal(2, after.EvidenceCount);
++    }
++
++    [Fact]
++    public async Task Correction_suppresses_existing_pattern_without_repeating_it_and_survives_recreation()
++    {
++        var store = new InMemoryExpressionPatternRepository();
++        var learner = new ExpressionLearner(store, "instance");
++        learner.TryEnqueue(Turn("t1", true));
++        learner.TryEnqueue(Turn("t2", true));
++        await learner.DrainAsync(Token);
++        learner.TryEnqueue(Turn("correction") with
++        {
++            DeliveredAssistantText = "好。", RejectedStyles = ["我嘞个"]
++        });
++        await learner.DrainAsync(Token);
++        Assert.True(Assert.Single(await store.ListForCharacterAsync("instance", Token)).Suppressed);
++
++        learner = new ExpressionLearner(store, "instance");
++        learner.TryEnqueue(Turn("t3", true));
++        learner.TryEnqueue(Turn("t4", true));
++        await learner.DrainAsync(Token);
++        var patterns = await store.ListForCharacterAsync("instance", Token);
++        Assert.True(Assert.Single(patterns).Suppressed);
++        Assert.Empty(new ExpressionRetriever().Retrieve(patterns, "轻微吐槽", "我嘞个", Now));
++    }
++
++    [Fact]
++    public async Task Late_correction_on_an_already_observed_turn_takes_precedence()
++    {
++        var store = new InMemoryExpressionPatternRepository();
++        var learner = new ExpressionLearner(store, "instance");
++        learner.TryEnqueue(Turn("t1", true));
++        learner.TryEnqueue(Turn("t2", true));
++        await learner.DrainAsync(Token);
++        learner.TryEnqueue(Turn("t1", true) with { UserAskedToStopTalkingLikeThat = true });
++        await learner.DrainAsync(Token);
++        Assert.True(Assert.Single(await store.ListForCharacterAsync("instance", Token)).Suppressed);
++    }
++
++    [Fact]
++    public async Task A_failed_store_write_is_retried_without_another_turn()
++    {
++        var store = new FailingStore();
++        var learner = new ExpressionLearner(store, "instance");
++        learner.TryEnqueue(Turn("t1", true));
++        learner.TryEnqueue(Turn("t2", true));
++        await Assert.ThrowsAsync<IOException>(() => learner.DrainAsync(Token));
++        Assert.Equal(0, learner.PendingCount);
++        Assert.Equal(LearningOutcome.Created, Assert.Single(await learner.DrainAsync(Token)).Outcome);
++        Assert.Equal(2, Assert.Single(await store.ListForCharacterAsync("instance", Token)).EvidenceCount);
++    }
++
++    [Fact]
++    public async Task A_cancelled_drain_preserves_queued_work()
++    {
++        var store = new InMemoryExpressionPatternRepository();
++        var learner = new ExpressionLearner(store, "instance");
++        learner.TryEnqueue(Turn("t1", true));
++        learner.TryEnqueue(Turn("t2", true));
++        using var cancelled = new CancellationTokenSource();
++        cancelled.Cancel();
++        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => learner.DrainAsync(cancelled.Token));
++        Assert.Equal(2, learner.PendingCount);
++        await learner.DrainAsync(Token);
++        Assert.Single(await store.ListForCharacterAsync("instance", Token));
++    }
++
++    [Fact]
++    public async Task Concurrent_enqueue_is_bounded_and_concurrent_drains_do_not_duplicate_evidence()
++    {
++        var store = new InMemoryExpressionPatternRepository();
++        var learner = new ExpressionLearner(store, "instance");
++        await Parallel.ForEachAsync(Enumerable.Range(0, 512), Token, (i, _) =>
++        {
++            learner.TryEnqueue(Turn($"t-{i}", true));
++            return ValueTask.CompletedTask;
++        });
++        Assert.Equal(ExpressionLearner.QueueCapacity, learner.PendingCount);
++        Assert.Equal(512 - ExpressionLearner.QueueCapacity, learner.DroppedCount);
++        await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => learner.DrainAsync(Token)));
++        Assert.Equal(ExpressionLearner.QueueCapacity,
++            Assert.Single(await store.ListForCharacterAsync("instance", Token)).EvidenceCount);
++    }
++
++    [Fact]
++    public async Task Later_feedback_does_not_count_another_exchange_or_use_assistant_text_as_evidence()
++    {
++        var state = new CharacterStateService(new IdentitySnapshot
++        {
++            CharacterId = "character", Name = "普莱", CoreIdentity = "本地角色",
++            PersonalityOutline = "安静", SpeechStyleSeed = "短句", UserName = "你"
++        }, "user", new InMemoryCharacterStateRepository());
++        var patterns = new InMemoryBehaviorPatternRepository();
++        var experiences = new InMemoryBehaviorExperienceRepository();
++        var expressions = new ExpressionService(new InMemoryExpressionPatternRepository(), "instance");
++        var service = new CharacterIntelligenceService(state, expressions, patterns, experiences: experiences);
++        var situation = new SituationSnapshot
++        {
++            CharacterInstanceId = "instance", ConversationId = "conversation", TurnId = "t",
++            UserInput = "今天养的植物活过来了", Now = Now
++        };
++        var decision = new BehaviorDecision { Intent = ResponseIntent.ContinueTopic, ScenarioTag = "topic" };
++        var outcome = new TurnOutcome(situation, state.Snapshot(Now), decision, [],
++            InteractionOutcome.Unknown, "我嘞个，居然活过来了", Now);
++        await service.CompleteTurnAsync(outcome, Token);
++        Assert.Null(Assert.Single(await experiences.ListForCharacterAsync("instance", 10, Token)).FollowUpEvidence);
++        var before = await state.CurrentRecordAsync();
++
++        Assert.True(await service.ObserveFeedbackAsync(outcome with
++        {
++            Outcome = InteractionOutcome.PositiveReaction, FeedbackIsExplicit = true,
++            FollowUpEvidence = "feedback-message-id", ExpressionFeedbackId = "feedback-message-id",
++            AcceptedExpressionStyles = ["我嘞个"]
++        }, Token));
++        Assert.Equal(before, await state.CurrentRecordAsync());
++        Assert.Equal(1, Assert.Single(await patterns.ListForCharacterAsync("instance", Token)).SuccessCount);
++        Assert.Contains(await experiences.ListForCharacterAsync("instance", 10, Token),
++            x => x.FollowUpEvidence == "feedback-message-id");
++    }
++
++    [Fact]
++    public async Task Correction_blocks_authored_variants_with_a_different_tone()
++    {
++        var store = new InMemoryExpressionPatternRepository();
++        await store.SaveAsync(new ExpressionPattern
++        {
++            Id = "authored", CharacterInstanceId = "instance", Situation = "轻微吐槽", Style = "我嘞个",
++            Source = ExpressionPatternSource.Authored, Tone = ExpressionTone.Neutral, Confidence = 0.7
++        }, Token);
++        var learner = new ExpressionLearner(store, "instance");
++        learner.TryEnqueue(Turn("correction") with { DeliveredAssistantText = "好。", RejectedStyles = ["我嘞个"] });
++        await learner.DrainAsync(Token);
++        Assert.All(await store.ListForCharacterAsync("instance", Token), x => Assert.True(x.Suppressed));
++    }
++
++    private sealed class FailingStore : IExpressionPatternRepository
++    {
++        private readonly InMemoryExpressionPatternRepository _inner = new();
++        private bool _fail = true;
++        public Task<IReadOnlyList<ExpressionPattern>> ListForCharacterAsync(string characterInstanceId,
++            CancellationToken cancellationToken = default) => _inner.ListForCharacterAsync(characterInstanceId, cancellationToken);
++        public Task SaveAsync(ExpressionPattern pattern, CancellationToken cancellationToken = default)
++        {
++            if (_fail) { _fail = false; throw new IOException("simulated store failure"); }
++            return _inner.SaveAsync(pattern, cancellationToken);
++        }
++        public Task<bool> DeleteAsync(string expressionPatternId, CancellationToken cancellationToken = default) =>
++            _inner.DeleteAsync(expressionPatternId, cancellationToken);
++    }
++}

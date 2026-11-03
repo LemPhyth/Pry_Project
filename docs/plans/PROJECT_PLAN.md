@@ -67,6 +67,8 @@
 
 | 编号 | 任务 | 实际负责人 / 状态 | 主要依赖与交付 |
 |---|---|---|---|
+| RES-RETC-001 | Retcon Form 固定源码研究 | Codex / 已完成（研究文档；未提交）；主树只维护本行及 §9 自有交接，源码和验证放仓库外临时目录 | 2026-10-27 交付固定 SHA 的 Markdown/ZIP：判断格式检查与来源覆盖 CLI 的分界，磨损累计并集、来源复用和回访空栏探针；不安装上游技能、不改产品实现或复用白名单。 |
+| RES-SURF-001 | SurfCore 固定源码研究 | Codex / 已完成（研究文档；未提交）；共享主树仅维护本行与 §9 自有交接，上游检出及验证在仓库外临时目录 | 2026-10-27 交付固定 SHA 的独立 Markdown/ZIP：QQ/B站/桌宠三链、角色/记忆/目的/收尾/权限/额度边界与 12 个隔离脚本结果；不改变 Pry v4、产品范围或源码复用白名单。 |
 | ARCH-HDS-001 | 研究与 v4 架构计划 | Codex / 文档已入库 `a7e62c1`，待作者结案 | HDS 固定源码复核、替换边界、问题映射、12 项实施任务与 24 项核心验收 |
 | DOC-HDS-002 | 共同入口与总计划整理 | Codex / 文档已入库 `a7e62c1`，待作者结案 | 本目录统一计划与任务状态；历史完整归档；根目录与文档入口同步 |
 | HDS-001 | 资产保全与可恢复地基 | **已实现待验**／守门人代派至隔离 worktree（实现 `3b65ccc`，已归位为主线 `8ef7d01`）；备份／恢复**未接生产路径**（无端点、无 UI 入口，触发时机属产品决策）；**使用中暴露两处缺口**＝`DEF-MEMDUAL-01`（库内两套结构版本账，第二套的高版拒绝不走可呈现错误）与 `DEF-WRIGATE-01`（第二宿主仍"告警后覆盖"描述文件），详见 `docs/narrative-open-items-memo.md` 与本页 §9 同日 entry——属已暴露旧缺陷，回修不需"轮到该阶段"；**2026-10-22 已派发**＝`docs/dispatch-hds-carrier-20261022.md` 的片 A（WRIGATE）与片 B（MEMDUAL）；**两片均已实现待验并归位**（片 A＝`b18ae27`＋`a0f7bb1`＋契约文档 `452cd4c`，片 B＝`374ecd8`＋`d2802ea`，代码面线尾 `6fc7dbb`；两套版本账**没有**合并、`SchemaVersion = 10` 未动） | 无；先合成数据，一致性备份、隔离恢复与未知高版保护 |
@@ -395,6 +397,22 @@ git diff --cached --check
 - **自此**：在飞＝1（`HDS-WAVE31-1028`，守门人自起 lane，本把派发后当场起后台子智能体）；`main` 照旧只挪 ref、**零 `tag`／零 push／零打包**。
 
 ### 2026-10-28 00:0x｜守门人｜收第三十波（HDS-007 第一片续跑刀）：**23 枚格第一次跑穿、七枚突变七枚清洁红**，代码按路径落地＝`ba7ef1`，**在册基线由这一把顶到 1380／executed 1378／failed 0／跳过 2**；上一把我扣住的那条"字节写完不等于可归位"这一把正面兑现，在飞＝0
+
+### 2026-10-27｜RES-RETC-001｜Codex：Retcon Form 源码研究文档交付（未提交）
+
+- 作者指定 `QiDouZu/retcon-form`，锁定 `5c41df1462f24ba3db386f4be9400be1f4818c20`（2026-10-26 13:32:20 +08:00）；定位＝判断记录格式＋结构检查器＋原文覆盖 CLI，非角色 Runtime 或完整长期记忆系统。
+- 交付：`C:/Users/24782/Documents/Codex/2026-09-20/referenced-chatgpt-conversation-this-is-an-2/outputs/research-2026-10-27/docs/research/RETCON_FORM.md`，ZIP 位于同 outputs 下 `Pry_Retcon_Form_Research_2026-10-27.zip`；27 个固定源码链接、Markdown 引用及 ZIP 字节一致性已核验。
+- 隔离验证：Python 3.12.14，上游 tests/test_retcon.py 三函数通过；sandbox 17 场景零失败，均为标准库与临时库。补充探针确认：① 不存在证据路径＋空白回访栏 score=5/unsettled=False，CLI exit=0 并显示已结案；② 先全覆盖后仅采用第 1 段，wear 仍为空（累计并集，不是最新压缩质量）；③ 同 raw 不同 source 复用旧记录、保留 source-A。上游受跟踪代码未修改。
+- 对 Pry：可研究推断身份、反例、更正理由与回访证据，但格式评分不证明内容正确；原文覆盖登记不证明理解或事实核验；不可将“原文只追加”用于绕过显式遗忘。应沿用 v4 的来源/范围/CAS/删除失效，不新增另一套认知 Runtime。
+- 未验证模型遵从、真实记忆质量、角色体验、并发/断电/恢复或关联仓库的实现；未安装上游 skill/prompt，未复制实现/模板/用户资料进 Pry，未改复用白名单。仅共享计划自有行与交接有改动，产品与他人文件未动；零 dotnet、零暂存提交/推送/发行。文档完成不构成产品或独立验收结案。
+
+### 2026-10-27｜RES-SURF-001｜Codex：SurfCore 源码研究文档交付（未提交）
+
+- 作者只指定 `Mieksido/surfcore`，按既有研究方式阅读，锁定 `8c55cda75b7374182a16428372ad42e451190de8`（package 0.6.3，2026-10-27 22:10:01 +08:00）。当前 Pry 比较依据为共同计划 v4；未改产品架构、测试、配置、他人未跟踪研究或用户数据。
+- 交付：`C:/Users/24782/Documents/Codex/2026-09-20/referenced-chatgpt-conversation-this-is-an-2/outputs/research-2026-10-27/docs/research/SURFCORE.md`；ZIP 位于同 outputs 下 `Pry_SurfCore_Research_2026-10-27.zip`。研究覆盖插件/桥接宿主、三条生成路径、记忆摄取/衰减/全量档、目的与自然收尾、角色切换、权限与额度失败策略，附固定源码链接和七角色阅读表。
+- 确认：对照旧 qq-bridge 固定快照，dsh-client/v2-wait/safe-fetch/slang-learner 四文件逐字节相同；SurfCore 的主要增量在跨渠道角色资料与日常管理。forget 只移除活动卡而先保留全量归档，不等于 Pry 显式遗忘；QQ 与桌宠共享资料不等于 HDS 统一 Narrator；B站 Scheduler 默认 danger-full-access，预算异常有继续调用路径，不能概括为所有渠道 fail-closed。
+- 隔离验证：Windows/Node 24.20.0，npm ci 禁生命周期脚本；12 个脚本均 exit 0。其中记忆卡 Node test 25/25，purpose 19/19、收尾 12 组、预算纯逻辑 77 项、用量服务 39 项；其余为文件/VM/接口夹具，不混加为统一产品用例总数。未运行真实 QQ/B站/DSH/模型、配套桌宠/语音、安装/补丁脚本或长稳验证。
+- 本刀仅维护共享计划自有行与本交接，实际报告与测试环境均在仓库外；未复制上游源码、preset、人设或素材进仓库，SurfCore 不加入复用白名单。没有执行 dotnet、暂存、提交、推送或发行；纯研究交付的完成不构成产品验收或新增排期。
 
 - **这一把的性质与文件面**：代码刀＋文档刀分两把。代码刀 `ba7ef1`＝`4 files changed, 900 insertions(+)`（`src/Pry.Core/Narrative/Advancement/` 三枚＋`tests/Pry.Core.Tests/BoundedAdvancementPrototypeTests.cs`），通道＝`git checkout 663d2c9d… -- <两枚路径>`＋`git commit --only -- <那四枚路径>`，**没有**写 `git merge --ff-only`（载体提交的父是 `8e9c13d`、线尾当时已 `9ac4396`，FF 数学上必被拒；共享脏树里 `--only` 显式路径才不会把他人暂存项卷进提交）。文档刀＝本报告追加 §九（守门人署名 `eval-QA-WAVE30-GK-1024`，§〇–§八 原文一字未改，凭据＝`git diff --numstat` 删除列恒 0）＋本文件（§4.2 的 HDS-007 行＋本条 §9）＋`docs/full-scope-sprint.md`（§0 大白话＋§3 密行）。`scripts`／`Pry.slnx`／`Directory.Build.props` 一字未动。**守门人这一把零 `dotnet`**（只读命令＋我自己写的 `.trx` 解析脚本），作者机器没被打断。
 - **先数盘再读它的自述（这一把我核的四件事＝工单 §二 那四条，全部从盘上取）**：① 红格归属＝我自己写 `gk30-count.js` 逐份数 `<UnitTestResult … outcome="Failed">` **开标签**，七轮各 **1 枚**、与同份 `<Counters failed="1">` 对账相符，七枚格名逐字符等于**波 29 已提交的** §三.0 事前论证（HEAD 版报告第 320–326 行）⇒ 归属是先档后跑、不是事后署名，红点行 `:63`／`:120`／`:143`／`:245`／`:266`／`:353`／`:307`；② 有没有常绿门＝**没有，而且我自己拆了最可疑的两格**：两枚源码扫描格的 `PrototypeFiles` 是写死的三枚文件名（循环必跑）、`PrototypeSource()` 在 `File.Exists` 上有 `Assert.True`、`RepositoryRoot()` 上溯不到 `Pry.slnx` 也红（路径坏掉会红不会绿），两格各带真阳性探针；**仍欠**"把扫描函数本身弄坏看探针是否先红"那一半，押下一把；③ 收尾四份 TRX 先数后读＋求和式＝108＋759＋233＋280＝**1380**、executed 1378、failed 0、跳过 2（两条按 `outcome="NotExecuted"` 点名＝`Configured_llama_server_requires_the_child_environment_key`／`Configured_sense_voice_model_can_run_offline`，`notExecuted` 计数器恒 0 不看），`measure-fixed-eval` 同场 Catalog 76／Passed 1378／Failed 0／Other 2 自洽；④ 工单 §一 五条范围**每条都拿到会响的格**（R1｜R2＋R3｜R4｜R5＋R7｜R6）。

@@ -74,6 +74,69 @@ public sealed class MemoryManagementSurfaceTests
         Assert.Contains("Destructive: true", "Button b = new(Destructive: true);", StringComparison.Ordinal);
     }
 
+    // ── QA-TIP1020-02：分组"有用性"判据（形状①：谓词未被掏空 + 结果流到控件）。───────────────
+    // F2 那条 `Assert.Contains("Status == \"orphaned\"", source)` 只证明形状串还在源码里：QA 的 M17 在谓词
+    // 后接 `&& false` 把第二组恒掏空，而那条 Contains 照旧绿——"扫到形状"不等于"形状与行为等价"。下面两条
+    // 补的是绑定：谓词不许被恒假合取掏空，并且分组结果必须真的接到那个控件。**不是再加一条 Contains**。
+
+    [Fact]
+    public void The_grouping_predicate_is_never_hollowed_out()
+    {
+        var grouping = OrphansStatement(Read("src", "Pry.App", WindowSource));
+        // 分组判定的谓词里出现任何一种"恒假合取"，第二组就恒空——正是 M17 的形状，旧 Contains 抓不到。
+        foreach (var hollowing in AlwaysFalseConjunctions)
+            Assert.DoesNotContain(hollowing, grouping, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_grouped_orphans_actually_flow_into_the_second_list()
+    {
+        var rhs = OrphanItemsSourceRhs(Read("src", "Pry.App", WindowSource));
+        // 第二组的赋值来源必须钉成分组结果 `orphans`；改接 records（第一组那批）或空集合都算把分组接错线。
+        Assert.StartsWith("orphans", rhs, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_grouping_gate_really_sees_the_m17_hollowing()
+    {
+        // 正向探针：把 M17 的形状喂给谓词扫描器，确认提取真的落到含 `&& false` 的那一段——否则"不掏空"这条门
+        // 自己可能就是常绿的（同 [[falsify-new-guards]]：新守卫要配正向探针）。
+        var hollowed = "…var orphans = details.Where(x => x.Status == \"orphaned\" && false)\n    .ToArray();…";
+        Assert.Contains("&& false", OrphansStatement(hollowed), StringComparison.Ordinal);
+        // 并确认绑定扫描器认得"接错线"：喂一个把第二组接到 records 的样本，右侧不应以 orphans 开头。
+        Assert.StartsWith("records", OrphanItemsSourceRhs("_orphaned.ItemsSource = records.Select(Item).ToArray();"),
+            StringComparison.Ordinal);
+    }
+
+    private static readonly string[] AlwaysFalseConjunctions =
+    [
+        "&& false", "&&false", "&& !true", "&& 0 == 1", "&& 1 == 2", "&& 2 == 3",
+        ".Where(_ => false)", ".Where(x => false)", "&& x.Status != x.Status",
+    ];
+
+    // `var orphans =` 那条语句（到最近的 `;` 为止）——分组判定就写在这段里。
+    private static string OrphansStatement(string source)
+    {
+        const string head = "var orphans =";
+        var at = source.IndexOf(head, StringComparison.Ordinal);
+        Assert.True(at >= 0, "找不到 `var orphans =`：分组判定被删掉了，第二组无从谈起。");
+        var end = source.IndexOf(';', at);
+        Assert.True(end >= 0, "`var orphans =` 那条语句没有结尾的 `;`，无法界定谓词范围。");
+        return source.Substring(at, end - at + 1);
+    }
+
+    // `_orphaned.ItemsSource =` 赋值的右侧（到最近的 `;` 为止）——钉"分组结果接到控件"这条线。
+    private static string OrphanItemsSourceRhs(string source)
+    {
+        const string head = "_orphaned.ItemsSource =";
+        var at = source.IndexOf(head, StringComparison.Ordinal);
+        Assert.True(at >= 0, "找不到 `_orphaned.ItemsSource =`：第二组没有赋值来源。");
+        var start = at + head.Length;
+        var end = source.IndexOf(';', start);
+        Assert.True(end >= 0, "`_orphaned.ItemsSource` 赋值没有结尾的 `;`。");
+        return source.Substring(start, end - start).Trim();
+    }
+
     private static int Occurrences(string text, string token)
     {
         var count = 0;

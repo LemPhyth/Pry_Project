@@ -1,6 +1,6 @@
 # 工单 `QA-TIP1020-02`（第 2 层 · 记忆页"分两组"的有用性判据）
 
-- **状态词**：已派工·待认领（守门人 2026-10-20 按作者授权落成白纸单；Owner＝Memory & Context 的界面半边，与 `RT-005-MANAGE` 同一条 lane；判定归 QA 从可指认提交复采，结案词归作者）
+- **状态词**：已派工·待认领 ⇒ **2026-10-20 已认领·进行中**（Owner＝Memory & Context 界面半边，认领人＝`RT-005-MANAGE`／2-C 同一写者；依据＝作者「按照守门人的派工进行工作」＋本轮「继续工作」；判定归 QA 从可指认提交复采，结案词归作者）。**单写者声明**：本刀只动 `tests/Pry.App.Tests/MemoryManagementSurfaceTests.cs`，`src/Pry.App/PryMessengerMemoryWindow.cs` 全程只读（反证时临时突变、`cp`＋`cmp` 逐字节还原，提交前对 `src/` 的 `git diff` 必须零行），`MainWindow.axaml.cs` 一行不碰；采 §2 形状①（谓词无恒假合取＋`_orphaned.ItemsSource` 钉成 `orphans`）。
 - **严重度**：Low，**不卡任何结案**——界面今天照常分两组，本轮实测七次全绿；这条是**判据欠账，不是缺陷**。
 - **载体基线**：开工当日先重取线尾。在册读数＝**988／0／2（总 990）**，分项＝Client 101／App 233／Api 248／Core executed 406 passed 406＋2 条环境跳过（`eval-QA-TIP1020-1020`）。本单不改写它。
 - **授权来源（逐字）**：作者 2026-10-19「**我不想思考了，你就继续给我派工单，该提交的提交吧，早点做完之后再回来大修**」；缺陷事实与修法口径出自 QA 2026-10-20 报告 `docs/eval/reports/2026-10-20-tip-e82499b-merged-tree-rolling-revalidation-and-four-knife-falsification.md` §5（含三条不许走的捷径原文）。
